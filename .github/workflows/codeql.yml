@@ -1,0 +1,57 @@
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly full scan to catch advisories published after the last push.
+    - cron: "27 3 * * 1"
+
+# Only the latest run per ref needs to complete; cancel superseded runs.
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least-privilege default for the GITHUB_TOKEN. The analyze job sets its
+# own permissions block, which REPLACES (does not merge with) this one,
+# so every permission the job needs must be listed at the job level.
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      # A job-level permissions block replaces the top-level one
+      # entirely, so every permission the job needs is listed here.
+      security-events: write # upload analysis results to the Security tab
+      packages: read # fetch CodeQL query packs
+      actions: read # required for code scanning on a private repo
+      contents: read # clone the repository
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'actions' ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          languages: ${{ matrix.language }}
+          # Path filters and query packs live in the sibling config file.
+          config-file: ./.github/codeql/codeql-config.yml
+
+      # No manual build step: the analyzed languages are extracted from
+      # source without a compile, so CodeQL's default extraction covers
+      # them without autobuild (which only adds a failure surface).
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          category: "/language:${{ matrix.language }}"

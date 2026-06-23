@@ -1,0 +1,16 @@
+name: "Default CodeQL config"
+
+# Run the security-extended suite (the default security queries plus
+# additional lower-severity security queries). Switch to
+# "security-and-quality" if the repo wants the broader (noisier)
+# maintainability/quality queries too.
+queries:
+  - uses: security-extended
+
+paths-ignore:
+  - "**/node_modules/**"
+  - "**/vendor/**"
+  - "**/dist/**"
+  - "**/build/**"
+  - "**/*.min.js"
+  - "**/generated/**"
