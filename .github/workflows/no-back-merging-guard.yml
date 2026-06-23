@@ -3,6 +3,13 @@ on:
   pull_request:
     branches: [main]
 
+# Least-privilege default for the GITHUB_TOKEN. The guard only checks
+# out the repo and runs a shell script, so read access to contents is
+# all it needs; this root-level block applies to every job unless a job
+# overrides it.
+permissions:
+  contents: read
+
 # This is the only required status check on `main`. It
 # rejects PRs whose head branch contains a back-merge from
 # `main` (a merge commit whose incoming parent is
