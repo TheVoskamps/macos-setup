@@ -1,0 +1,9 @@
+# 09-Install.development for the 'dev-core' profile
+
+# Casks
+cask 'drawio'
+cask 'figma'
+cask 'postman'
+
+# Mac App Store (mas)
+mas 'Xcode (16.4)', id: 497799835

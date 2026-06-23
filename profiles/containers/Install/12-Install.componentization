@@ -1,0 +1,4 @@
+# 12-Install.componentization for the 'containers' profile
+
+# Casks
+cask 'orbstack'

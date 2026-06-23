@@ -1,0 +1,13 @@
+# 06-Install.messaging: Messaging and communication apps
+# Lean default: msmtp stays because it is macos-setup's own mailer backend
+# (see scripts/send_mail.sh, resolve_mailto.sh). Conferencing apps (zoom,
+# webex, obs) live in the `meetings` profile; chat apps in
+# `messaging-personal`.
+
+# Taps
+# Homebrew formulae
+brew 'msmtp'
+
+# Casks
+# Other formulae
+# Mac App Store (mas)

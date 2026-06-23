@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+# scripts/verify.sh — verify Install/ installations in numeric order (v2.4)
+# - prints one line per entry (installed/missing/skipped + version if available)
+# - supports single or double quotes and trailing options
+# - shows full report; exits non-zero only if missing > 0
+# - also checks profile- and computer-specific Install/ files
+set -uo pipefail
+
+INSTALL_DIR="${INSTALL_DIR:-Install}"
+if [[ ! -d "$INSTALL_DIR" ]]; then
+  echo "[verify] Install directory not found: $INSTALL_DIR" >&2
+  exit 1
+fi
+
+# Computer-specific and profile configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+source "$SCRIPT_DIR/config_common.sh"
+
+COMPUTER_NAME_LOWER="$(get_hostname)"
+# The host tier lives OUTSIDE the repo now (see host_tier_dir in
+# config_common.sh). Its Install/ files are scanned in addition to the
+# in-repo default + profile tiers.
+COMPUTER_SPECIFIC_DIR="$(host_tier_dir)/Install"
+
+# Ordered profile list for this host (lowest priority first).
+PROFILES=()
+while IFS= read -r _p; do PROFILES+=("$_p"); done < <(get_profiles "$REPO_ROOT")
+
+# Hard error: every profile named in the host's `profiles` file must
+# have a matching profiles/<name>/ directory. An unknown profile name
+# is a configuration bug — verify fails loudly rather than silently
+# falling back. (install_filter.sh warns at install time instead.)
+unknown_profiles=()
+for _p in ${PROFILES[@]+"${PROFILES[@]}"}; do
+  if [[ ! -d "$REPO_ROOT/profiles/$_p" ]]; then
+    unknown_profiles+=("$_p")
+  fi
+done
+if [[ ${#unknown_profiles[@]} -gt 0 ]]; then
+  echo "[verify] ERROR: host '$COMPUTER_NAME_LOWER' lists unknown profile(s) in $(host_tier_dir)/profiles:" >&2
+  for _p in "${unknown_profiles[@]}"; do
+    echo "[verify]   - $_p  (no profiles/$_p/ directory)" >&2
+  done
+  exit 1
+fi
+
+files=()
+while IFS= read -r line; do
+  files+=("$line")
+done < <(ls -1 "$INSTALL_DIR"/[0-9][0-9]-Install.* 2>/dev/null | sort -t/ -k2)
+if [[ ${#files[@]} -eq 0 ]]; then
+  echo "[verify] No Install files found under $INSTALL_DIR" >&2
+  exit 0
+fi
+
+section() { echo "=== $1 ==="; }
+
+_title_case() {
+  awk 'BEGIN{ for(i=1;i<ARGC;i++){ s=ARGV[i]; ARGV[i]=""; printf toupper(substr(s,1,1)) substr(s,2) (i<ARGC-1?" ":"") } }' "$@"
+}
+
+_cask_to_app() {
+  local cask="$1"
+  case "$cask" in
+    zoom) echo "zoom.us";;
+    visual-studio-code) echo "Visual Studio Code";;
+    google-chrome) echo "Google Chrome";;
+    firefox) echo "Firefox";;
+    slack) echo "Slack";;
+    discord) echo "Discord";;
+    iterm2) echo "iTerm";;
+    raycast) echo "Raycast";;
+    telegram|telegram-desktop) echo "Telegram";;
+    protonmail-bridge) echo "Proton Mail Bridge";;
+    signal) echo "Signal";;
+    whatsapp) echo "WhatsApp";;
+    *)
+      _title_case "$cask"
+      ;;
+  esac
+}
+
+print_line() {
+  local typ="$1" name="$2" status="$3" extra="${4:-}"
+  if [[ -n "$extra" ]]; then
+    echo "${typ}:${name} (${status}) - ${extra}"
+  else
+    echo "${typ}:${name} (${status})"
+  fi
+}
+
+_check_cask_installed() {
+  local cask="$1"
+  local app="$(_cask_to_app "$cask")"
+  if [[ -d "/Applications/$app.app" || -d "$HOME/Applications/$app.app" ]]; then
+    print_line "cask" "$cask" "installed" "$app"
+    return 0
+  fi
+  if brew list --cask --versions "$cask" >/dev/null 2>&1; then
+    print_line "cask" "$cask" "installed" "present in brew list"
+    return 0
+  fi
+  print_line "cask" "$cask" "missing" ""
+  return 1
+}
+
+_version_of() {
+  local name="$1"
+  "$name" --version 2>/dev/null && return 0
+  "$name" version 2>/dev/null && return 0
+  "$name" -V 2>/dev/null && return 0
+  "$name" -v 2>/dev/null && return 0
+  return 1
+}
+
+_check_brew_cli() {
+  local name="$1"
+  if command -v "$name" >/dev/null 2>&1; then
+    local v=""; v="$(_version_of "$name")" || true
+    if [[ -n "$v" ]]; then
+      v="$(echo "$v" | head -n1)"
+      print_line "brew" "$name" "installed" "$v"
+    else
+      print_line "brew" "$name" "installed" "on PATH"
+    fi
+    return 0
+  fi
+  if brew list --versions "$name" >/dev/null 2>&1; then
+    print_line "brew" "$name" "installed" "in brew list (not on PATH?)"
+    return 0
+  fi
+  print_line "brew" "$name" "missing" ""
+  return 1
+}
+
+_check_tap() {
+  local tap="$1"
+  if brew tap | grep -qx "$tap"; then
+    print_line "tap" "$tap" "present" ""
+    return 0
+  fi
+  print_line "tap" "$tap" "missing" ""
+  return 1
+}
+
+_check_mas() {
+  local name="$1" id="$2"
+  if ! command -v mas >/dev/null 2>&1; then
+    print_line "mas" "$name" "skipped" "mas CLI not installed"
+    return 2
+  fi
+  if mas list | awk '{print $1}' | grep -qx "$id"; then
+    print_line "mas" "$name" "installed" "id $id"
+    return 0
+  fi
+  if [[ -n "$name" ]] && { ls /Applications 2>/dev/null | grep -qi "^${name}\.app$"; }; then
+    print_line "mas" "$name" "installed" "bundle present; mas not listing"
+    return 0
+  fi
+  print_line "mas" "$name" "missing" "id $id"
+  return 1
+}
+
+installed=0
+missing=0
+skipped=0
+
+counting_wrapper() {
+  local cmd="$1"; shift
+  "$cmd" "$@"
+  rc=$?
+  case "$rc" in
+    0) ((installed++)) ;;
+    2) ((skipped++)) ;;
+    *) ((missing++)) ;;
+  esac
+  return 0
+}
+
+process_install_file() {
+  local f="$1"
+  while IFS= read -r raw || [[ -n "$raw" ]]; do
+    line="${raw%%#*}"
+    line="$(echo "$line" | sed -E 's/^\s+|\s+$//g')"
+    [[ -z "$line" ]] && continue
+
+    if [[ "$line" =~ ^tap[[:space:]]+[\"\']([^\"\']+)[\"\'] ]]; then
+      counting_wrapper _check_tap "${BASH_REMATCH[1]}"; continue
+    fi
+
+    if [[ "$line" =~ ^cask[[:space:]]+[\"\']([^\"\']+)[\"\'] ]]; then
+      counting_wrapper _check_cask_installed "${BASH_REMATCH[1]}"; continue
+    fi
+
+    if [[ "$line" =~ ^brew[[:space:]]+[\"\']([^\"\']+)[\"\'] ]]; then
+      counting_wrapper _check_brew_cli "${BASH_REMATCH[1]}"; continue
+    fi
+
+    if [[ "$line" =~ ^mas[[:space:]]+[\"\']([^\"\']+)[\"\'][[:space:]]*,[[:space:]]*id[:=][[:space:]]*([0-9]+) ]]; then
+      counting_wrapper _check_mas "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; continue
+    fi
+  done < "$f"
+}
+
+for f in "${files[@]}"; do
+  section "$(basename "$f")"
+  process_install_file "$f"
+
+  # Check for profile-specific versions, in list order (low to high).
+  for _p in ${PROFILES[@]+"${PROFILES[@]}"}; do
+    profile_file="profiles/$_p/Install/$(basename "$f")"
+    if [[ -f "$profile_file" ]]; then
+      section "$(basename "$f") (profile: $_p)"
+      process_install_file "$profile_file"
+    fi
+  done
+
+  # Check for computer-specific version
+  computer_specific_file="$COMPUTER_SPECIFIC_DIR/$(basename "$f")"
+  if [[ -f "$computer_specific_file" ]]; then
+    section "$(basename "$f") (computer-specific: $COMPUTER_NAME_LOWER)"
+    process_install_file "$computer_specific_file"
+  fi
+done
+
+section "summary"
+echo "installed: $installed"
+echo "missing:   $missing"
+echo "skipped:   $skipped"
+[[ $missing -gt 0 ]] && exit 1 || exit 0

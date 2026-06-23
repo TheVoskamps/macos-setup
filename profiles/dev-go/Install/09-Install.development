@@ -1,0 +1,4 @@
+# 09-Install.development for the 'dev-go' profile
+
+# Homebrew formulae
+brew 'go'

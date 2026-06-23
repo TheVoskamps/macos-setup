@@ -1,0 +1,7 @@
+# 01-Install.security for the 'yubikey' profile
+
+# Homebrew formulae
+brew 'ykman'
+
+# Casks
+cask 'yubico-authenticator'

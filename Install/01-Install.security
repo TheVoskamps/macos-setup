@@ -1,0 +1,13 @@
+# 01-Install.security: Security and privacy tools (1Password, VPNs, firewalls, etc.)
+
+# Taps
+# Homebrew formulae
+brew 'mkcert'
+
+# Casks
+cask '1password'
+cask '1password-cli'
+
+# Other formulae
+# Mac App Store (mas)
+mas '1Blocker (6.2)', id: 1365531024

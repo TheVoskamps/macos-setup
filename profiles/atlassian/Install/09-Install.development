@@ -1,0 +1,7 @@
+# 09-Install.development for the 'atlassian' profile
+
+# Taps
+tap 'atlassian/homebrew-acli'
+
+# Homebrew formulae
+brew 'acli'

@@ -1,0 +1,4 @@
+# 13-Install.data for the 'dropbox' profile
+
+# Casks
+cask 'dropbox'

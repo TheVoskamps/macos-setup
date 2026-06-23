@@ -1,0 +1,82 @@
+# Default-tier macos-setup configuration (config.toml).
+#
+# Consolidated, hand-editable config for the scalar knobs that used to
+# live in separate per-file key=value / line-oriented files
+# (config/claude, config/mailer, cron/mailto, profiles). Queried with
+# `dasel` — a guaranteed bootstrap primitive.
+#
+# Tier model (two tiers; lowest to highest priority):
+#
+#   default  <  [host-selected profiles, in order]  <  host
+#
+# The [claude], [mailer], and [cron] sections are SINGLE-WINNER: the
+# highest tier with a non-empty value for a given key wins (no per-key
+# merge). The `profiles` array is the one AGGREGATE key — a default-tier
+# `profiles` array is PREPENDED to the host's, and dedup keeps the last
+# occurrence. See scripts/config_common.sh.
+#
+# The [mailer] section ships with active shared relay defaults (the
+# default tier resolves at runtime); [claude], [cron], and the profiles
+# array stay commented out as in-place documentation. Override per-host
+# by editing config.toml in your
+# external host tier (${XDG_CONFIG_HOME:-~/.config}/macos-setup/config.toml,
+# seeded from computer-specific/_template/config.toml), or per-profile at
+# profiles/<profile>/config.toml.
+
+# profiles — the ordered profile list, lowest priority first.
+# A default-tier `profiles` array is prepended to each host's array. No
+# populated default list ships today; the prepend capability exists for a
+# future base list.
+#
+# IMPORTANT: `profiles` is a bare (top-level) key, so it MUST appear
+# ABOVE the first [section] table below. Placing it after a
+# [claude]/[mailer]/[cron] header makes TOML nest it under that table
+# (e.g. cron.profiles), and the profile list silently disappears.
+# Example:
+# profiles = ["version-managers", "desktop-ui"]
+
+# [claude] — settings for the ~/.claude/ global Claude config repo.
+# Both keys are optional; missing values fall back to defaults.
+# [claude]
+# Git branch to check out in ~/.claude/. Default: the remote's default
+# branch, resolved at run time via `git ls-remote --symref origin HEAD`.
+# branch = "main"
+# SSH host alias used in the git remote URL. Lets ~/.ssh/config select
+# the right IdentityFile per machine. Default: github.com. Final SSH URL
+# is: git@<hostname>:TheVoskamps/claude-config.git
+# hostname = "github.com-edwin"
+
+# [mailer] — generic SMTP relay settings for outgoing mail (msmtp).
+# msmtp is a relay client, not an MTA, so a relay account is required
+# (Gmail app-password, Fastmail, your ISP, your own AWS SES SMTP
+# credentials, etc.). This default tier carries the shared relay config
+# (host/port/from/keychain); each host overrides smtp_from with its own
+# machine-named address and (for SES machines) sets smtp_user. Run
+# 'make messaging' to generate ~/.msmtprc from the resolved values.
+#
+# These are REAL, ACTIVE values: the default tier is the tier that
+# resolves at runtime, so it must carry working defaults — if it stayed
+# commented, resolution would return empty and nothing would mail.
+# smtp_user is intentionally absent here; each relay-using host sets it.
+[mailer]
+# Mailer backend. Only "msmtp" (generic SMTP relay) is supported.
+backend = "msmtp"
+smtp_host = "email-smtp.us-west-2.amazonaws.com"
+smtp_port = 587
+smtp_from = "macos-setup.default@internalsystem.net"
+# Keychain service name used for the relay password.
+keychain_service = "msmtp"
+#
+# The relay password is NEVER stored in config.toml or ~/.msmtprc. msmtp
+# reads it from your login Keychain at send time. Each relay-using host
+# adds it once with the SAME service name (keychain_service) and that
+# host's username (smtp_user):
+#
+#   security add-generic-password -s msmtp -a YOUR_SMTP_USER \
+#     -w 'YOUR_SMTP_PASSWORD'
+
+# [cron] — scheduled-job settings.
+# [cron]
+# Email address that scheduled LaunchAgent jobs send their output to.
+# When unset, jobs write to a per-job log file instead.
+# mailto = "you@example.com"

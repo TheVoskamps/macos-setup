@@ -1,0 +1,20 @@
+# 05-Uninstall.tools: Packages to uninstall — General developer tools and utilities
+#
+# Entries listed here are removed by `make uninstall` /
+# `make 05_Uninstall_tools` and are filtered out of the matching
+# `Install/05-Install.tools` (and same-tier or lower-tier Install files) by the smart
+# filter on `make install` — see docs/INSTALL.md.
+#
+# Format mirrors a Brewfile: `brew '...'`, `cask '...'`, or
+# `mas '...', id: NNNNN`. `tap` directives are ignored. Comments and blank
+# lines are ignored.
+
+# Taps
+
+# Homebrew formulae
+
+# Casks
+
+# Other formulae
+
+# Mac App Store (mas)

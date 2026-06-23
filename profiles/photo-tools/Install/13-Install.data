@@ -1,0 +1,4 @@
+# 13-Install.data for the 'photo-tools' profile
+
+# Casks
+cask 'photosweeper-x'

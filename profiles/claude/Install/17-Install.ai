@@ -1,0 +1,5 @@
+# 17-Install.ai for the 'claude' profile
+
+# Casks
+cask 'claude'
+cask 'claude-code'

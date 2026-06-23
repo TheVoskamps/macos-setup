@@ -1,0 +1,15 @@
+# asdf plugin configuration
+# Resolved via three-tier: computer-specific/{hostname} > profiles/{profile} > default
+#
+# Each [plugin] section can have:
+#   filter         = "pattern"   grep pattern applied to `asdf list all <plugin>`
+#   filter_exclude = "pattern"   grep -v pattern to exclude matches
+#   max_version    = "version"   version ceiling (versions must be <= this via sort -V)
+
+[java]
+filter = "^temurin-"
+filter_exclude = "jre"
+# max_version = "temurin-25.0.2+10.0.LTS"
+
+[lua]
+max_version = "5.4.7"

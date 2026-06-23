@@ -1,0 +1,8 @@
+{
+    "yaml.schemas": {
+        "file:///Users/edwinvoskamp/.vscode/extensions/atlassian.atlascode-3.8.16/resources/schemas/pipelines-schema.json": "bitbucket-pipelines.yml"
+    },
+    "redhat.telemetry.enabled": false,
+    "aws.telemetry": false,
+    "terminal.integrated.defaultProfile.osx": "zsh"
+}

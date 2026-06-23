@@ -1,0 +1,12 @@
+# 15-Install.ripping for the 'media-ripping' profile
+
+# Homebrew formulae
+brew 'ffmpeg'
+
+# Casks
+cask 'handbrake-app'
+cask 'makemkv'
+cask 'filebot'
+
+# Mac App Store (mas)
+mas 'To FLAC Converter 2', id: 1057068364

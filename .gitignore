@@ -1,0 +1,96 @@
+# macOS Finder metadata and temp dirs
+.DS_Store
+__MACOSX/
+
+# Git repo metadata
+.git/
+
+# Archives and compressed files
+*.zip
+*.tar
+*.gz
+*.tgz
+*.bz2
+*.xz
+*.7z
+
+# Disk images and installers
+*.dmg
+*.iso
+*.pkg
+
+# macOS system files
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+env/
+venv/
+.mypy_cache/
+.pytest_cache/
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Environment
+.env
+.env.*
+
+# Brew
+Brewfile.lock.json
+Brewfile.snapshot
+
+# Docker
+docker-data/
+*.pid
+
+# Misc
+*.log
+*.tmp
+
+#asdf / direnv
+.envrc
+/.tool-versions
+
+# Claude config — whitelist shareable files, ignore everything else.
+# New Claude-generated dirs (cache, sessions, projects, todos, ...) stay
+# ignored by default. Add them to the allow-list explicitly if needed.
+# Re-including a file inside an ignored dir requires un-ignoring each
+# parent first (git's negation rule).
+/.claude/*
+!/.claude/CLAUDE.md
+!/.claude/settings.json
+!/.claude/agents/
+!/.claude/commands/
+!/.claude/hooks/
+!/.claude/output-styles/
+!/.claude/plans/
+!/.claude/plugins/
+!/.claude/rules/
+!/.claude/skills/
+
+# Always ignore local/temp/backup/lock files anywhere under .claude/,
+# even inside whitelisted directories
+/.claude/**/*.local.*
+/.claude/**/*.backup.*
+/.claude/**/*.lock
+/.claude/**/tmp/
+/.claude/**/worktrees/
+
+# Repo-root CLAUDE override files (sibling to CLAUDE.md)
+/CLAUDE.local.*
+
+#VSCode swapfile
+*.swp
+
+# Backup files from Claude setup
+*.backup.*

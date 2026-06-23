@@ -1,0 +1,16 @@
+# 17-Uninstall.ai: Packages to uninstall — Artificial intelligence, ML, and related utilities
+#
+# Entries listed here are removed by `make uninstall` /
+# `make 17_Uninstall_ai` and are filtered out of the matching
+# `Install/17-Install.ai` (and same-tier or lower-tier Install files) by the smart
+# filter on `make install` — see docs/INSTALL.md.
+#
+# Format mirrors a Brewfile: `brew '...'`, `cask '...'`, or
+# `mas '...', id: NNNNN`. `tap` directives are ignored. Comments and blank
+# lines are ignored.
+
+# Taps
+# Homebrew formulae
+# Casks
+# Other formulae
+# Mac App Store (mas)

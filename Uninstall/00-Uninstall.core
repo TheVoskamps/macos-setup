@@ -1,0 +1,20 @@
+# 00-Uninstall.core: Packages to uninstall — Core Homebrew taps and essential system setup
+#
+# Entries listed here are removed by `make uninstall` /
+# `make 00_Uninstall_core` and are filtered out of the matching
+# `Install/00-Install.core` (and same-tier or lower-tier Install files) by the smart
+# filter on `make install` — see docs/INSTALL.md.
+#
+# Format mirrors a Brewfile: `brew '...'`, `cask '...'`, or
+# `mas '...', id: NNNNN`. `tap` directives are ignored. Comments and blank
+# lines are ignored.
+
+# Taps
+
+# Homebrew formulae
+
+# Casks
+
+# Other formulae
+
+# Mac App Store (mas)

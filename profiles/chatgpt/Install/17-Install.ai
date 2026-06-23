@@ -1,0 +1,4 @@
+# 17-Install.ai for the 'chatgpt' profile
+
+# Casks
+cask 'chatgpt'

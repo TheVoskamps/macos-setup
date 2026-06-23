@@ -1,0 +1,4 @@
+# 08-Install.proton for the 'proton-mail' profile
+
+# Casks
+cask 'proton-mail'

@@ -1,0 +1,15 @@
+# 00-Install.core: Core Homebrew taps (documented only) and essential system setup
+# Taps generally managed by Homebrew; kept here as documentation:
+# tap "homebrew/bundle"
+# tap "homebrew/core"
+# tap "homebrew/cask"
+
+# homebrew/bundle was deprecated. This tap is now empty and all its contents were either deleted or migrated.
+# tap 'homebrew/bundle'
+# homebrew/cask is no longer typically necessary.
+# Add --force if you are sure you need it for contributing to Homebrew.
+# tap 'homebrew/cask'
+# homebrew/cask-drivers was deprecated. This tap is now empty and all its contents were either deleted or migrated.
+# tap 'homebrew/cask-drivers'
+
+# Core taps only; no packages here by design.

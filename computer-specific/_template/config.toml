@@ -1,0 +1,89 @@
+# External host-tier macos-setup configuration (config.toml).
+#
+# This file is the seeded copy of the in-repo template. It lives OUTSIDE
+# the repo, in your external host tier at the path returned by
+# host_tier_dir in scripts/config_common.sh — by default
+# ${XDG_CONFIG_HOME:-~/.config}/macos-setup/config.toml (override with
+# MACOS_SETUP_HOST_DIR). Backing up / syncing it is your responsibility.
+#
+# It is the single, hand-editable home for the scalar config knobs that
+# used to live in separate files (config/claude, config/mailer,
+# cron/mailto, profiles). Queried with `dasel`, a guaranteed bootstrap
+# primitive.
+#
+# Tier model (two tiers; lowest to highest priority):
+#
+#   default  <  [host-selected profiles, in order]  <  host (this file)
+#
+# The [claude], [mailer], and [cron] sections are SINGLE-WINNER: the
+# highest tier with a non-empty value wins (no per-key merge), and this
+# host-tier file outranks both the profiles and the default tier. The
+# `profiles` array is the one AGGREGATE key — see the `profiles` block
+# at the bottom.
+#
+# Every field below is commented out. Uncomment and set only what this
+# machine needs.
+
+# ---------------------------------------------------------------------
+# profiles — the ordered profile list for this host, lowest priority
+# first (the first entry is the lowest priority and the last entry sits
+# just under this host's own config). Each name must match a directory
+# under profiles/<name>/.
+#
+# A host with no `profiles` array (like this template) selects no
+# profiles and collapses to the two-tier model: default < host.
+#
+# IMPORTANT: `profiles` is a bare (top-level) key, so it MUST appear
+# ABOVE the first [section] table below. If you uncomment it, leave it
+# here at the top — placing it after a [claude]/[mailer]/[cron] header
+# makes TOML nest it under that table (e.g. cron.profiles), and the
+# profile list silently disappears.
+#
+# Example — opt into `version-managers` first, then `dev-core` on top:
+# profiles = ["version-managers", "dev-core"]
+# ---------------------------------------------------------------------
+
+# ---------------------------------------------------------------------
+# [claude] — settings for the ~/.claude/ global Claude config repo.
+# Both keys are optional; missing values fall back to defaults.
+# ---------------------------------------------------------------------
+# [claude]
+# Git branch to check out in ~/.claude/. Default: the remote's default
+# branch, resolved at run time via `git ls-remote --symref origin HEAD`.
+# branch = "main"
+# SSH host alias used in the git remote URL. Lets ~/.ssh/config select
+# the right IdentityFile per machine. Default: github.com. Final SSH URL
+# is: git@<hostname>:TheVoskamps/claude-config.git
+# hostname = "github.com-edwin"
+
+# ---------------------------------------------------------------------
+# [mailer] — generic SMTP relay settings for outgoing mail (msmtp).
+# msmtp is a relay client, not an MTA, so a relay account is required
+# (Gmail app-password, Fastmail, your ISP, your own AWS SES SMTP
+# credentials, etc.). Fill these in, then run 'make messaging' to
+# generate ~/.msmtprc.
+# ---------------------------------------------------------------------
+# [mailer]
+# Mailer backend. Only "msmtp" (generic SMTP relay) is supported.
+# backend = "msmtp"
+# smtp_host = "smtp.example.com"
+# smtp_port = 587
+# smtp_from = "you@example.com"
+# smtp_user = "you@example.com"
+# Keychain service name used for the relay password (default: msmtp).
+# keychain_service = "msmtp"
+#
+# The relay password is NEVER stored in config.toml or ~/.msmtprc. msmtp
+# reads it from your login Keychain at send time. Add it once with the
+# SAME service name (keychain_service) and username (smtp_user) above:
+#
+#   security add-generic-password -s msmtp -a you@example.com \
+#     -w 'YOUR_SMTP_PASSWORD'
+
+# ---------------------------------------------------------------------
+# [cron] — scheduled-job settings.
+# ---------------------------------------------------------------------
+# [cron]
+# Email address that scheduled LaunchAgent jobs send their output to.
+# When unset, jobs write to a per-job log file instead.
+# mailto = "you@example.com"

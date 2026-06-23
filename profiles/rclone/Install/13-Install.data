@@ -1,0 +1,6 @@
+# 13-Install.data for the 'rclone' profile
+# rclone is a CLI sync tool; grouped with data/sync rather than its former
+# (incidental) home in a host's 17-ai file.
+
+# Homebrew formulae
+brew 'rclone'

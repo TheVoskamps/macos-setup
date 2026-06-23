@@ -1,0 +1,5 @@
+# 06-Install.messaging for the 'logitech' profile
+
+# Casks
+cask 'logitech-g-hub'
+cask 'logitune'

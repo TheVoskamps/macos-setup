@@ -1,0 +1,4 @@
+# 09-Install.development for the 'visual-studio-code' profile
+
+# Casks
+cask 'visual-studio-code'

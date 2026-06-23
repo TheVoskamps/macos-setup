@@ -1,0 +1,7 @@
+# 06-Install.messaging for the 'meetings' profile
+# Video-conferencing apps. Anyone who gets meetings gets obs too.
+
+# Casks
+cask 'zoom'
+cask 'webex'
+cask 'obs'

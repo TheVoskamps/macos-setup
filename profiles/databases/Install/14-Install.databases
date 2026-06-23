@@ -1,0 +1,9 @@
+# 14-Install.databases for the 'databases' profile
+
+# Homebrew formulae
+brew 'sqlite'
+brew 'pgcli'
+brew 'mysql-client'
+
+# Casks
+cask 'tableplus'

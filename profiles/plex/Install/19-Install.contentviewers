@@ -1,0 +1,4 @@
+# 19-Install.contentviewers for the 'plex' profile
+
+# Casks
+cask 'plex-htpc'

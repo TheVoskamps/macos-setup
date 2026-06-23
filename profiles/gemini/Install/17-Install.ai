@@ -1,0 +1,4 @@
+# 17-Install.ai for the 'gemini' profile
+
+# Casks
+cask 'google-gemini'

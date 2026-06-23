@@ -1,0 +1,10 @@
+{
+  "monitors": {
+    "primary": {
+      "pattern": "",
+      "role": "primary",
+      "description": "Primary monitor (fallback to largest)"
+    }
+  },
+  "titleAssignments": []
+}
