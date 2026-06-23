@@ -1,0 +1,364 @@
+# Template for /gh-repo-setup-pr-automation. Rendered into the target
+# repo at .github/workflows/auto-rebase-prs.yml.
+#
+# Placeholders (see the github-setup plugin payload README for the convention):
+#   main   default branch PRs target (e.g. main)
+#   thevoskamps-pr-automations         GitHub App slug used for automation
+#   AUTOMERGE_APP_ID    repo secret holding the App ID
+#                        (e.g. AUTOMERGE_APP_ID)
+#   AUTOMERGE_APP_PRIVATE_KEY  repo secret holding the App private key
+#                        (e.g. AUTOMERGE_APP_PRIVATE_KEY)
+#   macos-setup-auto-rebase[bot]         git identity used for rebase commits, e.g.
+#                        "<repo>-auto-rebase[bot]"
+#   no-back-merging-guard  name of the repo's required-check
+#                        workflow that, on completion, should trigger a
+#                        rebase pass (e.g. no-back-merging-guard). If the
+#                        repo has no such workflow, the
+#                        /gh-repo-setup-pr-automation skill drops this
+#                        workflow_run trigger when rendering.
+#   do-not-merge  label that opts a PR out of automation
+name: auto-rebase-prs
+on:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [no-back-merging-guard]
+    types: [completed]
+  workflow_dispatch:
+  schedule:
+    # Backstop sweep every 20 minutes. mergeStateStatus is computed
+    # lazily by GitHub: right after a push to main, open
+    # PRs are reported UNKNOWN until a background recompute settles them
+    # to BEHIND, and the event-driven runs above can drop a genuinely
+    # behind PR because of that race. This cron tick re-enumerates fresh
+    # state and catches any PR the race skipped.
+    - cron: '*/20 * * * *'
+  issue_comment:
+    types: [created]
+
+# Automatically rebase open PRs targeting main whenever
+# they fall behind. Feature branches must rebase onto the base branch
+# (never back-merge), so this workflow performs that rebase as soon as a
+# PR's checks complete or as soon as the base branch advances.
+#
+# Triggers:
+#   - push to main -- every advance rebases eligible PRs
+#   - workflow_run on no-back-merging-guard completion -- as soon
+#     as a PR's required check finishes, the rebase pass runs
+#   - workflow_dispatch -- manual "Run workflow" button (or
+#     `gh workflow run auto-rebase-prs.yml`). Recovery path for the
+#     lazy-mergeStateStatus race. Sweeps all eligible PRs.
+#   - schedule (cron */20) -- periodic backstop sweep so a PR that was
+#     UNKNOWN at push time is rebased on the next tick. Sweeps all
+#     eligible PRs.
+#   - issue_comment (created) -- a collaborator comments `/rebase` on a
+#     PR to rebase just that PR (the generic equivalent of
+#     `@dependabot rebase`). Gated to PR comments from users with write
+#     access; scoped to the single commenting PR rather than sweeping.
+#
+# For the `/rebase` slash command (issue_comment trigger) only the
+# single commenting PR is considered, and the comment author must have
+# write (or admin) permission on THIS repo so arbitrary commenters
+# cannot trigger a force-push. Authorization is enforced in two stages:
+# the job-level `if:` below applies the cheap event-payload pre-filters
+# (the comment is on a PR and the body contains `/rebase`), and an early
+# "Authorize /rebase commenter" step queries the authoritative
+# repository-permission API
+# (`repos/<owner>/<repo>/collaborators/<user>/permission`) and exits the
+# job unless the result is `admin` or `write`. The job-level `if:` alone
+# is insufficient: `author_association` describes the commenter's
+# relationship to the org/repo (OWNER / MEMBER / COLLABORATOR), NOT their
+# effective permission on this repo -- an org MEMBER or a COLLABORATOR
+# can be read-only, yet would pass an association-based gate. The
+# permission API is the only authoritative source for "can this user
+# push here", and it can only be queried at runtime (the event payload
+# does not carry it), so it cannot live in the job-level `if:`. For all
+# other triggers the job sweeps every eligible PR.
+#
+# Per-PR rules:
+#   1. Skip if PR is in draft state.
+#   2. Skip if PR carries the `do-not-merge` label (escape
+#      hatch).
+#   3. Only act on PRs whose mergeStateStatus is BEHIND or BLOCKED --
+#      the two states that can mean "behind the base branch". BLOCKED is
+#      overloaded (it can also mean missing review or failing checks),
+#      so we additionally short-circuit with `git merge-base
+#      --is-ancestor origin/main <head>` to skip BLOCKED
+#      PRs that aren't actually behind.
+#   4. Attempt a rebase onto origin/main. If clean,
+#      force-push with --force-with-lease so concurrent author pushes
+#      are not clobbered.
+#   5. If the rebase produces conflicts, abort and leave the PR alone.
+#      No comment, no failure; the PR author handles it.
+#
+# Auth: this workflow MUST run as the GitHub App "thevoskamps-pr-automations", not as
+# the default GITHUB_TOKEN. A push made with GITHUB_TOKEN does NOT
+# re-trigger downstream workflows (GitHub design, to prevent infinite
+# recursion). After an auto-rebase push, the PR's required status checks
+# would not re-run, leaving stale results and breaking the "rebase keeps
+# the PR mergeable" loop. Pushing as a GitHub App makes the push look
+# like an external actor, so the checks do re-run. Do NOT fall back to
+# GITHUB_TOKEN.
+#
+# The workflow consumes two repo secrets: AUTOMERGE_APP_ID and
+# AUTOMERGE_APP_PRIVATE_KEY. A short-lived installation token is
+# minted at runtime by actions/create-github-app-token (see the first
+# job step); there is no long-lived stored token.
+# /gh-repo-setup-pr-automation seeds the two secrets. Until the App is
+# provisioned the first workflow run fails fast at the token-mint step
+# with a clear error from actions/create-github-app-token; that failure
+# is intended.
+
+# All privileged git and API operations below run with a GitHub App
+# installation token minted at runtime by actions/create-github-app-token
+# from AUTOMERGE_APP_ID and AUTOMERGE_APP_PRIVATE_KEY,
+# not the default GITHUB_TOKEN. The block below therefore only governs
+# any implicit GITHUB_TOKEN usage (e.g. inside actions/checkout when no
+# explicit token is passed). actions/checkout here is given the minted
+# App token explicitly, so no contents: write is needed; keep the block
+# minimal and let the App's installation permissions govern the work.
+permissions: {}
+
+concurrency:
+  group: auto-rebase-prs
+  cancel-in-progress: false
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    # For issue_comment, only run when the comment is on a PR (not a
+    # plain issue) and the body contains `/rebase`. These are the cheap
+    # event-payload pre-filters only; the authoritative write/admin
+    # permission check on THIS repo cannot be expressed here (the event
+    # payload does not carry effective repo permission -- only
+    # `author_association`, which is not the same thing) and is enforced
+    # at runtime by the "Authorize /rebase commenter" step below. All
+    # other triggers (push, workflow_run, workflow_dispatch, schedule)
+    # run unconditionally. `contains` matches `/rebase` anywhere in the
+    # body; the rebase-step parse below tightens this to a line that is
+    # exactly `/rebase` so quoting the command in prose does not fire.
+    if: >-
+      github.event_name != 'issue_comment' ||
+      (github.event.issue.pull_request != null &&
+       contains(github.event.comment.body, '/rebase'))
+    steps:
+      - name: Mint App installation token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.AUTOMERGE_APP_ID }}
+          private-key: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
+
+      # Authoritative authorization for the `/rebase` slash command. The
+      # job-level `if:` only confirmed the comment is on a PR and contains
+      # `/rebase`; it can NOT confirm the commenter may push to this repo.
+      # `author_association` (the only relationship the event payload
+      # carries) describes the commenter's tie to the org/repo, not their
+      # effective permission: an org MEMBER or a COLLABORATOR can be
+      # read-only and would still pass an association-based gate. Query the
+      # repository-permission API instead, which returns the effective
+      # permission on THIS repo (admin | write | read | none), and exit the
+      # job unless it is admin or write. This runs before any git fetch /
+      # rebase / force-push work below. The lookup uses the App
+      # installation token (same GH_TOKEN the rest of the workflow uses),
+      # consistent with the App-token auth model -- the default
+      # GITHUB_TOKEN is intentionally not used. Skipped for all non-comment
+      # triggers (push / workflow_run / workflow_dispatch / schedule),
+      # which sweep all eligible PRs and carry no commenter to authorize.
+      - name: Authorize /rebase commenter
+        if: github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+        run: |
+          set -euo pipefail
+          PERMISSION=$(gh api \
+            "repos/${REPO}/collaborators/${COMMENTER}/permission" \
+            --jq '.permission')
+          echo "Commenter @${COMMENTER} has '${PERMISSION}' permission on ${REPO}"
+          case "$PERMISSION" in
+            admin|write)
+              echo "Authorized: @${COMMENTER} may trigger /rebase."
+              ;;
+            *)
+              echo "::error::@${COMMENTER} has '${PERMISSION}' permission on ${REPO}; /rebase requires admin or write. Refusing to force-push."
+              exit 1
+              ;;
+          esac
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Configure git identity
+        run: |
+          set -euo pipefail
+          git config user.name "macos-setup-auto-rebase[bot]"
+          git config user.email "macos-setup-auto-rebase[bot]@users.noreply.github.com"
+
+      - name: Rebase eligible PRs
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          COMMENT_PR_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          BASE_BRANCH: main
+        run: |
+          set -euo pipefail
+
+          # Always rebase against the latest origin/$BASE_BRANCH.
+          git fetch origin "$BASE_BRANCH"
+
+          OWNER="${REPO%/*}"
+          NAME="${REPO#*/}"
+
+          # The `/rebase` slash command (issue_comment) scopes the pass
+          # to the single commenting PR; every other trigger sweeps all
+          # open PRs. Both paths feed the same eligibility filter and
+          # per-PR rebase loop below -- only the GraphQL node set differs.
+          if [ "$EVENT_NAME" = "issue_comment" ]; then
+            # The job-level `if:` already verified the comment is on a PR
+            # and contains `/rebase`, and the "Authorize /rebase commenter"
+            # step above verified the commenter has admin/write permission
+            # on this repo. Tighten the body match here: require a line
+            # that is exactly `/rebase` (allowing surrounding whitespace)
+            # so the command quoted inside prose does not fire.
+            if ! printf '%s' "$COMMENT_BODY" | grep -qE '^[[:space:]]*/rebase[[:space:]]*$'; then
+              echo "Comment does not contain a standalone /rebase command; nothing to do."
+              exit 0
+            fi
+            echo "Slash command /rebase on PR #$COMMENT_PR_NUMBER"
+            # Query just the commenting PR. Same field set as the sweep
+            # query so the jq filter and loop are reused unchanged.
+            PRS_JSON=$(gh api graphql -f query='
+              query($owner: String!, $name: String!, $number: Int!) {
+                repository(owner: $owner, name: $name) {
+                  pullRequest(number: $number) {
+                    number
+                    isDraft
+                    mergeStateStatus
+                    headRefName
+                    headRepositoryOwner { login }
+                    baseRefName
+                    labels(first: 50) { nodes { name } }
+                  }
+                }
+              }' -f owner="$OWNER" -f name="$NAME" -F number="$COMMENT_PR_NUMBER")
+
+            # Reshape `pullRequest` (single object) into the same
+            # `pullRequests.nodes[]` array shape the sweep query returns,
+            # and drop it if it does not target the base branch (the slash
+            # command can land on any PR). The mergeStateStatus filter is
+            # NOT applied here: an explicit `/rebase` should rebase even a
+            # CLEAN PR if it is behind the base, and the `is-ancestor`
+            # short-circuit in the loop already skips PRs not behind base.
+            mapfile -t CANDIDATES < <(echo "$PRS_JSON" | jq -r --arg base "$BASE_BRANCH" '
+              .data.repository.pullRequest
+              | select(. != null)
+              | select(.baseRefName == $base)
+              | select(.isDraft == false)
+              | select([.labels.nodes[].name] | index("do-not-merge") | not)
+              | "\(.number)\t\(.headRefName)\t\(.headRepositoryOwner.login)"
+            ')
+          else
+            # Enumerate open non-draft PRs targeting the base branch.
+            # mergeStateStatus is returned via GraphQL; the REST
+            # `gh pr list` does not surface it. Only act on PRs whose
+            # mergeStateStatus is BEHIND or BLOCKED -- the two states that
+            # can mean "branch is behind base". BEHIND is unambiguous.
+            # BLOCKED is overloaded (it can mean behind, or missing review,
+            # or failing checks, etc.), so we additionally short-circuit at
+            # the rebase step with `git merge-base --is-ancestor` to skip
+            # BLOCKED PRs that are not actually behind. Other states are
+            # dropped here: CLEAN/UNSTABLE are already up-to-date, DIRTY is
+            # a GitHub-visible merge conflict (rebase would just abort),
+            # HAS_HOOKS / UNKNOWN are out of scope.
+            PRS_JSON=$(gh api graphql -f query='
+              query($owner: String!, $name: String!, $base: String!) {
+                repository(owner: $owner, name: $name) {
+                  pullRequests(states: OPEN, first: 100, baseRefName: $base) {
+                    nodes {
+                      number
+                      isDraft
+                      mergeStateStatus
+                      headRefName
+                      headRepositoryOwner { login }
+                      labels(first: 50) { nodes { name } }
+                    }
+                  }
+                }
+              }' -f owner="$OWNER" -f name="$NAME" -f base="$BASE_BRANCH")
+
+            mapfile -t CANDIDATES < <(echo "$PRS_JSON" | jq -r '
+              .data.repository.pullRequests.nodes[]
+              | select(.isDraft == false)
+              | select(.mergeStateStatus == "BEHIND" or .mergeStateStatus == "BLOCKED")
+              | select([.labels.nodes[].name] | index("do-not-merge") | not)
+              | "\(.number)\t\(.headRefName)\t\(.headRepositoryOwner.login)"
+            ')
+          fi
+
+          if [ "${#CANDIDATES[@]}" -eq 0 ]; then
+            echo "No eligible PRs to rebase."
+            exit 0
+          fi
+
+          for line in "${CANDIDATES[@]}"; do
+            PR_NUMBER=$(echo "$line" | cut -f1)
+            HEAD_REF=$(echo "$line" | cut -f2)
+            HEAD_OWNER=$(echo "$line" | cut -f3)
+
+            # Skip fork PRs -- we cannot push to a fork from this token.
+            if [ "$HEAD_OWNER" != "$OWNER" ]; then
+              echo "PR #$PR_NUMBER: skipping (head is a fork: $HEAD_OWNER)"
+              continue
+            fi
+
+            echo "PR #$PR_NUMBER: attempting rebase of $HEAD_REF onto origin/$BASE_BRANCH"
+
+            # Use an explicit refspec to avoid the ambiguity of
+            # `git fetch origin "$HEAD_REF"`: if a tag in the repo happens
+            # to share the branch name, the bare form silently fetches the
+            # tag instead of the branch.
+            git fetch origin "refs/heads/$HEAD_REF:refs/remotes/origin/$HEAD_REF"
+            EXPECTED_SHA=$(git rev-parse "origin/$HEAD_REF")
+
+            # mergeStateStatus=BLOCKED is overloaded: it can mean behind,
+            # or missing review, or failing checks. Short-circuit with the
+            # cheap O(1) ancestry check so we skip BLOCKED PRs that aren't
+            # actually behind the base branch (no rebase, no force-push,
+            # nothing). BEHIND PRs always fail this check, so this only
+            # filters the BLOCKED-but-up-to-date case.
+            if git merge-base --is-ancestor "origin/$BASE_BRANCH" "$EXPECTED_SHA"; then
+              echo "PR #$PR_NUMBER: not behind $BASE_BRANCH, skipping rebase"
+              continue
+            fi
+
+            # Detach onto the PR head so we can rebase without claiming the
+            # branch ref locally. --no-track keeps origin tracking
+            # untouched on the resulting branch.
+            git checkout -B "auto-rebase-$PR_NUMBER" --no-track "origin/$HEAD_REF"
+
+            if git rebase "origin/$BASE_BRANCH"; then
+              # --force-with-lease=<ref>:<expected> rejects the push if a
+              # concurrent author push has moved origin/$HEAD_REF since we
+              # read it, instead of clobbering their work.
+              if git push --force-with-lease="$HEAD_REF:$EXPECTED_SHA" origin "HEAD:refs/heads/$HEAD_REF"; then
+                echo "PR #$PR_NUMBER: rebased and force-pushed"
+              else
+                echo "PR #$PR_NUMBER: push rejected (lease lost or auth); skipping"
+              fi
+            else
+              echo "PR #$PR_NUMBER: rebase produced conflicts; aborting and skipping"
+              git rebase --abort || true
+            fi
+
+            # Return to a detached state so the next iteration's checkout
+            # does not collide on the branch name.
+            git checkout --detach
+            git branch -D "auto-rebase-$PR_NUMBER" || true
+          done
