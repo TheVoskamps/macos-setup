@@ -1,0 +1,35 @@
+name: no-back-merging-guard
+on:
+  pull_request:
+    branches: [main]
+
+# This is the only required status check on `main`. It
+# rejects PRs whose head branch contains a back-merge from
+# `main` (a merge commit whose incoming parent is
+# reachable from `origin/main`). Feature branches must
+# rebase onto the default branch, not merge it in.
+#
+# Logic lives in .github/scripts/no-back-merging-guard.sh. Self-tested
+# by .github/scripts/test-no-back-merging-guard.sh. The guard avoids the
+# false-positive of the previous block-back-merges-from-base workflow,
+# which checked all parents of every merge commit and flagged merges
+# that became "tainted" by prior round-trips.
+
+jobs:
+  no-back-merging-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Fetch base branch
+        env:
+          BASE: ${{ github.base_ref }}
+        run: git fetch origin "$BASE"
+
+      - name: Run no-back-merging guard
+        env:
+          BASE: ${{ github.base_ref }}
+        run: bash .github/scripts/no-back-merging-guard.sh "origin/$BASE" HEAD
