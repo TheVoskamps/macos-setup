@@ -1,0 +1,128 @@
+# Template for /gh-repo-setup-pr-automation. Rendered into the target
+# repo at .github/workflows/auto-enable-automerge.yml.
+#
+# Placeholders (see the github-setup plugin payload README for the convention):
+#   main   default branch PRs target (e.g. main)
+#   thevoskamps-pr-automations         GitHub App slug used for automation
+#   AUTOMERGE_APP_ID    repo secret holding the App ID
+#                        (e.g. AUTOMERGE_APP_ID)
+#   AUTOMERGE_APP_PRIVATE_KEY  repo secret holding the App private key
+#                        (e.g. AUTOMERGE_APP_PRIVATE_KEY)
+#   MERGE     GraphQL merge method: MERGE | SQUASH | REBASE
+#   do-not-merge  label that opts a PR out of automation
+name: auto-enable-automerge
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+    branches: [main]
+
+# Enable auto-merge on every PR to main so the PR merges
+# automatically once required checks + approvals are green. The merge
+# commit subject is set via the GraphQL enablePullRequestAutoMerge
+# mutation's commitHeadline / commitBody so it follows the convention:
+#   "Merge PR: <PR title> (#<num>)"
+# with the PR body as the commit body.
+#
+# Skip rules:
+#   - Draft PRs (handled both by the event filter and an explicit check).
+#   - PRs labelled "do-not-merge" (escape hatch for humans).
+#   - PRs that already have auto-merge enabled (idempotency guard).
+#
+# Auth: this workflow MUST run as the GitHub App "thevoskamps-pr-automations", not as
+# the default GITHUB_TOKEN. The default token integration cannot call
+# enablePullRequestAutoMerge -- it returns
+# "FORBIDDEN: Resource not accessible by integration".
+#
+# The workflow consumes two repo secrets: AUTOMERGE_APP_ID and
+# AUTOMERGE_APP_PRIVATE_KEY. A short-lived installation token is
+# minted at runtime by actions/create-github-app-token, which signs a
+# JWT with the private key and exchanges it for an installation access
+# token. There is no long-lived "App token" to store; the canonical
+# pattern is App ID + private key in repo secrets, token minted per-run.
+# /gh-repo-setup-pr-automation seeds the two secrets. Without them,
+# actions/create-github-app-token fails fast with a clear error -- the
+# intended behaviour. Do NOT fall back to GITHUB_TOKEN.
+
+# Serialize runs per PR so close-spaced events (e.g. opened followed
+# quickly by ready_for_review) do not race on the GraphQL mutation.
+# cancel-in-progress: false so each event is processed in order; the
+# idempotency guard below makes the second run a no-op when auto-merge
+# is already enabled.
+concurrency:
+  group: auto-enable-automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+# The privileged work uses an installation token minted at runtime from
+# AUTOMERGE_APP_ID + AUTOMERGE_APP_PRIVATE_KEY by
+# actions/create-github-app-token (see header comment), not the default
+# GITHUB_TOKEN. This permissions block governs only the default
+# GITHUB_TOKEN, which no step here reads. contents: read is the
+# conventional minimum in case a future step adds actions/checkout.
+# pull-requests: write is intentionally NOT granted -- the App's
+# installation token authorises the mutation.
+permissions:
+  contents: read
+
+jobs:
+  enable-automerge:
+    if: >-
+      github.event.pull_request.draft == false &&
+      !contains(github.event.pull_request.labels.*.name, 'do-not-merge')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint App installation token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.AUTOMERGE_APP_ID }}
+          private-key: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
+      - name: Enable auto-merge with custom commit message
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NODE_ID: ${{ github.event.pull_request.node_id }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          REPO_OWNER: ${{ github.event.repository.owner.login }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          set -euo pipefail
+          # Idempotency guard: skip when auto-merge is already enabled on
+          # this PR. The pull_request `reopened` event fires after a
+          # reopen-after-close, and a second enablePullRequestAutoMerge
+          # mutation on a PR that already has auto-merge enabled returns
+          # an error, producing a noisy red workflow run. Pre-check
+          # autoMergeRequest.enabledAt instead.
+          ENABLED_AT=$(gh api graphql \
+            -f query='query($owner:String!,$repo:String!,$num:Int!) {
+              repository(owner:$owner, name:$repo) {
+                pullRequest(number:$num) {
+                  autoMergeRequest { enabledAt }
+                }
+              }
+            }' \
+            -f owner="$REPO_OWNER" \
+            -f repo="$REPO_NAME" \
+            -F num="$PR_NUMBER" \
+            --jq '.data.repository.pullRequest.autoMergeRequest.enabledAt')
+          if [ -n "$ENABLED_AT" ] && [ "$ENABLED_AT" != "null" ]; then
+            echo "auto-merge already enabled at ${ENABLED_AT}, skipping"
+            exit 0
+          fi
+          HEADLINE="Merge PR: ${PR_TITLE} (#${PR_NUMBER})"
+          # GraphQL enablePullRequestAutoMerge: commitHeadline /
+          # commitBody set the merge commit message.
+          gh api graphql \
+            -f query='mutation($prId: ID!, $headline: String!, $body: String!) {
+              enablePullRequestAutoMerge(input: {
+                pullRequestId: $prId,
+                mergeMethod: MERGE,
+                commitHeadline: $headline,
+                commitBody: $body
+              }) {
+                pullRequest { number autoMergeRequest { enabledAt } }
+              }
+            }' \
+            -f prId="$PR_NODE_ID" \
+            -f headline="$HEADLINE" \
+            -f body="${PR_BODY:-}"
