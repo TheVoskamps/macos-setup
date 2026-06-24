@@ -86,6 +86,17 @@ make install
 This applies all `Install/` files in order and configures
 everything automatically.
 
+> **Run `make install` in a fresh shell.** `bootstrap.sh`
+> installs `dasel` (a hard dependency of every `config.toml`
+> read) into Homebrew's bin and appends the `brew shellenv`
+> line to your profile — but that line only puts Homebrew's
+> bin on `PATH` for a *new* login shell. If you run
+> `make install` in the *same* shell you bootstrapped in, the
+> config-dependent targets (`install`, `update`, `verify`,
+> `outdated`) abort up front with `Error: dasel not in PATH.`
+> The fix is to start a fresh shell and re-run
+> `cd macos-setup && make install`.
+
 ## Usage
 
 ### Essential Commands
