@@ -48,6 +48,21 @@ provisioning macOS with this repo.
   `make asdf-plugins-init` then `make asdf-pin-latest`
   and `make asdf-install`.
 
+## SSH / Credentials (Reference)
+
+The repo is public and `bootstrap.sh` clones it over HTTPS, so SSH is
+optional. These docs cover SSH auth for when you need it (pushing to
+this repo, cloning private repos):
+
+- **[Using 1Password as Your SSH Agent](1password-as-ssh-agent.md):**
+  Base setup — enable the agent, `agent.toml`, the `~/.ssh/config`
+  socket, and verification.
+- **[1Password SSH Agent for Multiple GitHub Accounts](CONFIGURING_1PASSWORD_SSH_AGENT_FOR_MULTIPLE_GITHUB_ACCOUNTS_ON_MACOS.md):**
+  The host-alias / bookmark layer for two-or-more accounts on
+  `github.com`.
+- **[Bootstrapping Alternatives](BOOTSTRAP.md):** Manual SSH-key clone,
+  fresh key generation, and HTTPS + PAT.
+
 ## Related
 
 - [ChatGPT Session Prompt](./CHATGPT.md)

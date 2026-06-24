@@ -147,7 +147,7 @@ centrally in `scripts/config_common.sh`):
 ### Initial Setup
 
 ```bash
-./bootstrap.sh        # Install Homebrew, 1Password, dasel, clone repo
+./bootstrap.sh        # Install Homebrew, mas, dasel; HTTPS-clone the (public) repo
 make install          # Apply all Install/ files in order
 ```
 

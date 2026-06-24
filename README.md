@@ -62,12 +62,19 @@ bash ./bootstrap.sh
    **dasel** (the TOML query primitive `config.toml` relies
    on), then verifies the installed dasel is **exactly major
    version 3** — a non-v3 dasel fails this step loudly
-2. Installs **1Password** and guides you through SSH
-   agent setup
-3. Installs **Apple Command Line Tools** (git)
-4. Tests **GitHub SSH authentication**
-5. Clones this repository to `./macos-setup`
-6. Provides next steps
+2. Installs **Apple Command Line Tools** (git)
+3. Clones this (public) repository to `./macos-setup` over
+   **HTTPS** — no SSH key or 1Password SSH agent required
+4. Provides next steps
+
+> This repo is public, so the bootstrap clone needs no
+> credentials. 1Password is no longer installed by the
+> bootstrap itself (it still comes in via `make security`),
+> and the 1Password SSH-agent setup the bootstrap used to walk
+> you through now lives in
+> [docs/1password-as-ssh-agent.md](docs/1password-as-ssh-agent.md)
+> for when you *do* need SSH auth (pushing to this repo,
+> cloning private repos).
 
 ### Step 2: Install Everything
 
@@ -1146,12 +1153,14 @@ alternative setup methods including:
 - **macOS** (tested on macOS 14+)
 - **Internet connection** for downloads
 - **Apple ID** signed into Mac App Store (for MAS apps)
-- **1Password** (installed automatically by bootstrap)
 - **dasel v3** — the `config.toml` query primitive; installed
   and version-verified automatically by bootstrap. Must be
   exactly major version 3 (v2 and v4+ are rejected); a non-v3
   dasel hard-aborts `make`/config reads loudly
-- **GitHub account** with SSH access
+- **1Password** — not required to bootstrap (the repo is public
+  and clones over HTTPS), but installed by `make security`. Set
+  it up as your SSH agent when you need SSH auth — see
+  [docs/1password-as-ssh-agent.md](docs/1password-as-ssh-agent.md)
 
 ## Documentation
 
