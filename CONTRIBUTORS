@@ -1,0 +1,12 @@
+# Contributors
+
+This is a public repository and contributions are welcome — see the
+"Contributing" section of README.md for how to fork, open a pull
+request, and file issues.
+
+This file deliberately does not embed a frozen contributor list: that
+data is reproducible from the repository's own history and would go
+stale on every commit. To list contributors from the current history,
+run:
+
+    git shortlog -sne
