@@ -1,19 +1,24 @@
 #!/usr/bin/env bash
-# bootstrap-ssh.sh
-# Combined minimal bootstrap for macOS over SSH.
+# bootstrap.sh
+# Combined minimal bootstrap for macOS.
 # Order:
 #   1) Install Homebrew
-#   2) Install 1Password via Homebrew (cask)
-#   3) Install mas (via Homebrew)
-#   4) Install dasel (via Homebrew) — the TOML query primitive config.toml relies on
-#   5) Add zsh aliases for brew/mas (before any checks that might use them)
-#   6) Ensure Apple Command Line Tools (after you've cloned this repo)
-#   7) Check MAS login (non-fatal if not signed in)
+#   2) Install mas (via Homebrew)
+#   3) Install dasel (via Homebrew) — the TOML query primitive config.toml relies on
+#   4) Add zsh aliases for brew/mas (before any checks that might use them)
+#   5) Ensure Apple Command Line Tools (git)
+#   6) Check MAS login (non-fatal if not signed in)
+#   7) Clone this (public) repository over HTTPS
 #
 # Notes:
 # - Idempotent: Safe to re-run.
 # - Aliases are written to ~/.zprofile and ~/.zshrc (and $ZDOTDIR equivalents) only if missing.
 # - MAS login check will open App Store if GUI is available; over pure SSH it will just warn.
+# - This repo is public, so the clone is a plain HTTPS clone — no SSH key,
+#   no 1Password SSH agent, no GitHub SSH auth needed. The 1Password
+#   SSH-agent setup that this script used to walk you through is preserved
+#   as reference in docs/1password-as-ssh-agent.md (still useful when you
+#   DO need SSH auth — e.g. pushing to this repo or cloning private repos).
 
 set -euo pipefail
 
@@ -89,17 +94,13 @@ install_homebrew() {
   brew update
 }
 
-install_1password_via_brew() {
-  brew install --cask 1password || brew upgrade --cask 1password || true
-}
-
 install_mas() {
   brew install mas || brew upgrade mas || true
 }
 
 # dasel is the TOML query primitive every config.toml consumer relies on
 # (scripts/config_common.sh and the mailer/cron/claude readers). It is
-# installed here, alongside Homebrew/1Password/mas/git, so consumers can
+# installed here, alongside Homebrew/mas/git, so consumers can
 # read config.toml unconditionally with no graceful-degradation branch.
 #
 # The read layer in scripts/config_common.sh targets the dasel v3 query
@@ -219,59 +220,9 @@ check_mas_login() {
   fi
 }
 
-check_1password_ssh_setup() {
-  warn "MANUAL STEP REQUIRED: Enable and configure the 1Password SSH Agent"
-  warn ""
-  warn "1. Open 1Password → Settings → Developer"
-  warn "2. Enable 'Use the SSH agent'"
-  warn "3. Add your SSH key to 1Password's Private vault (if it isn't already)."
-  warn "   1Password can add the matching public key to your GitHub account."
-  warn ""
-  warn "4. Create the agent config file so the agent offers keys from your"
-  warn "   Private vault. Run these two commands to create it with the"
-  warn "   recommended default:"
-  warn ""
-  warn "     mkdir -p ~/.config/1Password/ssh"
-  warn "     printf '[[ssh-keys]]\\nvault = \"Private\"\\n' > ~/.config/1Password/ssh/agent.toml"
-  warn ""
-  warn "5. Point ssh at the 1Password agent socket. Make sure ~/.ssh/config"
-  warn "   contains (create the file if it does not exist):"
-  warn ""
-  warn "     Host *"
-  warn "         IdentityAgent \"~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock\""
-  warn ""
-  warn "   Then verify the agent can see your key(s):"
-  warn ""
-  warn "     SSH_AUTH_SOCK=~/Library/Group\\ Containers/2BUA8C4S2C.com.1password/t/agent.sock ssh-add -l"
-  warn ""
-  warn "   (Have multiple GitHub accounts? After the repo is cloned, see"
-  warn "    docs/CONFIGURING_1PASSWORD_SSH_AGENT_FOR_MULTIPLE_GITHUB_ACCOUNTS_ON_MACOS.md)"
-  warn ""
-  warn "Press Enter when you've completed the 1Password SSH setup..."
-  read -r
-}
-
-test_github_ssh() {
-  log "Testing GitHub SSH authentication..."
-  local ssh_output
-  ssh_output=$(ssh -T git@github.com -o ConnectTimeout=10 -o StrictHostKeyChecking=no 2>&1 || true)
-  if echo "$ssh_output" | grep -q "successfully authenticated"; then
-    log "GitHub SSH authentication successful!"
-    return 0
-  else
-    err "GitHub SSH authentication failed."
-    warn "Please ensure:"
-    warn "1. 1Password SSH agent is enabled (Settings → Developer)"
-    warn "2. Your SSH key is added to 1Password's Private vault"
-    warn "3. ~/.config/1Password/ssh/agent.toml exists and references your vault"
-    warn "4. ~/.ssh/config points IdentityAgent at the 1Password agent socket"
-    warn "5. Your SSH key is added to your GitHub account"
-    return 1
-  fi
-}
-
 clone_repository() {
-  local repo_url="git@github.com:TheVoskamps/macos-setup.git"
+  # This repo is public, so a plain HTTPS clone needs no credentials.
+  local repo_url="https://github.com/TheVoskamps/macos-setup.git"
   local target_dir="./macos-setup"
 
   if [[ -d "$target_dir" ]]; then
@@ -287,22 +238,19 @@ clone_repository() {
     log "  make install"
     return 0
   else
-    err "Failed to clone repository. Please check your SSH setup and try again."
+    err "Failed to clone repository over HTTPS. Check your network connection and try again."
     return 1
   fi
 }
 
 main() {
   step "Install Homebrew" install_homebrew
-  step "Install 1Password (cask)" install_1password_via_brew
   step "Install mas (brew)" install_mas
   step "Install dasel (brew)" install_dasel
   step "Add zsh aliases (brew, mas)" ensure_zsh_aliases
   step "Ensure Apple Command Line Tools" ensure_xcode_clt
   step "Check MAS login" check_mas_login
-  step "Setup 1Password SSH Agent" check_1password_ssh_setup
-  step "Test GitHub SSH authentication" test_github_ssh
-  step "Clone repository" clone_repository
+  step "Clone repository (HTTPS)" clone_repository
 
   log "Bootstrap complete. Open a new shell (or 'exec zsh -l') to load aliases."
   log "Next: cd macos-setup && make install"
