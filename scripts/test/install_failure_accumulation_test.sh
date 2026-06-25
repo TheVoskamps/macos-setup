@@ -67,6 +67,7 @@ make_repo() {
      "$REPO_ROOT/scripts/install_filter.sh" \
      "$REPO_ROOT/scripts/list_profiles.sh" \
      "$REPO_ROOT/scripts/seed_host_tier.sh" \
+     "$REPO_ROOT/scripts/require_dasel_on_path.sh" \
      "$root/scripts/"
   # Three slots, sorted: alpha, beta, gamma. The stub brew keys off
   # the bundle file's content to decide which slot to fail.

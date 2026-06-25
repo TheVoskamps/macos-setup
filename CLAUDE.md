@@ -164,6 +164,38 @@ the first config.toml read, so essentially every `make`
 target hard-aborts on a non-v3 dasel instead of breaking
 silently.
 
+A separate, earlier guard handles the **dasel-not-on-PATH**
+case (issue #4). `dasel` is invoked by **bare name** by every
+config read, but `bootstrap.sh` installs it into Homebrew's
+bin and only appends the `brew shellenv` line to the profile —
+that line takes effect in a NEW login shell. A user who runs
+`./bootstrap.sh` then `make install` in the SAME shell has
+dasel installed but unreachable by bare name, which used to
+surface late and cryptically as a buried `dasel version exited
+127` from `require_dasel_v3` partway into `00-Install.core`.
+The `.PHONY: require-dasel` Makefile target (wired as a
+prerequisite on the config-dependent batch targets `install`,
+`update`, `verify`, `outdated`) runs
+`scripts/require_dasel_on_path.sh` BEFORE host-tier seeding,
+the recipe-level config reads, and any install work. On a miss
+it prints `dasel not in PATH` plus new-shell remediation and
+aborts up front. It is a **reachability** check only — it
+honors the same `DASEL` override `config_common.sh` uses, does
+NOT auto-install, and does NOT self-heal PATH; the exactly-v3
+version assertion stays the job of `require_dasel_v3` at the
+first real read.
+
+One config read runs even before the prerequisite: the
+`PROFILES := $(shell ... list_profiles.sh ...)` variable, which
+make expands at **parse time**. A prerequisite can't gate a
+parse-time expansion, so `list_profiles.sh` guards itself —
+with dasel off PATH it mirrors the gate's reachability check
+and short-circuits to an empty list, rather than letting
+`require_dasel_v3`'s `kill -s TERM "$$"` print a `Terminated:
+15` line ahead of the gate's clean error. The prerequisite plus
+that self-guard make `Error: dasel not in PATH.` the sole
+output on a no-dasel run.
+
 ### Development Workflow
 
 ```bash
@@ -903,6 +935,7 @@ former in-repo `logs/` directory. This is macOS-native
 | Script | Purpose |
 | ------ | ------- |
 | `config_common.sh` | Layered resolution lib; host-tier path + seeding |
+| `require_dasel_on_path.sh` | Up-front bare-name `dasel`-on-PATH gate |
 | `list_profiles.sh` | Print this host's ordered profile list (one per line) |
 | `host_tier_dir.sh` | Print external host-tier base path (Makefile helper) |
 | `seed_host_tier.sh` | Seed external host tier from template if absent |

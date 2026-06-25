@@ -82,6 +82,7 @@ make_repo() {
      "$REPO_ROOT/scripts/list_profiles.sh" \
      "$REPO_ROOT/scripts/host_tier_dir.sh" \
      "$REPO_ROOT/scripts/seed_host_tier.sh" \
+     "$REPO_ROOT/scripts/require_dasel_on_path.sh" \
      "$root/scripts/"
   printf 'brew "pkg_default"\n' > "$root/Install/$SLOT_BASENAME"
   echo "$root"

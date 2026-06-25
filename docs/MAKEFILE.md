@@ -19,6 +19,27 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
   slot is commented out for that run. This is the recommended way to
   set up a new machine.
 
+  Up-front `dasel` gate: this target (and `update`, `verify`,
+  `outdated`) depends on the `.PHONY: require-dasel` prerequisite,
+  which runs `scripts/require_dasel_on_path.sh` BEFORE any host-tier
+  seeding or config read. `dasel` is invoked by bare name by every
+  `config.toml` read; if it is not reachable on `PATH` (the common
+  case of running `make install` in the same shell you ran
+  `./bootstrap.sh` in — Homebrew's bin isn't on `PATH` until a new
+  login shell), the gate aborts with `Error: dasel not in PATH.` and
+  a new-shell remediation instead of failing late and cryptically
+  partway into `00-Install.core`. It is a reachability check only and
+  does not auto-install or self-heal `PATH`; the exactly-v3 version
+  assertion remains the job of `require_dasel_v3` at the first read.
+
+  The `PROFILES := $(shell ... list_profiles.sh ...)` variable is read
+  at make *parse* time, before any prerequisite can run, so
+  `list_profiles.sh` guards itself: with dasel off `PATH` it
+  short-circuits to an empty list rather than emitting a
+  `Terminated: 15` line ahead of the gate's clean error. The gate and
+  that self-guard together make `Error: dasel not in PATH.` the sole
+  output on a no-dasel run.
+
   Failure-tolerant: a `brew bundle` failure on one slot no longer
   aborts the run. The loop attempts every slot, accumulates the slots
   whose `brew bundle` returned non-zero, and at the end prints a

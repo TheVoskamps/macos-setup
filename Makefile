@@ -359,9 +359,40 @@ claude-plugins-update: ## Update Claude plugins via the clone's own ~/.claude/pl
 seed-host-tier: ## Seed the external host tier from the template if absent (no-op if it already exists)
 	@bash scripts/seed_host_tier.sh
 
+# --- dasel reachability gate (issue #4) ---
+# Every config.toml read in this repo invokes `dasel` by BARE NAME (the
+# read layer in config_common.sh, and list_profiles.sh through it). On a
+# fresh Apple Silicon Mac, dasel is installed into /opt/homebrew/bin by
+# bootstrap.sh, but /opt/homebrew/bin is not on PATH until a NEW login
+# shell sources the `brew shellenv` line bootstrap appended to the
+# profile. A user who runs `./bootstrap.sh` then `make install` in the
+# SAME shell therefore has dasel installed but unreachable by bare name,
+# and the failure used to surface late and cryptically as a buried
+# `dasel version exited 127` from require_dasel_v3 partway into
+# 00-Install.core. This phony gate runs the up-front reachability check
+# (scripts/require_dasel_on_path.sh) as a prerequisite, BEFORE host-tier
+# seeding, the recipe-level config reads, and any install work, so a
+# missing-on-PATH dasel aborts loudly with an actionable PATH remediation
+# instead. It is a bare-name REACHABILITY check only; the exactly-v3
+# version assertion stays the job of require_dasel_v3 at the first real
+# read. Wired as a prerequisite on each config-dependent batch target
+# below (install, update, verify, outdated); being .PHONY it always runs
+# first, gating the target before any recipe config work begins.
+#
+# NB: the `PROFILES` variable below is read at make PARSE time, before any
+# prerequisite (including this gate) runs. A prerequisite cannot gate a
+# parse-time expansion, so list_profiles.sh guards itself: with dasel off
+# PATH it short-circuits to an empty list rather than letting
+# require_dasel_v3's `kill -s TERM "$$"` print a `Terminated: 15` line
+# ahead of this gate's clean error. Gate + self-guard together make
+# `Error: dasel not in PATH.` the sole output on a no-dasel run.
+.PHONY: require-dasel
+require-dasel:
+	@bash scripts/require_dasel_on_path.sh
+
 # --- Batch targets ---
 .PHONY: install uninstall uninstall-dry-run remove-and-purge remove-and-purge-dry-run update help
-install: ## Apply all Install files in numeric order (filtered against in-scope Uninstall files); seeds the external host tier if absent
+install: require-dasel ## Apply all Install files in numeric order (filtered against in-scope Uninstall files); seeds the external host tier if absent
 	@set -euo pipefail
 	@$(MAKE) -s seed-host-tier
 	@if [ -z "$(ORDERED_INSTALL_FILES)" ]; then echo "No Install files found in $(INSTALL_DIR)/"; exit 0; fi
@@ -496,7 +527,7 @@ _remove_and_purge_loop:
 # Note: the sed pattern extracting cask names from "already an App" errors depends on
 # Homebrew's "Error: <cask>: ..." format. If it changes, unmatched errors safely fall
 # through to the generic error check which sets FAIL=1.
-update: ## Update Homebrew, upgrade formulae/casks/MAS/asdf, then apply Uninstall and RemoveAndPurge
+update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/asdf, then apply Uninstall and RemoveAndPurge
 	@FAIL=0; \
 	echo "==> Updating Homebrew..."; \
 	$(BREW) update || FAIL=1; \
@@ -716,7 +747,7 @@ diagnose: ## Run system diagnostics and check installation status
 .PHONY: diagnose
 
 .PHONY: verify sanitize
-verify: ## Verify installations and check for same-tier Install/Uninstall+RemoveAndPurge collisions
+verify: require-dasel ## Verify installations and check for same-tier Install/Uninstall+RemoveAndPurge collisions
 	@set -uo pipefail; FAIL=0; \
 	bash ./scripts/verify.sh || FAIL=1; \
 	echo; \
@@ -728,7 +759,7 @@ sanitize: ## Resolve same-tier Install/Uninstall+RemoveAndPurge collisions by co
 	@bash ./scripts/collision_check.sh --fix
 
 .PHONY: outdated
-outdated: ## Check for outdated formulae, casks, MAS apps, and asdf tools
+outdated: require-dasel ## Check for outdated formulae, casks, MAS apps, and asdf tools
 	@echo "==> Checking for outdated packages across all Install files..."
 	@echo
 	@echo "==> Outdated Homebrew formulae:"
