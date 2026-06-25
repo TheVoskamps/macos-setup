@@ -370,14 +370,22 @@ seed-host-tier: ## Seed the external host tier from the template if absent (no-o
 # and the failure used to surface late and cryptically as a buried
 # `dasel version exited 127` from require_dasel_v3 partway into
 # 00-Install.core. This phony gate runs the up-front reachability check
-# (scripts/require_dasel_on_path.sh) BEFORE any host-tier seeding,
-# list_profiles.sh, or config read, so a missing-on-PATH dasel aborts
-# loudly with an actionable PATH remediation instead. It is a bare-name
-# REACHABILITY check only; the exactly-v3 version assertion stays the job
-# of require_dasel_v3 at the first real read. Wired as a prerequisite on
-# each config-dependent batch target below (install, update, verify,
-# outdated); being .PHONY it always runs first, gating the target before
-# any config work begins.
+# (scripts/require_dasel_on_path.sh) as a prerequisite, BEFORE host-tier
+# seeding, the recipe-level config reads, and any install work, so a
+# missing-on-PATH dasel aborts loudly with an actionable PATH remediation
+# instead. It is a bare-name REACHABILITY check only; the exactly-v3
+# version assertion stays the job of require_dasel_v3 at the first real
+# read. Wired as a prerequisite on each config-dependent batch target
+# below (install, update, verify, outdated); being .PHONY it always runs
+# first, gating the target before any recipe config work begins.
+#
+# NB: the `PROFILES` variable below is read at make PARSE time, before any
+# prerequisite (including this gate) runs. A prerequisite cannot gate a
+# parse-time expansion, so list_profiles.sh guards itself: with dasel off
+# PATH it short-circuits to an empty list rather than letting
+# require_dasel_v3's `kill -s TERM "$$"` print a `Terminated: 15` line
+# ahead of this gate's clean error. Gate + self-guard together make
+# `Error: dasel not in PATH.` the sole output on a no-dasel run.
 .PHONY: require-dasel
 require-dasel:
 	@bash scripts/require_dasel_on_path.sh

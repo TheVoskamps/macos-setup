@@ -95,6 +95,66 @@ for tgt in install update verify outdated; do
   fi
 done
 
+# --- list_profiles.sh quiet short-circuit (issue #4 regression) ---
+# The Makefile expands `PROFILES := $(shell bash scripts/list_profiles.sh
+# 2>/dev/null)` at PARSE time, before the require-dasel prerequisite runs.
+# With dasel off PATH, list_profiles.sh must short-circuit QUIETLY (exit 0,
+# empty stdout, and crucially NO `kill -s TERM "$$"` from require_dasel_v3
+# that would make make's parent shell print a `Terminated: 15` line ahead
+# of the gate's clean error). This unit-level case asserts the source-level
+# fix; the make-level cases below assert the end-to-end symptom is gone.
+LISTER="$REPO_ROOT/scripts/list_profiles.sh"
+lp_errfile="$(mktemp)"
+lp_out="$(DASEL="$TMP/does-not-exist-dasel" bash "$LISTER" 2>"$lp_errfile")"
+lp_rc=$?
+lp_err="$(cat "$lp_errfile")"; rm -f "$lp_errfile"
+ok "$lp_rc" "0" "list_profiles.sh (no dasel) -> exits 0"
+ok "$( [[ -z "$lp_out" ]] && echo empty || echo nonempty )" "empty" \
+  "list_profiles.sh (no dasel) -> empty stdout (no profiles)"
+ok "$( [[ "$lp_err" != *"Terminated"* ]] && echo clean || echo noisy )" "clean" \
+  "list_profiles.sh (no dasel) -> no Terminated/SIGTERM noise on stderr"
+
+# When dasel IS reachable, list_profiles.sh must still resolve normally
+# (exit 0) and must not regress on the short-circuit. Point it at a
+# scratch host tier with a known two-profile list and assert that exact
+# list comes back — proving the short-circuit only fires on unreachable
+# dasel, not whenever DASEL is set.
+if command -v dasel >/dev/null 2>&1; then
+  lp_host="$TMP/lp_host"; mkdir -p "$lp_host"
+  printf 'profiles = ["dev-core", "aws"]\n' > "$lp_host/config.toml"
+  lp_norm="$(MACOS_SETUP_HOST_DIR="$lp_host" bash "$LISTER" 2>/dev/null)"
+  ok "$lp_norm" "$(printf 'dev-core\naws')" \
+    "list_profiles.sh (dasel present) -> resolves the configured profile list"
+else
+  echo "SKIP: real dasel not on PATH; list_profiles.sh normal-resolution case not exercised"
+fi
+
+# --- End-to-end: the config-dependent make targets must, on a no-dasel
+#     PATH, emit the gate's clean error as the ONLY config output — with
+#     NO parse-time `Terminated: 15` line from the PROFILES `$(shell ...)`.
+#     This is the exact symptom issue #4 exists to eliminate. We drive
+#     real `make` with DASEL pointed at a nonexistent binary (mimicking
+#     dasel-installed-but-off-PATH: `command -v` misses it) and a scratch
+#     host tier so no real machine state is touched. ---
+if command -v make >/dev/null 2>&1; then
+  e2e_host="$TMP/e2e_host"
+  for tgt in install update verify outdated; do
+    # Fresh empty host tier each iteration so we also prove the gate
+    # aborts BEFORE host-tier seeding (the dir must not be created).
+    rm -rf "$e2e_host"
+    out="$(cd "$REPO_ROOT" && DASEL="$TMP/does-not-exist-dasel" \
+      MACOS_SETUP_HOST_DIR="$e2e_host" make "$tgt" 2>&1 || true)"
+    ok "$( [[ "$out" == *"dasel not in PATH"* ]] && echo gated || echo ungated )" \
+      "gated" "make $tgt (no dasel) -> emits the gate's clean error"
+    ok "$( [[ "$out" != *"Terminated"* ]] && echo clean || echo noisy )" \
+      "clean" "make $tgt (no dasel) -> no parse-time 'Terminated: 15' noise"
+    ok "$( [[ ! -d "$e2e_host" ]] && echo unseeded || echo seeded )" \
+      "unseeded" "make $tgt (no dasel) -> aborts before host-tier seeding"
+  done
+else
+  echo "SKIP: make not on PATH; end-to-end no-dasel target cases not exercised"
+fi
+
 echo
 echo "---"
 echo "pass=$pass fail=$fail"

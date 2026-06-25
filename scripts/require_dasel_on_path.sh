@@ -14,12 +14,22 @@
 #
 # Without this gate, that failure surfaces LATE and CRYPTICALLY: after
 # host-tier seeding and partway into 00-Install.core, as a buried
-# `dasel version exited 127` from require_dasel_v3 (plus `Terminated: 15`
-# noise from list_profiles.sh subshells getting killed). This script is a
-# single up-front hard gate the config-dependent `make` targets run
-# BEFORE any seeding, any list_profiles.sh, or any config read: it checks
-# that dasel is reachable as a bare command and aborts loudly with an
-# actionable remediation if not.
+# `dasel version exited 127` from require_dasel_v3. This script is a
+# single up-front hard gate the config-dependent `make` targets run as a
+# prerequisite, BEFORE host-tier seeding, the recipe-level config reads,
+# and any install work: it checks that dasel is reachable as a bare
+# command and aborts loudly with an actionable remediation if not.
+#
+# One config read happens even earlier, at make PARSE time: the
+# `PROFILES := $(shell bash scripts/list_profiles.sh ...)` variable. A
+# prerequisite cannot gate a parse-time expansion, so list_profiles.sh
+# guards ITSELF — it mirrors this gate's reachability check and exits 0
+# with an empty list when dasel is off PATH, rather than letting
+# require_dasel_v3's `kill -s TERM "$$"` make make's parent shell print a
+# `Terminated: 15` line ahead of this gate's clean error. The two pieces
+# together (this prerequisite + list_profiles.sh's self-guard) give the
+# `Error: dasel not in PATH.` message as the SOLE output on a no-dasel
+# run.
 #
 # This is deliberately a REACHABILITY check, not a version check. The
 # major-version assertion (exactly v3) is the separate concern of

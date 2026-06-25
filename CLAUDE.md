@@ -176,14 +176,25 @@ surface late and cryptically as a buried `dasel version exited
 The `.PHONY: require-dasel` Makefile target (wired as a
 prerequisite on the config-dependent batch targets `install`,
 `update`, `verify`, `outdated`) runs
-`scripts/require_dasel_on_path.sh` BEFORE any host-tier
-seeding, `list_profiles.sh`, or config read. On a miss it
-prints `dasel not in PATH` plus new-shell remediation and
+`scripts/require_dasel_on_path.sh` BEFORE host-tier seeding,
+the recipe-level config reads, and any install work. On a miss
+it prints `dasel not in PATH` plus new-shell remediation and
 aborts up front. It is a **reachability** check only — it
 honors the same `DASEL` override `config_common.sh` uses, does
 NOT auto-install, and does NOT self-heal PATH; the exactly-v3
 version assertion stays the job of `require_dasel_v3` at the
 first real read.
+
+One config read runs even before the prerequisite: the
+`PROFILES := $(shell ... list_profiles.sh ...)` variable, which
+make expands at **parse time**. A prerequisite can't gate a
+parse-time expansion, so `list_profiles.sh` guards itself —
+with dasel off PATH it mirrors the gate's reachability check
+and short-circuits to an empty list, rather than letting
+`require_dasel_v3`'s `kill -s TERM "$$"` print a `Terminated:
+15` line ahead of the gate's clean error. The prerequisite plus
+that self-guard make `Error: dasel not in PATH.` the sole
+output on a no-dasel run.
 
 ### Development Workflow
 

@@ -32,6 +32,14 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
   does not auto-install or self-heal `PATH`; the exactly-v3 version
   assertion remains the job of `require_dasel_v3` at the first read.
 
+  The `PROFILES := $(shell ... list_profiles.sh ...)` variable is read
+  at make *parse* time, before any prerequisite can run, so
+  `list_profiles.sh` guards itself: with dasel off `PATH` it
+  short-circuits to an empty list rather than emitting a
+  `Terminated: 15` line ahead of the gate's clean error. The gate and
+  that self-guard together make `Error: dasel not in PATH.` the sole
+  output on a no-dasel run.
+
   Failure-tolerant: a `brew bundle` failure on one slot no longer
   aborts the run. The loop attempts every slot, accumulates the slots
   whose `brew bundle` returned non-zero, and at the end prints a
