@@ -71,9 +71,10 @@ jobs and `m()` always agree on the repo root.
     the `cr` Claude-CLI wrapper and its `cr-anywhere` companion live in
     `profiles/claude-code-aliases/aliases.zsh` (`cr` launches
     `claude --remote-control` from inside a git repo; `cr-anywhere`
-    does the same from a non-repo cwd by `git init`-ing a throwaway
-    repo and tearing down only the `.git` it created). A profile may
-    carry an
+    works from any cwd — inside an existing repo it `cd`s to the repo
+    root and behaves like `cr`, and outside any repo it `git init`s a
+    throwaway repo and tears down only the `.git` it created). A profile
+    may carry an
     `aliases.zsh` and nothing else (a "no-software" profile such as
     `claude-code-aliases`, which has no `Install/` files) — opting into
     it just contributes its aliases to the aggregate.

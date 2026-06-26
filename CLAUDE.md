@@ -754,10 +754,12 @@ former in-repo `logs/` directory. This is macOS-native
     functions, opted into alongside a `claude`/`claude-latest`
     profile. `cr` runs `claude --remote-control` from inside
     a git repo (deriving the session name from `origin`);
-    `cr-anywhere` is the same wrapper for a cwd that is NOT a
-    git repo — it `git init`s a throwaway repo, runs claude,
-    and removes only the `.git` it created via a function-local
-    EXIT trap on every return path.
+    `cr-anywhere` works from any cwd. When the cwd is inside an
+    existing repo (root OR a subdirectory) it `cd`s to the repo
+    root and behaves like `cr`; when the cwd is outside any repo
+    it `git init`s a throwaway repo, runs claude, and removes
+    only the `.git` it created via a function-local trap (EXIT
+    plus INT/TERM) on every return path.
   - **Per-machine host `aliases.zsh`** — only genuinely
     host-specific entries (e.g. an `icloud` shortcut to a
     machine's iCloud Drive path, or a host-only workspace
