@@ -8,14 +8,88 @@
 # profile will have `cr` defined but it will fail at call time with
 # "command not found: claude" — survivable and self-evident.
 
-# wrapper around claude to get a name and remote control
-cr () {
+# wrapper around claude to get a name and remote control; strict variant
+# that requires an existing repo with an 'origin' remote.
+cr-repo () {
     local url repo suffix name
     url="$(git remote get-url origin 2>/dev/null)" || {
-        echo "cr: not in a git repo or no 'origin' remote" >&2
+        echo "cr-repo: not in a git repo or no 'origin' remote" >&2
         return 1
     }
     repo="${${url##*/}%.git}"
+    suffix="$*"
+    if [[ -z "$suffix" ]]; then
+        suffix="$(date '+%b%d-%H:%M')"
+    fi
+    name="${suffix} ${repo}"
+    claude --name "$name" --remote-control
+}
+
+# Like cr-repo, but also works OUTSIDE a git repo (issue #15). Claude Code's
+# guardrails hook runs `git` commands that fail when the cwd is not a git
+# repo, so `claude` itself misbehaves when launched there. To give it a
+# repo to anchor on, when the cwd is not already inside a git repo we
+# `git init` a throwaway repo in the current dir, run claude, then remove
+# ONLY the .git we created.
+#
+# When the cwd IS already inside an existing repo (at the repo root OR in
+# any subdirectory), there is nothing to create or clean up: we `cd` to
+# the repo root, derive the session name from `origin` like `cr-repo`
+# does, and run claude there. Detection uses `git rev-parse
+# --is-inside-work-tree` (true anywhere inside the tree, unlike a
+# root-only `[[ -e .git ]]` check, which would wrongly take the throwaway
+# path from a subdirectory and mislabel the session `(local)`). The shell
+# is intentionally LEFT at the repo root after this function returns --
+# `cr` is a function, so the bare `cd` persists; that is the
+# accepted behavior.
+#
+# The throwaway-repo cleanup is wired through a function-local trap so the
+# .git is removed on EVERY return path -- normal exit, an early `return`,
+# or the user interrupting `claude` with Ctrl-C. Two zsh subtleties make
+# the naive `rm` at the end of the function unsafe, and this
+# implementation works around both:
+#   1. A function-local EXIT trap fires when the FUNCTION returns (not at
+#      shell exit), but by the time its body evaluates the function's
+#      `local` variables have already been torn down (they read as empty).
+#      So we must NOT reference a local var from inside the trap body.
+#      Instead we bake the absolute .git path into the trap string as a
+#      literal at trap-set time, while $initdir is still in scope (note
+#      the double quotes on `trap`, and the ${(q)...} quoting so a path
+#      with spaces survives).
+#   2. The trap is set only on the branch that actually ran `git init`,
+#      so an existing repo's real .git is never at risk. The baked path
+#      is the absolute "$PWD/.git" captured before `claude` runs, so a
+#      `cd` by claude cannot redirect the rm.
+# INT and TERM are trapped alongside EXIT so that a signal which kills the
+# shell outright (rather than just returning from the function) still
+# tears down the throwaway .git.
+cr () {
+    local url repo suffix name initdir toplevel
+    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        # Inside an existing repo (root or subdir). Move to the repo root
+        # and reuse the existing .git -- no throwaway, no cleanup trap.
+        toplevel="$(git rev-parse --show-toplevel)"
+        echo "cr: detected existing git repo; cd to repo root ${toplevel}" >&2
+        cd "$toplevel" || {
+            echo "cr: cd to repo root failed" >&2
+            return 1
+        }
+        url="$(git remote get-url origin 2>/dev/null)"
+        if [[ -n "$url" ]]; then
+            repo="${${url##*/}%.git}"
+        else
+            repo="(local)"
+        fi
+    else
+        initdir="$PWD"
+        git init >/dev/null || {
+            echo "cr: git init failed" >&2
+            return 1
+        }
+        # Bake the absolute path in as a literal NOW; see note (1) above.
+        trap "rm -rf -- ${(q)initdir}/.git" EXIT INT TERM
+        repo="(local)"
+    fi
     suffix="$*"
     if [[ -z "$suffix" ]]; then
         suffix="$(date '+%b%d-%H:%M')"

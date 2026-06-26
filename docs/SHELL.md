@@ -68,11 +68,17 @@ jobs and `m()` always agree on the repo root.
   - **profile tier** — aliases for the tool that profile adopts. The
     git shortcuts, log variants, `*h` help-greppers, and the
     `gbc`/`gbd`/`gsr` functions live in `profiles/dev-core/aliases.zsh`;
-    the `cr` Claude-CLI wrapper lives in
-    `profiles/claude-code-aliases/aliases.zsh`. A profile may carry an
-    `aliases.zsh` and nothing else (a "no-software" profile such as
-    `claude-code-aliases`, which has no `Install/` files) — opting into
-    it just contributes its aliases to the aggregate.
+    the `cr` Claude-CLI wrapper and its `cr-repo` companion live in
+    `profiles/claude-code-aliases/aliases.zsh` (`cr` launches
+    `claude --remote-control` from any cwd — inside an existing repo
+    it `cd`s to the repo root and derives the session name from
+    `origin`, and outside any repo it `git init`s a throwaway repo and
+    tears down only the `.git` it created; `cr-repo` is the strict
+    variant that requires an existing repo with an `origin` remote and
+    errors otherwise). A profile may carry an `aliases.zsh` and nothing
+    else (a "no-software" profile such as `claude-code-aliases`, which
+    has no `Install/` files) — opting into it just contributes its
+    aliases to the aggregate.
   - **host tier** — only genuinely host-specific entries (e.g. an
     `icloud` shortcut to a machine's iCloud Drive path).
 - During setup (`make shell`), `scripts/shell_setup.sh` will:
