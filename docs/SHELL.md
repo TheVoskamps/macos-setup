@@ -75,11 +75,10 @@ jobs and `m()` always agree on the repo root.
     `origin`, and outside any repo it `git init`s a throwaway repo and
     tears down only the `.git` it created; `cr-repo` is the strict
     variant that requires an existing repo with an `origin` remote and
-    errors otherwise). A profile
-    may carry an
-    `aliases.zsh` and nothing else (a "no-software" profile such as
-    `claude-code-aliases`, which has no `Install/` files) — opting into
-    it just contributes its aliases to the aggregate.
+    errors otherwise). A profile may carry an `aliases.zsh` and nothing
+    else (a "no-software" profile such as `claude-code-aliases`, which
+    has no `Install/` files) — opting into it just contributes its
+    aliases to the aggregate.
   - **host tier** — only genuinely host-specific entries (e.g. an
     `icloud` shortcut to a machine's iCloud Drive path).
 - During setup (`make shell`), `scripts/shell_setup.sh` will:
