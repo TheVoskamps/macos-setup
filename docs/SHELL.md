@@ -68,12 +68,14 @@ jobs and `m()` always agree on the repo root.
   - **profile tier** — aliases for the tool that profile adopts. The
     git shortcuts, log variants, `*h` help-greppers, and the
     `gbc`/`gbd`/`gsr` functions live in `profiles/dev-core/aliases.zsh`;
-    the `cr` Claude-CLI wrapper and its `cr-anywhere` companion live in
+    the `cr` Claude-CLI wrapper and its `cr-repo` companion live in
     `profiles/claude-code-aliases/aliases.zsh` (`cr` launches
-    `claude --remote-control` from inside a git repo; `cr-anywhere`
-    works from any cwd — inside an existing repo it `cd`s to the repo
-    root and behaves like `cr`, and outside any repo it `git init`s a
-    throwaway repo and tears down only the `.git` it created). A profile
+    `claude --remote-control` from any cwd — inside an existing repo
+    it `cd`s to the repo root and derives the session name from
+    `origin`, and outside any repo it `git init`s a throwaway repo and
+    tears down only the `.git` it created; `cr-repo` is the strict
+    variant that requires an existing repo with an `origin` remote and
+    errors otherwise). A profile
     may carry an
     `aliases.zsh` and nothing else (a "no-software" profile such as
     `claude-code-aliases`, which has no `Install/` files) — opting into

@@ -536,7 +536,7 @@ profiles/
 │                               # [cron] overrides (single-winner per
 │                               # section; overrides default)
 ├── claude-code-aliases/        # A "no-software" profile: only an
-│   └── aliases.zsh             # aliases.zsh (the cr + cr-anywhere Claude wrappers),
+│   └── aliases.zsh             # aliases.zsh (the cr + cr-repo Claude wrappers),
 │                               # no Install/ — opting in just adds
 │                               # its aliases to the aggregate
 ├── aws/                        # …40 more single-purpose profiles

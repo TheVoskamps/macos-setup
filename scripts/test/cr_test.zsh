@@ -1,8 +1,8 @@
 #!/usr/bin/env zsh
 
-# Functional tests for the cr-anywhere zsh function (issue #15).
+# Functional tests for the cr zsh function (issue #15).
 #
-# cr-anywhere lives in profiles/claude-code-aliases/aliases.zsh. It wraps
+# cr lives in profiles/claude-code-aliases/aliases.zsh. It wraps
 # the `claude` CLI so it works both inside and outside a git repo:
 #
 #   - Outside any repo: `git init` a throwaway repo so Claude Code's
@@ -15,7 +15,7 @@
 #     the repo with `git rev-parse --is-inside-work-tree`, `cd` to the
 #     repo root, derive the session name from `origin`, and run claude
 #     with no throwaway and no cleanup. The shell is intentionally left at
-#     the repo root afterward (cr-anywhere is a function, so the bare `cd`
+#     the repo root afterward (cr is a function, so the bare `cd`
 #     persists -- accepted behavior).
 #
 # These tests use the REAL git binary and a stubbed `claude` function. The
@@ -23,7 +23,7 @@
 # parameter expansion), so this test is a .zsh script, unlike the bash
 # *_test.sh scripts that cover the POSIX shell layer.
 #
-# Each case runs cr-anywhere inside a `( ... )` subshell so its function-
+# Each case runs cr inside a `( ... )` subshell so its function-
 # local EXIT trap fires at the subshell boundary, letting the parent
 # observe the post-cleanup filesystem state.
 
@@ -44,7 +44,7 @@ fail=0
 pass () { print -- "PASS: $1"; ((pass++)) }
 die  () { print -- "FAIL: $1"; ((fail++)) }
 
-# Load the real cr-anywhere definition under test.
+# Load the real cr definition under test.
 source "$PROFILE"
 
 # --- Test 1: outside any repo -> throwaway .git created during the run,
@@ -53,7 +53,7 @@ t1="$(mktemp -d)"
 (
     cd "$t1"
     claude () { [[ -d .git ]] && print "claude-saw-git" >> "$t1/marker"; return 0 }
-    cr-anywhere x >/dev/null 2>&1
+    cr x >/dev/null 2>&1
 )
 if [[ -f "$t1/marker" && ! -d "$t1/.git" ]]; then
     pass "non-repo: throwaway .git created for claude then cleaned on normal exit"
@@ -68,7 +68,7 @@ t2="$(mktemp -d)"
 (
     cd "$t2"
     claude () { return 130 }   # simulate Ctrl-C / abort
-    cr-anywhere >/dev/null 2>&1
+    cr >/dev/null 2>&1
 )
 if [[ ! -d "$t2/.git" ]]; then
     pass "non-repo: throwaway .git cleaned even when claude aborts"
@@ -86,7 +86,7 @@ t3="$(mktemp -d)"
     git remote add origin https://example.com/myrepo.git 2>/dev/null
     print "sentinel" > .git/SENTINEL_DO_NOT_DELETE
     claude () { print -- "$2" > "$t3/name-arg"; return 0 }  # $2 == --name value
-    cr-anywhere >/dev/null 2>&1
+    cr >/dev/null 2>&1
 )
 if [[ -d "$t3/.git" && -f "$t3/.git/SENTINEL_DO_NOT_DELETE" ]]; then
     pass "existing repo at root: real .git preserved"
@@ -112,7 +112,7 @@ t4="$(mktemp -d)"
     mkdir -p deep/nested
     cd deep/nested
     claude () { print -- "$2" > "$t4/name-arg"; print -- "$PWD" > "$t4/cwd-after"; return 0 }
-    cr-anywhere >/dev/null 2>&1
+    cr >/dev/null 2>&1
 )
 if [[ -f "$t4/.git/SENTINEL" && ! -d "$t4/deep/nested/.git" ]]; then
     pass "subdir: existing .git preserved, no throwaway created in subdir"
@@ -140,7 +140,7 @@ mkdir -p "$t5"
 (
     cd "$t5"
     claude () { return 0 }
-    cr-anywhere >/dev/null 2>&1
+    cr >/dev/null 2>&1
 )
 if [[ ! -d "$t5/.git" ]]; then
     pass "spaces-in-path: throwaway .git cleaned despite spaces in path"
@@ -153,8 +153,8 @@ print
 print -- "---"
 print -- "pass=$pass fail=$fail"
 if (( fail == 0 )); then
-    print -- "All cr-anywhere tests passed."
+    print -- "All cr tests passed."
     exit 0
 fi
-print -- "Some cr-anywhere tests FAILED."
+print -- "Some cr tests FAILED."
 exit 1

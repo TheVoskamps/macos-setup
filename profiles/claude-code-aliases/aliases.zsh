@@ -8,11 +8,12 @@
 # profile will have `cr` defined but it will fail at call time with
 # "command not found: claude" — survivable and self-evident.
 
-# wrapper around claude to get a name and remote control
-cr () {
+# wrapper around claude to get a name and remote control; strict variant
+# that requires an existing repo with an 'origin' remote.
+cr-repo () {
     local url repo suffix name
     url="$(git remote get-url origin 2>/dev/null)" || {
-        echo "cr: not in a git repo or no 'origin' remote" >&2
+        echo "cr-repo: not in a git repo or no 'origin' remote" >&2
         return 1
     }
     repo="${${url##*/}%.git}"
@@ -24,7 +25,7 @@ cr () {
     claude --name "$name" --remote-control
 }
 
-# Like cr, but also works OUTSIDE a git repo (issue #15). Claude Code's
+# Like cr-repo, but also works OUTSIDE a git repo (issue #15). Claude Code's
 # guardrails hook runs `git` commands that fail when the cwd is not a git
 # repo, so `claude` itself misbehaves when launched there. To give it a
 # repo to anchor on, when the cwd is not already inside a git repo we
@@ -33,13 +34,13 @@ cr () {
 #
 # When the cwd IS already inside an existing repo (at the repo root OR in
 # any subdirectory), there is nothing to create or clean up: we `cd` to
-# the repo root, derive the session name from `origin` like `cr` does,
-# and run claude there. Detection uses `git rev-parse
+# the repo root, derive the session name from `origin` like `cr-repo`
+# does, and run claude there. Detection uses `git rev-parse
 # --is-inside-work-tree` (true anywhere inside the tree, unlike a
 # root-only `[[ -e .git ]]` check, which would wrongly take the throwaway
 # path from a subdirectory and mislabel the session `(local)`). The shell
 # is intentionally LEFT at the repo root after this function returns --
-# `cr-anywhere` is a function, so the bare `cd` persists; that is the
+# `cr` is a function, so the bare `cd` persists; that is the
 # accepted behavior.
 #
 # The throwaway-repo cleanup is wired through a function-local trap so the
@@ -62,15 +63,15 @@ cr () {
 # INT and TERM are trapped alongside EXIT so that a signal which kills the
 # shell outright (rather than just returning from the function) still
 # tears down the throwaway .git.
-cr-anywhere () {
+cr () {
     local url repo suffix name initdir toplevel
     if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         # Inside an existing repo (root or subdir). Move to the repo root
         # and reuse the existing .git -- no throwaway, no cleanup trap.
         toplevel="$(git rev-parse --show-toplevel)"
-        echo "cr-anywhere: detected existing git repo; cd to repo root ${toplevel}" >&2
+        echo "cr: detected existing git repo; cd to repo root ${toplevel}" >&2
         cd "$toplevel" || {
-            echo "cr-anywhere: cd to repo root failed" >&2
+            echo "cr: cd to repo root failed" >&2
             return 1
         }
         url="$(git remote get-url origin 2>/dev/null)"
@@ -82,7 +83,7 @@ cr-anywhere () {
     else
         initdir="$PWD"
         git init >/dev/null || {
-            echo "cr-anywhere: git init failed" >&2
+            echo "cr: git init failed" >&2
             return 1
         }
         # Bake the absolute path in as a literal NOW; see note (1) above.
