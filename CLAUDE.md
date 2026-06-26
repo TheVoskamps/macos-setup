@@ -747,11 +747,17 @@ former in-repo `logs/` directory. This is macOS-native
     (dev-core also re-asserts `brew 'git'` in its
     `Install/05-Install.tools`, even though the git binary
     is already installed by the default tier for
-    bootstrap). The `cr` Claude-CLI wrapper lives in
+    bootstrap). The `cr` Claude-CLI wrapper and its
+    `cr-anywhere` companion live in
     `profiles/claude-code-aliases/aliases.zsh` — a
-    no-software profile that exists only to carry that
-    alias, opted into alongside a `claude`/`claude-latest`
-    profile.
+    no-software profile that exists only to carry those
+    functions, opted into alongside a `claude`/`claude-latest`
+    profile. `cr` runs `claude --remote-control` from inside
+    a git repo (deriving the session name from `origin`);
+    `cr-anywhere` is the same wrapper for a cwd that is NOT a
+    git repo — it `git init`s a throwaway repo, runs claude,
+    and removes only the `.git` it created via a function-local
+    EXIT trap on every return path.
   - **Per-machine host `aliases.zsh`** — only genuinely
     host-specific entries (e.g. an `icloud` shortcut to a
     machine's iCloud Drive path, or a host-only workspace
