@@ -11,9 +11,15 @@ HS="${HS:-hs}"
 PGREP="${PGREP:-pgrep}"
 KILLALL="${KILLALL:-killall}"
 OPEN="${OPEN:-open}"
-# Seconds to wait for a relaunched Hammerspoon to bring its IPC port back
-# up before re-probing. Overridable so tests don't have to really wait.
-HS_RELAUNCH_SETTLE="${HS_RELAUNCH_SETTLE:-5}"
+# Post-relaunch IPC confirmation is a probe-with-retry loop, not a single
+# fixed sleep: a cold launch can take a while to bring its IPC port up, so
+# a single 5s sleep + one probe used to false-negative. Instead we poll
+# every HS_RELAUNCH_INTERVAL seconds for up to HS_RELAUNCH_TIMEOUT seconds,
+# succeeding as soon as a probe passes. Both are env-overridable so tests
+# don't have to really wait. HS_RELAUNCH_SETTLE is honored for backward
+# compatibility as an alias for the per-probe interval.
+HS_RELAUNCH_INTERVAL="${HS_RELAUNCH_INTERVAL:-${HS_RELAUNCH_SETTLE:-1}}"
+HS_RELAUNCH_TIMEOUT="${HS_RELAUNCH_TIMEOUT:-15}"
 
 # reload_hammerspoon: apply the freshly-repointed symlinks to a RUNNING
 # Hammerspoon, robustly and loudly.
@@ -28,9 +34,10 @@ HS_RELAUNCH_SETTLE="${HS_RELAUNCH_SETTLE:-5}"
 # Strategy: try IPC first (showing its real error, not swallowing it); on
 # failure fall back to an IPC-independent app relaunch (killall + open),
 # which re-execs init.lua from the now-correct symlink and brings IPC back
-# up; re-probe IPC after the relaunch settles to confirm. If no path
-# works, emit a loud warning with the manual-reload instruction and return
-# non-zero rather than claiming success.
+# up; then poll IPC with a read-only liveness probe (retry up to a bounded
+# timeout) to confirm it actually came back. If no path works, emit a loud
+# warning with the manual-reload instruction and return non-zero rather
+# than claiming success.
 #
 # The caller guards on Hammerspoon actually running, so this never
 # launches Hammerspoon on a machine where it was deliberately not running.
@@ -54,13 +61,36 @@ reload_hammerspoon() {
     "$KILLALL" Hammerspoon 2>/dev/null || true
     "$OPEN" -a Hammerspoon
 
-    # Give the relaunched app time to load init.lua and bring IPC up,
-    # then re-probe via IPC to confirm it actually came back.
-    sleep "$HS_RELAUNCH_SETTLE"
-    if "$HS" -c "hs.reload()"; then
-        echo "Hammerspoon relaunched and config reloaded"
-        return 0
+    # The relaunched app's IPC port comes up only once it has loaded
+    # init.lua, which can take a while on a cold launch. Poll for IPC
+    # liveness every HS_RELAUNCH_INTERVAL seconds up to a bounded
+    # HS_RELAUNCH_TIMEOUT total, succeeding as soon as a probe passes
+    # (rather than a single fixed sleep + one probe, which false-negatives
+    # on a slow launch). The probe is a READ-ONLY liveness command
+    # (`hs -c "true"`), NOT a second hs.reload() -- the relaunch already
+    # re-loaded init.lua from the corrected symlink, so a second reload
+    # would be redundant; we only need to confirm IPC is back up.
+    #
+    # Derive a whole-number attempt cap from the timeout/interval so the
+    # loop is bounded even when the interval is 0 (as the unit test sets
+    # it, to avoid real sleeping). With a 0 interval we still probe
+    # HS_RELAUNCH_TIMEOUT+1 times; with a positive interval we probe
+    # ceil(timeout/interval)+1 times, covering t=0 through t=timeout.
+    local interval="$HS_RELAUNCH_INTERVAL" timeout="$HS_RELAUNCH_TIMEOUT" attempts
+    if (( interval > 0 )); then
+        attempts=$(( (timeout + interval - 1) / interval + 1 ))
+    else
+        attempts=$(( timeout + 1 ))
     fi
+    local n
+    for (( n = 0; n < attempts; n++ )); do
+        if "$HS" -c "true"; then
+            echo "Hammerspoon relaunched and config reloaded"
+            return 0
+        fi
+        # Don't sleep after the final probe -- nothing follows it.
+        (( n < attempts - 1 )) && sleep "$interval"
+    done
 
     # 3. Neither path worked. Make the failure loud, not a soft Note.
     echo "" >&2

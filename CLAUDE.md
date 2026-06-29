@@ -952,15 +952,23 @@ former in-repo `logs/` directory. This is macOS-native
   falls back to an IPC-independent app relaunch
   (`killall Hammerspoon` + `open -a Hammerspoon`),
   which re-execs init.lua from the now-correct symlink
-  and brings IPC back up, then re-probes IPC to confirm.
-  If neither path works it prints a loud, multi-line
-  stderr WARNING naming the menubar "Reload Config"
-  manual step and `make ui` exits non-zero (it no
-  longer claims success with a soft `Note:`). The
-  command names it drives (`hs`, `pgrep`, `killall`,
-  `open`) and the post-relaunch settle delay
-  (`HS_RELAUNCH_SETTLE`, default 5s) are env-overridable
-  so `scripts/test/hammerspoon_reload_test.sh` can stub
+  and brings IPC back up, then confirms with a
+  read-only liveness probe (`hs -c "true"`, NOT a second
+  `hs.reload()`). The confirmation is a probe-with-retry
+  loop, not a single fixed sleep: it polls every
+  `HS_RELAUNCH_INTERVAL` seconds (default 1s) for up to a
+  bounded `HS_RELAUNCH_TIMEOUT` total (default 15s),
+  succeeding as soon as a probe passes, so a slow cold
+  launch no longer false-negatives. If neither path
+  works it prints a loud, multi-line stderr WARNING
+  naming the menubar "Reload Config" manual step and
+  `make ui` exits non-zero (it no longer claims success
+  with a soft `Note:`). The command names it drives
+  (`hs`, `pgrep`, `killall`, `open`) and the retry-loop
+  timing (`HS_RELAUNCH_INTERVAL` / `HS_RELAUNCH_TIMEOUT`;
+  the legacy `HS_RELAUNCH_SETTLE` is still honored as an
+  alias for the interval) are env-overridable so
+  `scripts/test/hammerspoon_reload_test.sh` can stub
   them; sourcing the script (rather than executing it)
   returns early before the symlink work, exposing only
   those vars and `reload_hammerspoon`
