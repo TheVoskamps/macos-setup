@@ -6,6 +6,80 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 HAMMERSPOON_DIR="$HOME/.hammerspoon"
 
+# Commands the reload path drives, overridable so tests can stub them.
+HS="${HS:-hs}"
+PGREP="${PGREP:-pgrep}"
+KILLALL="${KILLALL:-killall}"
+OPEN="${OPEN:-open}"
+# Seconds to wait for a relaunched Hammerspoon to bring its IPC port back
+# up before re-probing. Overridable so tests don't have to really wait.
+HS_RELAUNCH_SETTLE="${HS_RELAUNCH_SETTLE:-5}"
+
+# reload_hammerspoon: apply the freshly-repointed symlinks to a RUNNING
+# Hammerspoon, robustly and loudly.
+#
+# Chicken-and-egg problem (issue #18): hs.ipc's message port is set up by
+# `require("hs.ipc")` INSIDE init.lua. When init.lua is broken or has never
+# loaded from the current checkout (e.g. a stale symlink), the IPC port is
+# down -- but `hs -c "hs.reload()"` IS the IPC path, so the one mechanism
+# used to reload is the one that cannot work in exactly the broken state
+# where reloading matters most.
+#
+# Strategy: try IPC first (showing its real error, not swallowing it); on
+# failure fall back to an IPC-independent app relaunch (killall + open),
+# which re-execs init.lua from the now-correct symlink and brings IPC back
+# up; re-probe IPC after the relaunch settles to confirm. If no path
+# works, emit a loud warning with the manual-reload instruction and return
+# non-zero rather than claiming success.
+#
+# The caller guards on Hammerspoon actually running, so this never
+# launches Hammerspoon on a machine where it was deliberately not running.
+reload_hammerspoon() {
+    # 1. Try IPC. Do NOT discard stderr -- the real error
+    #    ("can't access Hammerspoon message port ...; is it running with
+    #    the ipc module loaded?") is the signal the user needs.
+    if "$HS" -c "hs.reload()"; then
+        echo "Hammerspoon config reloaded (via IPC)"
+        return 0
+    fi
+
+    echo "IPC reload failed; falling back to relaunching Hammerspoon..."
+
+    # 2. IPC-independent fallback: relaunch the app. A fresh launch
+    #    re-execs init.lua from the (now-correct) symlink and brings IPC
+    #    back up. AppleScript ('execute lua code') is NOT a reliable
+    #    fallback -- it is disabled by default in default/.hammerspoon
+    #    (hs.allowAppleScript(true) is not set), so relaunch is the only
+    #    path that reliably works when init.lua has not loaded.
+    "$KILLALL" Hammerspoon 2>/dev/null || true
+    "$OPEN" -a Hammerspoon
+
+    # Give the relaunched app time to load init.lua and bring IPC up,
+    # then re-probe via IPC to confirm it actually came back.
+    sleep "$HS_RELAUNCH_SETTLE"
+    if "$HS" -c "hs.reload()"; then
+        echo "Hammerspoon relaunched and config reloaded"
+        return 0
+    fi
+
+    # 3. Neither path worked. Make the failure loud, not a soft Note.
+    echo "" >&2
+    echo "========================================================================" >&2
+    echo "WARNING: Could not reload Hammerspoon automatically." >&2
+    echo "The symlinks are updated, but the running Hammerspoon has NOT picked" >&2
+    echo "them up, so your hotkeys may be dead until you reload manually." >&2
+    echo "" >&2
+    echo "  -> Reload now from the menubar: Hammerspoon icon -> Reload Config" >&2
+    echo "========================================================================" >&2
+    echo "" >&2
+    return 1
+}
+
+# When sourced (e.g. by the unit test) rather than executed, stop here:
+# expose the overridable command vars and reload_hammerspoon, but do not
+# run the symlink setup or even source config_common.sh.
+(return 0 2>/dev/null) && return 0
+
 source "$SCRIPT_DIR/config_common.sh"
 
 echo "Setting up Hammerspoon configuration..."
@@ -104,7 +178,10 @@ fi
 echo ""
 echo "Hammerspoon configuration setup complete!"
 
-# Reload Hammerspoon if it's running
-if pgrep -q Hammerspoon; then
-    hs -c "hs.reload()" 2>/dev/null && echo "Hammerspoon config reloaded" || echo "Note: Could not reload Hammerspoon (is the IPC module enabled?)"
+# Reload Hammerspoon if it's running. Keep the pgrep guard so we never
+# launch Hammerspoon on a machine where it was deliberately not running.
+if "$PGREP" -q Hammerspoon; then
+    # Don't let `set -e` abort on a failed reload before its loud warning
+    # has been printed; surface the failure as this script's exit status.
+    reload_hammerspoon || exit $?
 fi
