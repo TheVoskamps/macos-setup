@@ -214,7 +214,17 @@ its consolidated `config.toml` in the external host tier,
   `workspaces.json` symlinked via `resolve_file`;
   `modules/` directory (including `apps/` launchers)
   symlinked via `resolve_dir`; desktop switching
-  shortcuts configured via `spaces_shortcuts_setup.sh`
+  shortcuts configured via `spaces_shortcuts_setup.sh`.
+  If Hammerspoon is already running, the setup reloads
+  it: it tries the IPC reload first and, if that fails
+  (e.g. a stale `init.lua` symlink left the `hs.ipc`
+  message port down), falls back to relaunching the app
+  so init.lua re-loads from the corrected symlink. If
+  the reload still can't be confirmed it prints a loud
+  warning telling you to reload manually from the
+  menubar (Hammerspoon icon → Reload Config) and `make
+  ui` exits non-zero rather than silently leaving your
+  hotkeys dead
 - **AWS CDK**: Config via `resolve_file` for `.cdk.json`
 - **Shell Environment**: Oh My Zsh themes and plugins;
   `aliases.zsh` aggregated across all tiers (default +

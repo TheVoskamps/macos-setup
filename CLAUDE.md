@@ -938,6 +938,40 @@ former in-repo `logs/` directory. This is macOS-native
 - Backs up existing files before symlinking
 - Also configures Ctrl+1-9 desktop switching
   shortcuts via `spaces_shortcuts_setup.sh`
+- After re-pointing the symlinks, if Hammerspoon is
+  running (gated on `pgrep`), `hammerspoon_setup.sh`
+  reloads it via the `reload_hammerspoon` function
+  (issue #18). It is robust against an IPC
+  chicken-and-egg: `hs.ipc`'s message port is brought
+  up by `require("hs.ipc")` INSIDE init.lua, so when
+  init.lua is broken or has never loaded from the
+  current checkout (e.g. a stale symlink) the IPC port
+  is down — yet `hs -c "hs.reload()"` IS the IPC path.
+  `reload_hammerspoon` tries IPC first (surfacing the
+  real error, not swallowing stderr); on failure it
+  falls back to an IPC-independent app relaunch
+  (`killall Hammerspoon` + `open -a Hammerspoon`),
+  which re-execs init.lua from the now-correct symlink
+  and brings IPC back up, then confirms with a
+  read-only liveness probe (`hs -c "true"`, NOT a second
+  `hs.reload()`). The confirmation is a probe-with-retry
+  loop, not a single fixed sleep: it polls every
+  `HS_RELAUNCH_INTERVAL` seconds (default 1s) for up to a
+  bounded `HS_RELAUNCH_TIMEOUT` total (default 15s),
+  succeeding as soon as a probe passes, so a slow cold
+  launch no longer false-negatives. If neither path
+  works it prints a loud, multi-line stderr WARNING
+  naming the menubar "Reload Config" manual step and
+  `make ui` exits non-zero (it no longer claims success
+  with a soft `Note:`). The command names it drives
+  (`hs`, `pgrep`, `killall`, `open`) and the retry-loop
+  timing (`HS_RELAUNCH_INTERVAL` / `HS_RELAUNCH_TIMEOUT`;
+  the legacy `HS_RELAUNCH_SETTLE` is still honored as an
+  alias for the interval) are env-overridable so
+  `scripts/test/hammerspoon_reload_test.sh` can stub
+  them; sourcing the script (rather than executing it)
+  returns early before the symlink work, exposing only
+  those vars and `reload_hammerspoon`
 
 ## Key Scripts
 
@@ -951,7 +985,7 @@ former in-repo `logs/` directory. This is macOS-native
 | `shell_setup.sh` | Configures zsh, Oh My Zsh; aggregates `aliases.zsh` |
 | `vscode_extensions.sh` | Installs VS Code extensions |
 | `vscode_setup.sh` | Symlinks VS Code `settings.json` (single-winner) |
-| `hammerspoon_setup.sh` | Symlinks Hammerspoon config and modules |
+| `hammerspoon_setup.sh` | Symlinks HS config; robust reload (IPC + relaunch) |
 | `spaces_shortcuts_setup.sh` | Configures Ctrl+1-9 desktop shortcuts |
 | `msmtp_setup.sh` | Generates ~/.msmtprc from config.toml [mailer] values |
 | `claude_repo_setup.sh` | Clone/update ~/.claude/; sync plugins.sh |
