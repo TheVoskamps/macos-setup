@@ -371,6 +371,12 @@ make diagnose  # Run system diagnostics
 
 ### Automatic Post-Install Actions
 
+- `00-Install.core` -> Runs `scripts/core_setup.sh`:
+  sets computer/host names, and appends two grep-guarded
+  exports to `~/.zshrc` — `HOMEBREW_NO_AUTO_UPDATE=1`
+  and `HOMEBREW_NO_ASK=1` (the latter disables Homebrew
+  6.0+ interactive ask-mode so `make update` / `make
+  install` don't hang on a `[y/n]` prompt — issue #20)
 - `02-Install.ui` -> Runs Finder config and
   Hammerspoon setup
 - `03-Install.shell` -> Runs `scripts/shell_setup.sh`
@@ -433,6 +439,33 @@ skips their packages and exits 0 — issue #172). The
 trust is idempotent and conservative — a tap is trusted
 only if its own `tap` line still emits; the `BREW` env
 var overrides the brew binary used. See `docs/INSTALL.md`.
+
+A second Homebrew 6.0 quirk is **interactive ask-mode**
+(issue #20): 6.0 made a `Do you want to proceed? [y/n]`
+prompt the default for `install`/`upgrade`/`reinstall`
+(and, via `brew bundle`'s default upgrade, for `bundle`
+too), so an unattended `make update` / `make install`
+hangs forever with no TTY. `HOMEBREW_NO_ASK=1` disables
+it for every brew call with one lever. It is set in three
+scopes, because each has a distinct environment that the
+others don't reach:
+
+- **Interactive shell** — `scripts/core_setup.sh` (the
+  `00-Install.core` post-install action) appends a
+  grep-guarded `export HOMEBREW_NO_ASK=1` to `~/.zshrc`,
+  alongside the existing `HOMEBREW_NO_AUTO_UPDATE` export.
+- **Scheduled jobs** — `scripts/launchagent_runner.sh`
+  exports `HOMEBREW_NO_ASK=1` near the top. launchd does
+  NOT source `~/.zshrc`, so the interactive export never
+  reaches a LaunchAgent. Exporting it in the runner (not
+  the plist's `EnvironmentVariables`) means existing
+  schedules self-heal on the next repo pull with no
+  `make schedule-*` re-run, and it covers every job
+  routed through that single entry point.
+- **Bootstrap** — `bootstrap.sh` prefixes `HOMEBREW_NO_ASK=1`
+  onto its `mas` and `dasel` `brew install`/`upgrade`
+  lines, because bootstrap runs before `~/.zshrc` gains
+  the export.
 
 **Uninstall/** and **RemoveAndPurge/** files also
 aggregate across tiers, but with a narrower filter scope

@@ -322,6 +322,34 @@ else
     fi
 fi
 
+# ---- Case 10: launchagent_runner exports HOMEBREW_NO_ASK (issue #20) ----
+# launchd never sources ~/.zshrc, so the runner itself must export
+# HOMEBREW_NO_ASK=1; otherwise a scheduled `make update` hangs forever
+# on Homebrew 6.0's interactive `[y/n]` ask-mode prompt. Assert the
+# child command sees the variable set to 1 in its environment.
+case10_repo="$SANDBOX_BASE/case10/repo"
+case10_home="$SANDBOX_BASE/case10/home"
+mk_fake_repo "$case10_repo"
+mk_fake_home "$case10_repo" "$case10_home"
+
+# Run with HOMEBREW_NO_ASK unset in the parent env so the only way the
+# child can see it is if the runner exported it. `env -u` scrubs any
+# value inherited from the test's own shell.
+HOME="$case10_home" env -u HOMEBREW_NO_ASK \
+    "$case10_repo/scripts/launchagent_runner.sh" \
+    ask-job -- /bin/sh -c 'echo "NO_ASK=[${HOMEBREW_NO_ASK:-UNSET}]"'
+
+log_file="$case10_home/Library/Logs/macos-setup/ask-job.log"
+if [[ ! -f "$log_file" ]]; then
+    fail "case 10: log file not created at $log_file"
+elif ! grep -q "NO_ASK=\[1\]" "$log_file"; then
+    echo "--- log content ---" >&2
+    cat "$log_file" >&2
+    fail "case 10: child command did not see HOMEBREW_NO_ASK=1"
+else
+    pass "case 10: launchagent_runner exports HOMEBREW_NO_ASK=1 to the job"
+fi
+
 # ---- summary ----
 echo
 if [[ $FAIL -eq 0 ]]; then

@@ -384,6 +384,15 @@ make unschedule-weekly
 LaunchAgents run in the user's login session, providing
 access to the macOS Keychain for email credentials.
 
+Scheduled jobs set `HOMEBREW_NO_ASK=1` so an unattended
+`make update` never hangs on Homebrew 6.0's interactive
+`Do you want to proceed? [y/n]` ask-mode prompt. The
+runner (`scripts/launchagent_runner.sh`) exports it
+directly, because launchd does not source `~/.zshrc`
+where the interactive export lives; existing schedules
+pick this up on the next repo pull with no
+`make schedule-*` re-run.
+
 #### Email Notifications
 
 Scheduled jobs can optionally send email reports instead
