@@ -70,6 +70,19 @@
 
 set -euo pipefail
 
+# Disable Homebrew 6.0+ interactive ask-mode prompt for every scheduled
+# job (issue #20). Homebrew 6.0 made ask mode the default for
+# install/upgrade/reinstall (and, via `brew bundle`'s default upgrade,
+# for bundle too), so a `make update` running here would block on a
+# "Do you want to proceed? [y/n]" prompt with no controlling TTY and
+# hang indefinitely. launchd does NOT source ~/.zshrc, so the
+# interactive HOMEBREW_NO_ASK export added there by core_setup.sh never
+# reaches this runner — it must be set here as well. Exporting it in the
+# runner (rather than the plist's EnvironmentVariables) means existing
+# schedules self-heal on the next repo pull, with no `make schedule-*`
+# re-run, and covers every job that routes through this one entry point.
+export HOMEBREW_NO_ASK=1
+
 if [[ $# -lt 2 ]]; then
     cat >&2 <<'EOF'
 Usage:

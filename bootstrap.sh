@@ -95,7 +95,9 @@ install_homebrew() {
 }
 
 install_mas() {
-  brew install mas || brew upgrade mas || true
+  # HOMEBREW_NO_ASK avoids the Homebrew 6.0+ interactive ask-mode prompt
+  # (issue #20); bootstrap runs before .zshrc gains the export.
+  HOMEBREW_NO_ASK=1 brew install mas || HOMEBREW_NO_ASK=1 brew upgrade mas || true
 }
 
 # dasel is the TOML query primitive every config.toml consumer relies on
@@ -112,7 +114,9 @@ install_mas() {
 # install must NOT be silently ignored. Idempotent: brew install/upgrade
 # is a no-op when dasel is already current.
 install_dasel() {
-  brew install dasel || brew upgrade dasel
+  # HOMEBREW_NO_ASK avoids the Homebrew 6.0+ interactive ask-mode prompt
+  # (issue #20); bootstrap runs before .zshrc gains the export.
+  HOMEBREW_NO_ASK=1 brew install dasel || HOMEBREW_NO_ASK=1 brew upgrade dasel
 
   if ! command -v dasel >/dev/null 2>&1; then
     err "dasel not on PATH after brew install/upgrade; config.toml reads require dasel v3."

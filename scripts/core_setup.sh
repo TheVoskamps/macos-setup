@@ -86,8 +86,24 @@ if [[ -f "$ZSHRC" ]]; then
     else
         echo "HOMEBREW_NO_AUTO_UPDATE already set in .zshrc"
     fi
+
+    # Disable Homebrew 6.0+ interactive ask-mode prompt. Homebrew 6.0
+    # made ask mode the default for install/upgrade/reinstall (and, via
+    # `brew bundle`'s default upgrade, for bundle too), so every such
+    # call blocks on a "Do you want to proceed? [y/n]" prompt. Setting
+    # HOMEBREW_NO_ASK covers all of them (and any future brew call) with
+    # one lever, so `make update` / `make install` no longer hang.
+    if ! grep -q "HOMEBREW_NO_ASK" "$ZSHRC"; then
+        echo "Adding HOMEBREW_NO_ASK=1 to .zshrc..."
+        echo "" >> "$ZSHRC"
+        echo "# Disable Homebrew interactive ask-mode prompt (Homebrew 6.0+)" >> "$ZSHRC"
+        echo "export HOMEBREW_NO_ASK=1" >> "$ZSHRC"
+        echo "HOMEBREW_NO_ASK added to .zshrc"
+    else
+        echo "HOMEBREW_NO_ASK already set in .zshrc"
+    fi
 else
-    echo "Warning: .zshrc not found, skipping HOMEBREW_NO_AUTO_UPDATE setup"
+    echo "Warning: .zshrc not found, skipping HOMEBREW_NO_AUTO_UPDATE / HOMEBREW_NO_ASK setup"
 fi
 
 echo "Core system configuration complete!"
