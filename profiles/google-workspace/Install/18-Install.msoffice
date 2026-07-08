@@ -3,4 +3,3 @@
 # Casks
 cask 'google-drive'
 cask 'google-chat'
-cask 'google-meet'
