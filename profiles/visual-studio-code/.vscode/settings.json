@@ -20,5 +20,8 @@
     "aws.cloudformation.telemetry.enabled": false,
     "[json]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode"
-    }
+    },
+    "[markdown]": { "editor.colorDecorators": false },
+    "[plaintext]": { "editor.colorDecorators": false },
+    "[git-commit]": { "editor.colorDecorators": false }
 }

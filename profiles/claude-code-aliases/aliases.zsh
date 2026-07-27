@@ -63,8 +63,27 @@ cr-repo () {
 # INT and TERM are trapped alongside EXIT so that a signal which kills the
 # shell outright (rather than just returning from the function) still
 # tears down the throwaway .git.
+#
+# Arguments are split at the FIRST argument starting with `-`: everything
+# before it forms the session name suffix, and that argument plus all that
+# follow are passed through to `claude` verbatim. So `cr my session
+# --model opus` names the session "my session <repo>" and forwards
+# `--model opus`. With no leading words the suffix falls back to a
+# timestamp, as before.
 cr () {
     local url repo suffix name initdir toplevel
+    local -a claude_args name_words
+
+    while (( $# )); do
+        if [[ "$1" == -* ]]; then
+            # First flag: this and everything after it belongs to claude.
+            claude_args=("$@")
+            break
+        fi
+        name_words+=("$1")
+        shift
+    done
+
     if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         # Inside an existing repo (root or subdir). Move to the repo root
         # and reuse the existing .git -- no throwaway, no cleanup trap.
@@ -90,10 +109,13 @@ cr () {
         trap "rm -rf -- ${(q)initdir}/.git" EXIT INT TERM
         repo="(local)"
     fi
-    suffix="$*"
+
+    suffix="${name_words[*]}"
     if [[ -z "$suffix" ]]; then
         suffix="$(date '+%b%d-%H:%M')"
     fi
     name="${suffix} ${repo}"
-    claude --name "$name" --remote-control
+    claude --name "$name" --remote-control \
+        --debug-file "$HOME/.claude/logs/$name" \
+        "${claude_args[@]}"
 }
