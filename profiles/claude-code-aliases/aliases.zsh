@@ -71,8 +71,16 @@ cr-repo () {
 # `--model opus`. With no leading words the suffix falls back to a
 # timestamp, as before.
 cr () {
-    local url repo suffix name initdir toplevel
+    local url repo suffix name initdir toplevel cfg
     local -a claude_args name_words
+
+    # Point git at a Claude-specific global config (bot identity, etc.) for
+    # this session, unless the caller already set one. Like the `cd` below,
+    # the export persists in the calling shell after `cr` returns.
+    if [[ -z "${GIT_CONFIG_GLOBAL:-}" ]]; then
+        cfg="$HOME/.gitconfig-claude"
+        [[ -r "$cfg" ]] && export GIT_CONFIG_GLOBAL="$cfg"
+    fi
 
     while (( $# )); do
         if [[ "$1" == -* ]]; then
