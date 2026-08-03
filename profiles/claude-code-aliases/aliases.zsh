@@ -75,11 +75,19 @@ cr () {
     local -a claude_args name_words
 
     # Point git at a Claude-specific global config (bot identity, etc.) for
-    # this session, unless the caller already set one. Like the `cd` below,
-    # the export persists in the calling shell after `cr` returns.
+    # the duration of this call, unless the caller already set one.
+    #
+    # `local -x` is what confines it: a zsh `local` is dynamically scoped, so
+    # the value is visible to `claude` and to every git command this function
+    # runs, and is restored when `cr` returns -- on EVERY return path,
+    # including a Ctrl-C out of `claude`. Unlike the `cd` to the repo root,
+    # this deliberately does NOT persist in the calling shell; a plain
+    # `export` would silently repoint git for the rest of the session.
+    # The declaration lives inside the `if` so an outer value is never
+    # shadowed by an empty local.
     if [[ -z "${GIT_CONFIG_GLOBAL:-}" ]]; then
         cfg="$HOME/.gitconfig-claude"
-        [[ -r "$cfg" ]] && export GIT_CONFIG_GLOBAL="$cfg"
+        [[ -r "$cfg" ]] && local -x GIT_CONFIG_GLOBAL="$cfg"
     fi
 
     while (( $# )); do
