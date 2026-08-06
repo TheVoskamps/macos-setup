@@ -135,3 +135,29 @@ cr () {
         --debug-file "$HOME/.claude/logs/$name" \
         "${claude_args[@]}"
 }
+# Resolve an installed Claude Code plugin's root from the plugin DB.
+# installed_plugins.json stores installPath directly, so this tracks
+# plugin updates automatically. The per-plugin value is an array (one
+# entry per scope) -- prefer user scope, fall back to first.
+claude-plugin-path() {
+  local key=$1 db=${CLAUDE_PLUGINS_DB:-$HOME/.claude/plugins/installed_plugins.json}
+  [[ -r $db ]] || return 1
+  jq -er --arg k "$key" '
+    (.plugins[$k] // []) as $e
+    | (($e | map(select(.scope == "user"))) + $e)[0].installPath // empty
+  ' "$db" 2>/dev/null
+}
+
+claude-vm() {
+  local root exe
+  root=$(claude-plugin-path 'claude-vm@thevoskamps') || {
+    print -ru2 -- "claude-vm: plugin claude-vm@thevoskamps is not installed"
+    return 127
+  }
+  exe=$root/bin/claude-vm
+  [[ -x $exe ]] || {
+    print -ru2 -- "claude-vm: $exe is missing or not executable"
+    return 127
+  }
+  "$exe" "$@"
+}
