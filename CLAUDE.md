@@ -207,7 +207,10 @@ make development ai aws
 # `versions-*`, not after the tool, so swapping the
 # implementation leaves target names, aliases, and doc
 # lines alone.
-make versionmanagers        # Full mise setup
+make versionmanagers        # Install mise + the global
+                            # config (install ONLY -- see
+                            # "Tool Version Configuration"
+                            # for the full cutover)
 make versions-install       # Install declared versions
 make versions-outdated      # Check for newer versions
 make versions-update        # Install latest AND bump the
@@ -646,13 +649,31 @@ tools. Only the binaries go — `~/.asdf/`,
 `~/.tool-versions`, `~/.config/direnv/lib/use_asdf.sh`
 and every repo's `.envrc` / `.tool-versions` survive, and
 `make asdf-to-mise` warns about each rather than deleting
-it. `make shell` (`scripts/shell_setup.sh`) strips the
-asdf/direnv `~/.zshrc` init lines it once wrote and adds
+it. `scripts/strip_asdf_zshrc_lines.sh` removes the
+asdf/direnv `~/.zshrc` init lines this repo once wrote,
+and `make shell` (`scripts/shell_setup.sh`) calls it
+before adding
 `export PATH="${XDG_DATA_HOME:-$HOME/.local/share}/mise/shims:$PATH"`
 plus `eval "$(mise activate zsh)"`;
 `scripts/launchagent_runner.sh` puts the same shims
 directory on `PATH` itself, because launchd never sources
 `~/.zshrc`.
+
+The cutover has three pieces -- install mise, uninstall
+asdf + direnv, strip the `~/.zshrc` lines -- owned by
+three different mechanisms. `make install` and
+`make update` each do all three: `install` runs the
+slot-04 RemoveAndPurge inline (a deliberate one-slot
+exception to "install does not run the removal loops")
+and reaches the strip via `03-Install.shell`, while
+`update` runs the removal loops and calls
+`strip_asdf_zshrc_lines.sh` directly because it never
+runs `shell_setup.sh`. The per-slot
+`make versionmanagers` does ONLY the install piece --
+per-slot targets install, they do not remove. Driving it
+by hand is `make versionmanagers`,
+`make 04_RemoveAndPurge_versionmanagers`, `make shell`.
+See `docs/VERSION_MANAGEMENT.md`.
 
 Per-project config is `mise.toml` -- the **one tracked
 config form**. mise reads several other forms as well
@@ -665,6 +686,10 @@ at a git boundary -- so a stray `mise.toml` in a parent
 directory silently applies to every repo beneath it.
 The `.gitignore` block `make asdf-to-mise` writes ignores
 every non-canonical form to keep that from happening.
+The block's authoritative text is the heredoc in
+`scripts/asdf_to_mise.sh`; this repo's own `.gitignore`
+and the copy in `docs/VERSION_MANAGEMENT.md` reproduce
+it verbatim. The paragraph here only describes it.
 `mise cfg` is the diagnostic for "which files actually
 loaded here".
 
@@ -688,19 +713,25 @@ ceiling, and none is needed: the one ceiling this repo
 carried was lua's, whose recorded intent was "stay below
 Lua 5.5", so `lua = "5.4"` is the faithful translation.
 
-**The LuaRocks pin.** lua builds must use LuaRocks
-3.12.2 -- 3.13.0 ships a broken rockspec (duplicate
-`tag` key) that fails to parse on Lua 5.5+ and also
-fails during bootstrap on 5.4.x.
-`scripts/versions_setup.sh` exports
+**The LuaRocks pin.** LuaRocks 3.13.0 ships a rockspec
+with a duplicate `tag` key. Under asdf's lua plugin that
+broke the build, so this repo pinned 3.12.2 via
+`ASDF_LUA_LUAROCKS_VERSION` -- the variable name that
+plugin reads. `scripts/versions_setup.sh` still exports
 `ASDF_LUA_LUAROCKS_VERSION=3.12.2` so every
-`make versions-*` invocation carries it. Upstream
-`luarocks/luarocks#1851` being closed is NOT license to
-drop the pin -- it was closed by a fix to the release
-tooling, and the shipped 3.13.0 tarball is PGP-signed
-with a pinned `source_digest` and was never re-rolled.
-Dropping the pin needs a 3.13.1 release; tracked in
-issue #6.
+`make versions-*` invocation carries it. On mise it is
+currently INERT: verified against mise 2026.8.6 on
+2026-08-16, `mise registry` resolves `lua` through
+`vfox:mise-plugins/vfox-lua` first, not the asdf plugin,
+and a sandboxed `mise install lua@5.4` built 5.4.8 and
+bootstrapped LuaRocks 3.13.0 successfully with the
+export set. It is kept because it costs nothing and
+still applies to an explicit asdf-backend pin, where the
+breakage is unchanged -- upstream
+`luarocks/luarocks#1851` was closed by a fix to the
+release tooling, and the shipped 3.13.0 tarball is
+PGP-signed with a pinned `source_digest` and was never
+re-rolled. Tracked in issue #6.
 
 **`make asdf-to-mise`** is the one-shot migration verb
 and a deliberate exception to the
@@ -1080,6 +1111,7 @@ former in-repo `logs/` directory. This is macOS-native
 | `mise_common.sh` | Global mise config helpers (shared by the two below) |
 | `versions_setup.sh` | Drives mise for the `versions-*` targets and slot 04 |
 | `asdf_to_mise.sh` | One-shot additive asdf+direnv -> mise repo migration |
+| `strip_asdf_zshrc_lines.sh` | Strips the ~/.zshrc lines the cutover orphans |
 | `vscode_extensions.sh` | Installs VS Code extensions |
 | `vscode_setup.sh` | Symlinks VS Code `settings.json` (single-winner) |
 | `hammerspoon_setup.sh` | Symlinks HS config; robust reload (IPC + relaunch) |

@@ -391,6 +391,18 @@ require-dasel:
 	@bash scripts/require_dasel_on_path.sh
 
 # --- Batch targets ---
+#
+# `install` does NOT run the removal loops in general -- the smart filter is
+# what keeps a removal-listed package from being installed. The ONE
+# exception is slot 04's RemoveAndPurge, applied inline in the
+# `04-Install.versionmanagers` post-install action below. The asdf -> mise
+# cutover is hard by construction (asdf and mise both provide shims for the
+# same tools, so a host carrying both is the classic failure mode), and
+# `make install` is the entry point a host reaches after `git pull`. Without
+# the inline purge, `make install` would install mise and leave asdf and
+# direnv installed alongside it. Per-slot `make versionmanagers` deliberately
+# does NOT do this -- see docs/VERSION_MANAGEMENT.md for the three-command
+# sequence a per-slot driver runs by hand.
 .PHONY: install uninstall uninstall-dry-run remove-and-purge remove-and-purge-dry-run update help
 install: require-dasel ## Apply all Install files in numeric order (filtered against in-scope Uninstall files); seeds the external host tier if absent
 	@set -euo pipefail
@@ -431,7 +443,20 @@ install: require-dasel ## Apply all Install files in numeric order (filtered aga
 			03-Install.shell) \
 				if [ -x "scripts/shell_setup.sh" ]; then scripts/shell_setup.sh; else echo "[shell] scripts/shell_setup.sh not found or not executable"; fi ;; \
 			04-Install.versionmanagers) \
-				if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) full; else echo "[versionmanagers] $(VERSIONS_SETUP) not found or not executable"; fi ;; \
+				if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) full; else echo "[versionmanagers] $(VERSIONS_SETUP) not found or not executable"; fi; \
+				vmp="04-RemoveAndPurge.versionmanagers"; \
+				if [ -f "$(PURGE_DIR)/$$vmp" ]; then \
+					bash $(REMOVE_RUNNER) "$(PURGE_DIR)/$$vmp" --mode=purge --banner="==> Applying global RemoveAndPurge: $(PURGE_DIR)/$$vmp" || failed="$$failed $(PURGE_DIR)/$$vmp"; \
+				fi; \
+				for prof in $(PROFILES); do \
+					vpf="profiles/$$prof/$(PURGE_DIR)/$$vmp"; \
+					if [ -f "$$vpf" ]; then \
+						bash $(REMOVE_RUNNER) "$$vpf" --mode=purge --banner="==> Applying profile RemoveAndPurge: $$vpf" || failed="$$failed $$vpf"; \
+					fi; \
+				done; \
+				if [ -f "$(COMPUTER_PURGE_DIR)/$$vmp" ]; then \
+					bash $(REMOVE_RUNNER) "$(COMPUTER_PURGE_DIR)/$$vmp" --mode=purge --banner="==> Applying computer-specific RemoveAndPurge: $(COMPUTER_PURGE_DIR)/$$vmp" || failed="$$failed $(COMPUTER_PURGE_DIR)/$$vmp"; \
+				fi ;; \
 			06-Install.messaging) \
 				if [ -x "scripts/msmtp_setup.sh" ]; then scripts/msmtp_setup.sh; else echo "[messaging] scripts/msmtp_setup.sh not found or not executable"; fi ;; \
 			09-Install.development) \
@@ -526,6 +551,12 @@ _remove_and_purge_loop:
 # Note: the sed pattern extracting cask names from "already an App" errors depends on
 # Homebrew's "Error: <cask>: ..." format. If it changes, unmatched errors safely fall
 # through to the generic error check which sets FAIL=1.
+#
+# `update` also completes the asdf -> mise cutover: the RemoveAndPurge loop
+# uninstalls asdf and direnv, and the strip_asdf_zshrc_lines.sh call after it
+# removes the ~/.zshrc init lines that would otherwise error on every shell
+# startup. `update` never runs shell_setup.sh, so without that call the
+# binaries would go while their broken init lines stayed.
 update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed tool versions, then apply Uninstall and RemoveAndPurge
 	@FAIL=0; \
 	echo "==> Updating Homebrew..."; \
@@ -559,6 +590,7 @@ update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed too
 	$(MAKE) -s uninstall || FAIL=1; \
 	echo "==> Applying RemoveAndPurge/ files..."; \
 	$(MAKE) -s remove-and-purge || FAIL=1; \
+	bash scripts/strip_asdf_zshrc_lines.sh || FAIL=1; \
 	echo "==> All packages updated."; \
 	exit $$FAIL
 

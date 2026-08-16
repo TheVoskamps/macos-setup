@@ -260,49 +260,12 @@ ZSHRC_PATH="$HOME/.zshrc"
 
 # 1) Remove the ~/.zshrc lines the asdf -> mise migration orphans.
 #
-#    Three forms, all written by earlier runs of this script and all inert
-#    or broken once asdf and direnv are uninstalled:
-#      a. `. /opt/homebrew/opt/asdf/libexec/asdf.sh` — already dead before
-#         the migration (asdf 0.16+ is a single Go binary with no
-#         libexec/asdf.sh to source), and it errors on every shell startup.
-#      b. the asdf shims PATH export.
-#      c. the direnv hook.
-#
-#    Each pattern is anchored to the exact active form this script wrote.
-#    Indented or commented variants ("    . .../asdf.sh",
-#    "# eval \"$(direnv hook zsh)\"") are deliberately preserved in case
-#    the user hand-edited their ~/.zshrc to keep a line for reference --
-#    those variants are inert and safe to leave alone. Do not loosen the
-#    anchors.
-#
-#    The whole strip is guarded on at least one pattern matching, so a host
-#    that has already migrated is a no-op on re-run and gains no stray
-#    .bak. Portable in-place edit via `sed -i.bak`, which writes the backup
-#    natively (consistent with the rest of this script's ~/.zshrc
-#    mutations). `sed -i.bak` rather than a `grep -Ev` pipeline avoids a
-#    subtle `set -euo pipefail` trap: `grep -Ev` exits 1 when its output is
-#    empty (i.e. every input line matched the strip pattern), which would
-#    abort the script before the _ms_ensure_line calls below -- leaving the
-#    orphaned lines in place. `sed -d` has no such failure mode.
-_MS_ORPHANS=(
-  '^\. .*/opt/asdf/libexec/asdf\.sh[[:space:]]*$'
-  '^export PATH="[$][{]ASDF_DATA_DIR:-[$]HOME/[.]asdf[}]/shims:[$]PATH"[[:space:]]*$'
-  '^eval "[$][(]direnv hook zsh[)]"[[:space:]]*$'
-)
-if [ -f "$ZSHRC_PATH" ]; then
-  _ms_found_orphan=0
-  for _ms_pat in "${_MS_ORPHANS[@]}"; do
-    if grep -Eq "$_ms_pat" "$ZSHRC_PATH"; then _ms_found_orphan=1; fi
-  done
-  if [ "$_ms_found_orphan" -eq 1 ]; then
-    _ms_sed_args=()
-    for _ms_pat in "${_MS_ORPHANS[@]}"; do
-      _ms_sed_args+=(-e "/$_ms_pat/d")
-    done
-    sed -i.bak -E "${_ms_sed_args[@]}" "$ZSHRC_PATH"
-    echo "[SHELL-SETUP] Removed orphaned asdf/direnv init lines from $ZSHRC_PATH (backup at $ZSHRC_PATH.bak)"
-  fi
-fi
+#    The patterns, their anchoring rationale, and the sed mechanics live in
+#    scripts/strip_asdf_zshrc_lines.sh, because the `update` Makefile target
+#    needs the same strip and does not run this script: it uninstalls asdf
+#    and direnv via the RemoveAndPurge loop, which would otherwise leave a
+#    broken `direnv hook` line erroring on every shell startup.
+ZSHRC_PATH="$ZSHRC_PATH" bash "$SCRIPT_DIR/strip_asdf_zshrc_lines.sh"
 
 # 2) Ensure the mise init lines.
 #

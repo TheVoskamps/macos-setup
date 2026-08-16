@@ -247,6 +247,33 @@ awk '/^\[settings\]$/{s=1;next} /^\[/{s=0} s && /env_file/{found=1} END{exit !fo
   && ok "case 6: env_file landed inside the [settings] table" \
   || bad "case 6: env_file landed inside the [settings] table"
 
+# === case 6b: a [settings] header with a TRAILING COMMENT =============
+# TOML allows `[settings] # note`. A bare-header-only regex misses it, falls
+# through to the append branch, and leaves the file with TWO [settings]
+# tables — invalid TOML that mise cannot parse.
+new_case case6b
+make_repo "$CASE_DIR/repo"
+mkdir -p "$(dirname "$GLOBAL_CFG")"
+cat > "$GLOBAL_CFG" <<'EOF'
+[tools]
+node = "24.5.0"
+
+[settings] # user comment
+experimental = true
+EOF
+run_sut "$CASE_DIR/repo"
+check "case 6b: exits zero" "$RC" "0"
+check "case 6b: exactly one [settings] table" \
+  "$(grep -c '^\[settings\]' "$GLOBAL_CFG")" "1"
+check "case 6b: env_file added exactly once" \
+  "$(grep -c 'env_file' "$GLOBAL_CFG")" "1"
+grep -q 'experimental = true' "$GLOBAL_CFG" \
+  && ok "case 6b: hand-written [settings] key survives" \
+  || bad "case 6b: hand-written [settings] key survives"
+awk '/^\[settings\]/{s=1;next} /^\[/{s=0} s && /env_file/{found=1} END{exit !found}' "$GLOBAL_CFG" \
+  && ok "case 6b: env_file landed inside the [settings] table" \
+  || bad "case 6b: env_file landed inside the [settings] table"
+
 # === case 7: no .tool-versions — still writes the .gitignore block ====
 new_case case7
 make_repo "$CASE_DIR/repo"
@@ -257,6 +284,52 @@ check "case 7: exits zero" "$RC" "0"
   || bad "case 7: no .tool-versions means no mise.toml"
 grep -q '^/mise.local.toml$' "$CASE_DIR/repo/.gitignore" \
   && ok "case 7: .gitignore created from scratch" || bad "case 7: .gitignore created from scratch"
+
+# === case 8: the three leftover conditions, reported independently ====
+# (a) on disk, (b) matched by an ignore rule, (c) tracked in git. They occur
+# in ANY combination and each has its own remedy, so each must be reported
+# on its own. Here .envrc has all three; .tool-versions has only (a).
+new_case case8
+make_repo "$CASE_DIR/repo"
+printf 'use asdf\n' > "$CASE_DIR/repo/.envrc"
+printf 'nodejs 24.5.0\n' > "$CASE_DIR/repo/.tool-versions"
+printf '.envrc\n' > "$CASE_DIR/repo/.gitignore"
+# -f, because .envrc is ignored by the rule we just wrote and must still
+# reach the index for condition (c) to be exercised.
+git -C "$CASE_DIR/repo" add -f .envrc .tool-versions .gitignore >/dev/null 2>&1
+git -C "$CASE_DIR/repo" commit -qm init >/dev/null 2>&1
+run_sut "$CASE_DIR/repo"
+check "case 8: exits zero" "$RC" "0"
+case "$OUT" in *"(a) present on disk"*) ok "case 8: reports condition (a)" ;;
+  *) bad "case 8: reports condition (a) (got: $OUT)" ;; esac
+case "$OUT" in *"(b) matched by an ignore rule"*) ok "case 8: reports condition (b)" ;;
+  *) bad "case 8: reports condition (b) (got: $OUT)" ;; esac
+case "$OUT" in *"(c) tracked in git"*) ok "case 8: reports condition (c)" ;;
+  *) bad "case 8: reports condition (c) (got: $OUT)" ;; esac
+case "$OUT" in *"git rm .envrc"*) ok "case 8: (c) remedy is git rm, not an ignore rule" ;;
+  *) bad "case 8: (c) remedy is git rm, not an ignore rule (got: $OUT)" ;; esac
+case "$OUT" in *".gitignore:1:.envrc"*) ok "case 8: (b) names the rule's source and line" ;;
+  *) bad "case 8: (b) names the rule's source and line (got: $OUT)" ;; esac
+# .tool-versions is on disk and tracked, but carries NO ignore rule here.
+check "case 8: only .envrc reports (b); .tool-versions has no ignore rule" \
+  "$(printf '%s\n' "$OUT" | grep -c '(b) matched by an ignore rule')" "1"
+# Still deletes and untracks nothing.
+[ -f "$CASE_DIR/repo/.envrc" ] && ok "case 8: left .envrc on disk" || bad "case 8: left .envrc on disk"
+git -C "$CASE_DIR/repo" ls-files --error-unmatch .envrc >/dev/null 2>&1 \
+  && ok "case 8: .envrc still tracked" || bad "case 8: .envrc still tracked"
+
+# === case 9: an ignore rule ALONE still warns =========================
+# The file is gone but the rule survives it — a rule left behind silently
+# hides a re-created file, so its own remedy must still be printed.
+new_case case9
+make_repo "$CASE_DIR/repo"
+printf '.envrc\n/.tool-versions\n' > "$CASE_DIR/repo/.gitignore"
+run_sut "$CASE_DIR/repo"
+check "case 9: exits zero" "$RC" "0"
+case "$OUT" in *"(a) present on disk"*) bad "case 9: must not claim the file is on disk" ;;
+  *) ok "case 9: does not claim the file is on disk" ;; esac
+check "case 9: both leftovers report condition (b)" \
+  "$(printf '%s\n' "$OUT" | grep -c '(b) matched by an ignore rule')" "2"
 
 echo "---"
 echo "pass=$pass fail=$fail"

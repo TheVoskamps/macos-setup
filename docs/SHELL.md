@@ -126,8 +126,8 @@ reason (the same pattern it uses for `HOMEBREW_NO_ASK`).
 ### Migrating off asdf + direnv
 
 The `version-managers` profile moved from asdf + direnv to mise. The
-next `make shell` after that change removes the `~/.zshrc` lines it
-orphans:
+strip lives in `scripts/strip_asdf_zshrc_lines.sh` and removes the
+`~/.zshrc` lines that change orphans:
 
 - `. /opt/homebrew/opt/asdf/libexec/asdf.sh` — already dead before
   the migration (asdf 0.16+ is a single Go binary with no
@@ -135,11 +135,23 @@ orphans:
 - `export PATH="${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH"`
 - `eval "$(direnv hook zsh)"`
 
-Each pattern is anchored to the exact active form this script wrote;
-indented or commented-out variants are deliberately preserved. A
-backup is written to `~/.zshrc.bak` only when this cleanup actually
+Each pattern is anchored to the exact active form `shell_setup.sh`
+wrote; indented or commented-out variants are deliberately preserved.
+A backup is written to `~/.zshrc.bak` only when this cleanup actually
 fires, so a host that has already migrated is a clean no-op on
 re-run.
+
+Two callers reach it, because the cutover reaches a host down two
+paths and both must leave `~/.zshrc` clean:
+
+- `make shell` / `make install`, via `scripts/shell_setup.sh`.
+- `make update`, which calls the script directly — it uninstalls asdf
+  and direnv through the `RemoveAndPurge` loop but never runs
+  `shell_setup.sh`, so without the direct call it would remove the
+  binaries and leave their broken init lines behind.
+
+`ZSHRC_PATH` overrides the file it edits (the test suite points it at
+a fixture); it defaults to `~/.zshrc`.
 
 ## Common Aliases (quick reference)
 

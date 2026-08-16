@@ -23,7 +23,9 @@ provisioning macOS with this repo.
   e.g. `make 02_Install_ui`.
 - `04_Install_versionmanagers` also ensures the global
   `mise` config and installs the declared tool versions
-  automatically.
+  automatically. It does **not** uninstall `asdf`/`direnv`
+  or clean `~/.zshrc` — `make install` and `make update`
+  do; see [Version Management](VERSION_MANAGEMENT.md).
 
 ## Repository Layout
 

@@ -11,6 +11,9 @@ name: `version-managers` is the role, not the implementation.
 ## Quick Start
 
 1. Install Homebrew bundles (including `mise`): `make versionmanagers`.
+   This installs only — it does not uninstall `asdf`/`direnv` or touch
+   `~/.zshrc`. See "The host-side cutover is hard, not staged" below
+   for the full three-command sequence, or just run `make install`.
 2. Install the versions the resolved config declares:
    `make versions-install`.
 3. Add a tool to the current project: `mise use <tool>@latest`
@@ -70,19 +73,27 @@ you ever need a true ceiling, use an exact pin.
 
 ### The LuaRocks pin
 
-lua builds must use LuaRocks 3.12.2: LuaRocks 3.13.0 ships a broken
-rockspec (duplicate `tag` key) that fails to parse on Lua 5.5+ and
-also fails during bootstrap on 5.4.x.
-`scripts/versions_setup.sh` exports
-`ASDF_LUA_LUAROCKS_VERSION=3.12.2` for this reason, so every
-`make versions-*` invocation carries it. If you run `mise install
-lua@...` by hand outside `make`, export it yourself.
+LuaRocks 3.13.0 ships a rockspec with a duplicate `tag` key. Under
+asdf's lua plugin that broke the build, so this repo pinned 3.12.2 via
+`ASDF_LUA_LUAROCKS_VERSION` — the variable name that plugin reads.
+`scripts/versions_setup.sh` still exports
+`ASDF_LUA_LUAROCKS_VERSION=3.12.2`, so every `make versions-*`
+invocation carries it.
 
-Upstream `luarocks/luarocks#1851` being closed is **not** license to
-drop the pin: it was closed by a fix to the *release tooling*
-(`luarocks/luarocks#1885`). The shipped 3.13.0 tarball is PGP-signed
-with a pinned `source_digest` and was never re-rolled, so it is still
-broken. Dropping the pin needs a 3.13.1 release. Tracked in
+**On mise the export is currently inert.** Verified against mise
+2026.8.6 on 2026-08-16: `mise registry` resolves `lua` through
+`vfox:mise-plugins/vfox-lua` first, not the asdf plugin, and a
+sandboxed `mise install lua@5.4` built 5.4.8 and bootstrapped LuaRocks
+**3.13.0** successfully with the export set. The variable neither took
+effect nor was needed.
+
+It is kept anyway, because it costs nothing and still applies if you
+pin lua to the asdf backend explicitly
+(`lua = "asdf:mise-plugins/mise-lua@5.4"`), where the original breakage
+is unchanged: upstream `luarocks/luarocks#1851` was closed by a fix to
+the *release tooling* (`luarocks/luarocks#1885`), and the shipped
+3.13.0 tarball is PGP-signed with a pinned `source_digest` and was
+never re-rolled. Tracked in
 [issue #6](https://github.com/TheVoskamps/macos-setup/issues/6).
 
 ## `.env` loading
@@ -155,15 +166,48 @@ unrelated purposes is unaffected.
 a stray variant, not creating one. `mise cfg` remains the diagnostic
 for "which files actually loaded here".
 
+`.envrc` and `.tool-versions` are deliberately **absent** from the
+block. The converter leaves both files in place and warns about them,
+so adding an ignore rule would be misleading (they are not
+machine-local strays) and, for a tracked file, ineffective. That is a
+statement about what the block **writes into other repos**; a repo
+that already carried such rules keeps them until its own migration
+finishes, and the converter reports them as condition (b) below.
+
 ## The host-side cutover is hard, not staged
 
 The `version-managers` profile installs `mise` in its
 `Install/04-Install.versionmanagers` and removes `asdf` and `direnv`
 in its `RemoveAndPurge/04-RemoveAndPurge.versionmanagers`, in the same
 change. Running asdf and mise side by side is the classic failure mode
-— both provide shims for the same tools — so a host that opts into the
-profile loses the asdf and direnv **binaries** on its next
-`make update` (or `make remove-and-purge`).
+— both provide shims for the same tools.
+
+### What the cutover consists of
+
+Three separate pieces of work, each owned by a different mechanism:
+
+| Piece | Owner |
+| --- | --- |
+| Install `mise` | slot 04's `Install` + `versions_setup.sh full` |
+| Uninstall `asdf` + `direnv` | slot 04's `RemoveAndPurge` |
+| Strip orphaned `~/.zshrc` lines | `strip_asdf_zshrc_lines.sh` |
+
+**`make install` and `make update` each do all three.** `make install`
+runs the slot-04 install and, as a deliberate one-slot exception to
+"install does not run the removal loops", the slot-04 RemoveAndPurge
+alongside it; the `03-Install.shell` action strips `~/.zshrc`.
+`make update` runs the removal loops and calls the strip script
+directly (it never runs `shell_setup.sh`).
+
+**`make versionmanagers` does only the install piece.** It is a
+per-slot target, and per-slot targets install; they do not remove.
+Driving the cutover by hand therefore takes the sequence:
+
+```bash
+make versionmanagers                       # install mise
+make 04_RemoveAndPurge_versionmanagers     # uninstall asdf + direnv
+make shell                                 # strip the ~/.zshrc lines
+```
 
 Removing the binaries touches none of the data they left behind:
 `~/.asdf/`, `~/.tool-versions`, `~/.config/direnv/lib/use_asdf.sh`,
@@ -171,9 +215,7 @@ and every repo's `.envrc` / `.tool-versions` all survive. The
 "Manual cleanup checklist" below is what removes those, and it is
 yours to run.
 
-The `~/.zshrc` side of the cutover is `make shell`'s: it strips the
-asdf and direnv init lines it once wrote and adds the mise ones. See
-[Shell](SHELL.md) for the exact lines.
+See [Shell](SHELL.md) for the exact `~/.zshrc` lines added and removed.
 
 ## Migrating a repo from asdf + direnv: `make asdf-to-mise`
 
@@ -218,7 +260,9 @@ What it does:
   clobbered.
 - Writes the `.gitignore` block above, sentinel-guarded so a re-run
   is a no-op.
-- Warns about per-repo leftovers.
+- Warns about per-repo leftovers — for `.envrc` and `.tool-versions`,
+  reporting each of the three independent conditions below (on disk,
+  ignore-ruled, tracked) with its own remedy.
 - Runs `mise cfg` and `mise ls` so you can see what actually
   resolved before trusting it.
 
@@ -263,6 +307,33 @@ satisfied with the conversion, these are yours to remove:
   mise equivalent and need a manual `[env] _.path` / `_.source`
   decision.
 - `<repo>/.tool-versions` — **check before deleting**; see below.
+
+### Three independent conditions per repo leftover
+
+For `.envrc` and `.tool-versions`, "clean up" is not one action.
+`make asdf-to-mise` reports three conditions, which occur in **any
+combination**, each with its own remedy:
+
+| Condition | What it means | Remedy |
+| --- | --- | --- |
+| (a) present on disk | the file is still there | delete it |
+| (b) ignore-ruled | a `.gitignore` line hides it | delete that rule |
+| (c) tracked in git | the path is in the index | `git rm` it |
+
+They are genuinely independent. Deleting the file leaves the ignore
+rule and the index entry. Adding an ignore rule does not delete the
+file — and it does **nothing at all** for (c), because `.gitignore`
+has no effect on a path already tracked; only `git rm` clears that.
+Leaving a rule behind after the file is gone is its own trap: a
+re-created `.envrc` is then invisible to `git status`.
+
+This repo's own `.gitignore` still carries `.envrc` and
+`/.tool-versions` for exactly this reason — macos-setup has not been
+run through `make asdf-to-mise` yet, and dropping the rules ahead of
+the files only makes `git status` dirty, which
+`scripts/self_update.sh` reads as a reason to stash and pop on every
+run. Removing them is an **output** of running the migration against
+this repo, not a hand-edit ahead of it.
 
 ### The `.tool-versions` drift hazard
 

@@ -12,7 +12,12 @@
 #   - converts the calling repo's `.tool-versions` into a `mise.toml`
 #   - writes a sentinel-guarded `.gitignore` block pinning `mise.toml` as
 #     the ONE tracked config form
-#   - warns about every asdf/direnv leftover it finds
+#   - warns about every asdf/direnv leftover it finds. For the two per-repo
+#     leftovers (`.envrc`, `.tool-versions`) it reports three INDEPENDENT
+#     conditions, in any combination, each with its own remedy: present on
+#     disk, matched by an ignore rule, and tracked in git. The third is not
+#     a variation on the second — .gitignore has no effect on a path already
+#     in the index, so only `git rm` clears it.
 #
 # What it deliberately does NOT do: delete anything, move anything, untrack
 # anything, or commit anything. `~/.asdf/`, `~/.tool-versions`,
@@ -192,37 +197,92 @@ EOF
   log "Wrote the mise block to $gi"
 }
 
+# Report the ignore rule matching a path, if any, as `<source>:<line>:<pattern>`.
+#
+# `--no-index` so the answer is about the RULES alone, not about tracking
+# state. That matters: git reports no ignore match for a TRACKED path by
+# default, and "tracked AND ignore-ruled" is exactly the combination
+# condition (c) below exists to call out — an ignore rule is inert against a
+# path already in the index, so seeing both is the signal that someone added
+# a rule expecting it to do something it cannot do.
+ignore_rule_for() { # $1 = path relative to TARGET_DIR
+  ( cd "$TARGET_DIR" && git check-ignore -v --no-index -- "$1" 2>/dev/null ) || true
+}
+
+is_tracked() { # $1 = path relative to TARGET_DIR
+  ( cd "$TARGET_DIR" && git ls-files --error-unmatch -- "$1" >/dev/null 2>&1 )
+}
+
+# Report which of the three INDEPENDENT conditions a leftover file is in.
+# They occur in any combination, and each has its own remedy — an ignore
+# rule does not remove a file, and deleting a file does not remove either
+# the rule or the index entry. Returns 0 if at least one condition held.
+report_leftover_conditions() { # $1 = path relative to TARGET_DIR
+  local rel="$1" rule any=0
+
+  if [ -e "$TARGET_DIR/$rel" ]; then
+    any=1
+    printf '    (a) present on disk at %s.\n' "$TARGET_DIR/$rel"
+    printf '        Remedy: delete it yourself once you are satisfied with the conversion. This script never does.\n'
+  fi
+
+  rule="$(ignore_rule_for "$rel")"
+  if [ -n "$rule" ]; then
+    any=1
+    printf '    (b) matched by an ignore rule — %s\n' "$rule"
+    printf '        Remedy: delete that rule. Left behind, it silently hides a re-created %s from `git status`.\n' "$rel"
+  fi
+
+  if is_tracked "$rel"; then
+    any=1
+    printf '    (c) tracked in git.\n'
+    printf '        Remedy: `git rm %s` (or `git rm --cached %s` to keep the working copy) and commit.\n' "$rel" "$rel"
+    printf '        An ignore rule cannot help here: .gitignore has no effect on a path already in the index.\n'
+  fi
+
+  [ "$any" -eq 1 ]
+}
+
 warn_repo_leftovers() {
   echo
   log "Per-repo asdf/direnv leftovers in $TARGET_DIR (NOT removed):"
 
   local found=0
+  local header
 
-  local envrc="$TARGET_DIR/.envrc"
-  if [ -f "$envrc" ]; then
+  # .envrc
+  header='  - .envrc — inert once direnv is uninstalled.'
+  if report_leftover_conditions .envrc > /dev/null; then
     found=1
-    printf '  - %s — inert once direnv is uninstalled.\n' "$envrc"
+    printf '%s\n' "$header"
     # Anything beyond `use asdf` / `dotenv_if_exists` / comments / blanks
     # has no automatic mise equivalent and needs a manual `_.path` /
     # `_.source` decision, so show it.
-    local extra
-    extra="$(grep -Ev '^[[:space:]]*(#.*)?$|^[[:space:]]*use[[:space:]]+asdf[[:space:]]*$|^[[:space:]]*dotenv_if_exists[[:space:]]*$' "$envrc" || true)"
-    if [ -n "$extra" ]; then
-      printf '    It holds more than `use asdf` / `dotenv_if_exists`; these lines have no automatic mise equivalent\n'
-      printf '    and need a manual [env] _.path / _.source decision in mise.toml:\n'
-      printf '%s\n' "$extra" | sed 's/^/      /'
+    local envrc="$TARGET_DIR/.envrc" extra
+    if [ -f "$envrc" ]; then
+      extra="$(grep -Ev '^[[:space:]]*(#.*)?$|^[[:space:]]*use[[:space:]]+asdf[[:space:]]*$|^[[:space:]]*dotenv_if_exists[[:space:]]*$' "$envrc" || true)"
+      if [ -n "$extra" ]; then
+        printf '    It holds more than `use asdf` / `dotenv_if_exists`; these lines have no automatic mise equivalent\n'
+        printf '    and need a manual [env] _.path / _.source decision in mise.toml:\n'
+        printf '%s\n' "$extra" | sed 's/^/      /'
+      fi
     fi
+    report_leftover_conditions .envrc
   fi
 
-  local tv="$TARGET_DIR/.tool-versions"
-  if [ -f "$tv" ]; then
+  # .tool-versions
+  header='  - .tool-versions — still LOADED by mise while it exists, and it still works.'
+  if report_leftover_conditions .tool-versions > /dev/null; then
     found=1
-    printf '  - %s — still LOADED by mise, and it still works.\n' "$tv"
-    printf '    mise merges the two files per tool: a tool in both resolves from mise.toml, but a tool present\n'
-    printf '    ONLY in .tool-versions stays active from there. So anything the conversion missed keeps working\n'
-    printf '    invisibly until you delete this file, at which point it vanishes.\n'
-    printf '    Before deleting it, run `mise ls` and read the Config Source column: any tool still sourced from\n'
-    printf '    .tool-versions is one mise.toml does not cover. Only delete it once that list is empty.\n'
+    printf '%s\n' "$header"
+    if [ -f "$TARGET_DIR/.tool-versions" ]; then
+      printf '    mise merges the two files per tool: a tool in both resolves from mise.toml, but a tool present\n'
+      printf '    ONLY in .tool-versions stays active from there. So anything the conversion missed keeps working\n'
+      printf '    invisibly until you delete this file, at which point it vanishes.\n'
+      printf '    Before deleting it, run `mise ls` and read the Config Source column: any tool still sourced from\n'
+      printf '    .tool-versions is one mise.toml does not cover. Only delete it once that list is empty.\n'
+    fi
+    report_leftover_conditions .tool-versions
   fi
 
   [ "$found" -eq 0 ] && printf '  (none found)\n'

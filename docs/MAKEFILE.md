@@ -19,6 +19,15 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
   slot is commented out for that run. This is the recommended way to
   set up a new machine.
 
+  `install` does **not** run the removal loops in general — the smart
+  filter is what keeps a removal-listed package from being installed.
+  The one exception is slot 04's `RemoveAndPurge`, applied inline in
+  the `04-Install.versionmanagers` post-install action, because the
+  asdf → mise cutover is hard by construction: asdf and mise both
+  provide shims for the same tools, so leaving asdf installed
+  alongside mise is the failure mode the cutover exists to prevent.
+  See [Version Management](VERSION_MANAGEMENT.md).
+
   Up-front `dasel` gate: this target (and `update`, `verify`,
   `outdated`) depends on the `.PHONY: require-dasel` prerequisite,
   which runs `scripts/require_dasel_on_path.sh` BEFORE any host-tier
@@ -103,6 +112,12 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
   even if `brew upgrade` resurrects something via dependency
   resolution, the uninstall step removes it before the user sees the
   result. Does NOT re-apply `Install/` files.
+
+  It then calls `scripts/strip_asdf_zshrc_lines.sh`. The purge step
+  uninstalls `asdf` and `direnv`, and `update` never runs
+  `shell_setup.sh`, so without this call it would remove the binaries
+  and leave their `~/.zshrc` init lines erroring on every shell
+  startup. The script is a no-op once the lines are gone.
 
 - `make self-update`
   Pulls the latest `main` into this repo via `scripts/self_update.sh`.

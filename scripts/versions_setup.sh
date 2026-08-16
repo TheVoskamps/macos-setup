@@ -20,17 +20,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=mise_common.sh
 . "$SCRIPT_DIR/mise_common.sh"
 
-# LuaRocks pin for lua builds. LuaRocks 3.13.0 ships a broken rockspec
-# (duplicate 'tag' key) that fails to parse on Lua 5.5+ and also fails
-# during bootstrap on 5.4.x, so lua builds must use 3.12.2. The variable
-# name is the one the asdf lua plugin reads; mise runs asdf plugins
-# through its asdf backend, and the export is inert on any other backend.
+# LuaRocks pin for lua builds. LuaRocks 3.13.0 ships a rockspec with a
+# duplicate 'tag' key; under asdf's lua plugin that broke the build, so this
+# repo pinned 3.12.2. ASDF_LUA_LUAROCKS_VERSION is the variable name that
+# plugin reads.
 #
-# Do NOT drop this because upstream luarocks/luarocks#1851 is closed —
-# that issue was closed by a fix to the *release tooling*
-# (luarocks/luarocks#1885). The shipped 3.13.0 tarball is PGP-signed with
-# a pinned source_digest and was never re-rolled, so it is still broken.
-# Dropping the pin needs a 3.13.1 release. Tracked in:
+# On mise it is currently INERT, and deliberately kept anyway. Verified
+# against mise 2026.8.6 on 2026-08-16: `mise registry` resolves lua through
+# `vfox:mise-plugins/vfox-lua` FIRST, not the asdf plugin, and a sandboxed
+# `mise install lua@5.4` built 5.4.8 and bootstrapped LuaRocks *3.13.0*
+# successfully with this export set. So the variable neither took effect nor
+# needed to. It stays because it costs nothing and still applies to anyone
+# who pins lua to the asdf backend explicitly (`asdf:mise-plugins/mise-lua`),
+# where the original breakage is unchanged: upstream luarocks/luarocks#1851
+# was closed by a fix to the *release tooling* (luarocks/luarocks#1885), and
+# the shipped 3.13.0 tarball is PGP-signed with a pinned source_digest and
+# was never re-rolled. Tracked in:
 # https://github.com/TheVoskamps/macos-setup/issues/6
 export ASDF_LUA_LUAROCKS_VERSION="${ASDF_LUA_LUAROCKS_VERSION:-3.12.2}"
 

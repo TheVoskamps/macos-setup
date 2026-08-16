@@ -98,15 +98,26 @@ ensure_mise_env_file_setting() {
     return 0
   fi
 
-  if grep -Eq '^[[:space:]]*\[settings\][[:space:]]*$' "$cfg"; then
+  # The header regex tolerates a trailing TOML comment (`[settings] # mine`),
+  # because a hand-written config commonly carries one and TOML allows it.
+  # An anchored bare-header-only match would miss such a line, fall through
+  # to the append branch, and leave the file with TWO [settings] tables --
+  # invalid TOML that mise cannot parse.
+  local settings_re='^[[:space:]]*\[settings\][[:space:]]*(#.*)?$'
+  if grep -Eq "$settings_re" "$cfg"; then
     # A [settings] table already exists. Appending a second one at EOF
     # would be a duplicate-table TOML error, so insert the key directly
     # under the existing header instead.
     local tmp
     tmp="$(mktemp)"
-    awk '
+    # Handed to awk through the environment, not `-v`: `-v` runs escape
+    # processing over the value, which mangles the regex's `\[` into a bare
+    # `[` and turns `\[settings\]` into a character class that matches
+    # nothing here. ENVIRON passes the string through untouched.
+    MS_SETTINGS_RE="$settings_re" awk '
+      BEGIN { re = ENVIRON["MS_SETTINGS_RE"] }
       { print }
-      !done && /^[[:space:]]*\[settings\][[:space:]]*$/ {
+      !done && $0 ~ re {
         print "env_file = \".env\""
         done = 1
       }

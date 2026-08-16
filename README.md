@@ -670,7 +670,10 @@ and the shell/launchd `PATH` lines in
 `scripts/launchagent_runner.sh`).
 
 ```bash
-# Setup version managers (included in make install)
+# Install mise and its global config (included in make install).
+# This is the INSTALL third of the asdf -> mise cutover only; it does
+# not uninstall asdf/direnv or clean ~/.zshrc. `make install` and
+# `make update` do all three. See docs/VERSION_MANAGEMENT.md.
 make versionmanagers
 
 # Install the versions the resolved config declares
