@@ -96,7 +96,8 @@ export HOMEBREW_NO_ASK=1
 # entry point. The path is mise's own default install location; it is
 # stated identically by `mise_shims_dir` in scripts/mise_common.sh, which
 # this runner cannot source (the repo root is not resolved yet at this
-# point).
+# point), and a third time by scripts/shell_setup.sh, which writes the
+# literal into ~/.zshrc. Change one, change all three.
 export PATH="${XDG_DATA_HOME:-$HOME/.local/share}/mise/shims:$PATH"
 
 if [[ $# -lt 2 ]]; then

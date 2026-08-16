@@ -44,7 +44,7 @@ configuration management.
 
 ## Quick Start (Recommended)
 
-### Bootstrap Your Machine
+### Step 1: Bootstrap Your Machine
 
 Download and run the bootstrap script from any location:
 
@@ -76,7 +76,7 @@ bash ./bootstrap.sh
 > for when you *do* need SSH auth (pushing to this repo,
 > cloning private repos).
 
-### Install Everything
+### Step 2: Install Everything
 
 ```bash
 cd macos-setup
