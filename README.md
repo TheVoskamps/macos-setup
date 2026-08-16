@@ -326,11 +326,16 @@ reference.
 
 `make update` runs `make uninstall` and
 `make remove-and-purge` *after* the upgrade chain
-(Homebrew, casks, MAS, mise, then
+(Homebrew, casks, MAS, the slot-04 version-manager
+install, `make versions-update`, then
 `make versions-cleanup` to prune unused tool versions),
 so even if `brew upgrade`
 resurrects something via dependency resolution the
 removal step takes it out before the run completes.
+Applying the slot-04 `Install` before the removal loops
+is what keeps the asdf -> mise cutover safe on a host
+that never ran `make install` — see
+[docs/VERSION_MANAGEMENT.md](docs/VERSION_MANAGEMENT.md).
 
 ### Detecting and fixing collisions
 

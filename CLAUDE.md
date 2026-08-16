@@ -675,9 +675,20 @@ each owned by a different mechanism. `make install` and
 slot-04 RemoveAndPurge inline (a deliberate one-slot
 exception to "install does not run the removal loops")
 and reaches the strip via `03-Install.shell`, while
-`update` runs the removal loops and calls
+`update` applies the slot-04 `Install` tiers itself
+before the removal loops and calls
 `strip_asdf_zshrc_lines.sh` directly because it never
-runs `shell_setup.sh`. The per-slot
+runs `shell_setup.sh`. `update` needs that explicit
+install step because `brew upgrade` upgrades an
+installed formula but never installs an absent one, so a
+host that never ran `make install` would otherwise lose
+asdf and direnv and gain no mise. Install strictly
+precedes remove: if mise is still unreachable after the
+install step, `update` skips slot 04's `Uninstall` and
+`RemoveAndPurge` (via the `REMOVE_SKIP_BASENAMES`
+Makefile variable, which the batch removal loops honor)
+and skips the strip, warns, and exits non-zero -- every
+other removal slot still applies. The per-slot
 `make versionmanagers` does ONLY the install piece --
 per-slot targets install, they do not remove. Driving it
 by hand is `make versionmanagers`,

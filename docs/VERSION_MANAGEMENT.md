@@ -196,8 +196,21 @@ Separate pieces of work, each owned by a different mechanism:
 runs the slot-04 install and, as a deliberate one-slot exception to
 "install does not run the removal loops", the slot-04 RemoveAndPurge
 alongside it; the `03-Install.shell` action strips `~/.zshrc`.
-`make update` runs the removal loops and calls the strip script
-directly (it never runs `shell_setup.sh`).
+`make update` applies the slot-04 `Install` tiers itself before it
+reaches the removal loops, then runs those loops and calls the strip
+script directly (it never runs `shell_setup.sh`). The explicit install
+step is what carries a host that has never run `make install`:
+`brew upgrade` upgrades a formula that is already installed but never
+installs an absent one, so without it `update` would remove asdf and
+direnv and put nothing in their place.
+
+**Install strictly precedes remove.** If mise is still unreachable
+after `make update`'s install step — `brew bundle` failed, the host
+never opted into the `version-managers` profile, the binary is off
+`PATH` — the run skips slot 04's `Uninstall` and `RemoveAndPurge` and
+skips the `~/.zshrc` strip, warns, and exits non-zero. Every other
+removal slot still applies; only slot 04 is held back. A host is never
+left with the old version manager gone and no replacement.
 
 **`make versionmanagers` does only the install piece.** It is a
 per-slot target, and per-slot targets install; they do not remove.

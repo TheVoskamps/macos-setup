@@ -83,6 +83,16 @@ VERBOSE_NOTE = if [ -n "$${VERBOSE:-}" ]; then echo
 # `*-dry-run` targets and do not consult DRY_RUN.
 DRY_RUN_FLAG := $(if $(DRY_RUN),--dry-run,)
 
+# Space-separated list of removal-slot BASENAMES the batch removal loops
+# (`_uninstall_loop` / `_remove_and_purge_loop`) must skip at EVERY tier.
+# Empty by default, so `make uninstall` / `make remove-and-purge` are
+# unchanged. `update` sets it — as a command-line variable on its sub-make,
+# which make propagates down through the internal loop targets — for exactly
+# one case: the version-manager slot, when the mise install that must precede
+# the asdf/direnv removal did not leave a usable mise behind. Skipping only
+# the named slot keeps every unrelated removal in that run applying normally.
+REMOVE_SKIP_BASENAMES ?=
+
 # --- Version manager ---
 # The `versions-*` targets are implementation-neutral by design: the tool
 # they drive lives behind scripts/versions_setup.sh, so swapping it again
@@ -235,6 +245,10 @@ CORE_INSTALL  := 00-Install.core
 UI_INSTALL    := 02-Install.ui
 SHELL_INSTALL := 03-Install.shell
 VM_INSTALL    := 04-Install.versionmanagers
+# The removal-tree slots that carry the asdf/direnv side of the cutover.
+# `update` names them when it has to skip them (see REMOVE_SKIP_BASENAMES).
+VM_UNINSTALL  := 04-Uninstall.versionmanagers
+VM_PURGE      := 04-RemoveAndPurge.versionmanagers
 DEV_INSTALL   := 09-Install.development
 MSG_INSTALL   := 06-Install.messaging
 AWS_INSTALL   := 11-Install.aws
@@ -497,6 +511,7 @@ _uninstall_loop:
 	for u in $(ORDERED_UNINSTALL_FILES); do \
 		any=1; \
 		ubase="$$(basename "$$u")"; \
+		case " $(REMOVE_SKIP_BASENAMES) " in *" $$ubase "*) continue;; esac; \
 		if [ -f "$$u" ]; then \
 			bash $(REMOVE_RUNNER) "$$u" --mode=uninstall --banner="==> Applying global Uninstall: $$u" $(UNINSTALL_DRY_RUN); \
 		fi; \
@@ -532,6 +547,7 @@ _remove_and_purge_loop:
 	for u in $(ORDERED_PURGE_FILES); do \
 		any=1; \
 		ubase="$$(basename "$$u")"; \
+		case " $(REMOVE_SKIP_BASENAMES) " in *" $$ubase "*) continue;; esac; \
 		if [ -f "$$u" ]; then \
 			bash $(REMOVE_RUNNER) "$$u" --mode=purge --banner="==> Applying global RemoveAndPurge: $$u" $(PURGE_DRY_RUN); \
 		fi; \
@@ -552,11 +568,23 @@ _remove_and_purge_loop:
 # Homebrew's "Error: <cask>: ..." format. If it changes, unmatched errors safely fall
 # through to the generic error check which sets FAIL=1.
 #
-# `update` also completes the asdf -> mise cutover: the RemoveAndPurge loop
-# uninstalls asdf and direnv, and the strip_asdf_zshrc_lines.sh call after it
-# removes the ~/.zshrc init lines that would otherwise error on every shell
-# startup. `update` never runs shell_setup.sh, so without that call the
-# binaries would go while their broken init lines stayed.
+# `update` also completes the asdf -> mise cutover, all three pieces of it:
+# it applies the slot-04 Install tiers (which is what puts `mise` on a host
+# that has never run `make install` -- `brew upgrade` upgrades an installed
+# formula but never installs an absent one), then the RemoveAndPurge loop
+# uninstalls asdf and direnv, then strip_asdf_zshrc_lines.sh removes the
+# ~/.zshrc init lines that would otherwise error on every shell startup.
+# `update` never runs shell_setup.sh, so without that last call the binaries
+# would go while their broken init lines stayed.
+#
+# Order is load-bearing: INSTALL BEFORE REMOVE. The install step also runs
+# ahead of `versions-update`, which needs a mise to drive. If mise is still
+# not reachable after the install step -- brew bundle failed, the profile is
+# absent, the binary is off PATH -- the removal of asdf and direnv is skipped
+# via REMOVE_SKIP_BASENAMES (slot 04 only; every other slot still applies)
+# and so is the ~/.zshrc strip, because removing the old version manager
+# without a working replacement is strictly worse than leaving both in place.
+# That path warns and sets FAIL, so the run exits non-zero.
 update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed tool versions, then apply Uninstall and RemoveAndPurge
 	@FAIL=0; \
 	echo "==> Updating Homebrew..."; \
@@ -580,6 +608,18 @@ update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed too
 	fi; \
 	echo "==> Upgrading Mac App Store apps..."; \
 	if command -v mas >/dev/null 2>&1; then mas upgrade || FAIL=1; fi; \
+	echo "==> Installing version managers ($(INSTALL_DIR)/$(VM_INSTALL))..."; \
+	$(MAKE) -s $(call CANON,$(VM_INSTALL)) || FAIL=1; \
+	if bash -lc 'command -v "$${MISE:-mise}" >/dev/null 2>&1'; then \
+		VM_SKIP=""; \
+	else \
+		VM_SKIP="$(VM_UNINSTALL) $(VM_PURGE)"; \
+		echo "WARNING: mise is not reachable after the install step." >&2; \
+		echo "         Skipping the asdf/direnv removal ($(VM_PURGE)) and the ~/.zshrc strip," >&2; \
+		echo "         so this host is not left with no version manager at all." >&2; \
+		echo "         Every other removal slot still applies. Fix the mise install and re-run 'make update'." >&2; \
+		FAIL=1; \
+	fi; \
 	echo "==> Updating mise-managed tools..."; \
 	$(MAKE) -s versions-update || FAIL=1; \
 	echo "==> Pruning unused mise-managed versions..."; \
@@ -587,10 +627,10 @@ update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed too
 	echo "==> Updating ~/.claude/ from the global Claude config repo..."; \
 	if [ -x "scripts/claude_repo_setup.sh" ]; then bash scripts/claude_repo_setup.sh update || FAIL=1; else echo "scripts/claude_repo_setup.sh not found or not executable"; fi; \
 	echo "==> Applying Uninstall/ files..."; \
-	$(MAKE) -s uninstall || FAIL=1; \
+	$(MAKE) -s uninstall REMOVE_SKIP_BASENAMES="$$VM_SKIP" || FAIL=1; \
 	echo "==> Applying RemoveAndPurge/ files..."; \
-	$(MAKE) -s remove-and-purge || FAIL=1; \
-	bash scripts/strip_asdf_zshrc_lines.sh || FAIL=1; \
+	$(MAKE) -s remove-and-purge REMOVE_SKIP_BASENAMES="$$VM_SKIP" || FAIL=1; \
+	if [ -z "$$VM_SKIP" ]; then bash scripts/strip_asdf_zshrc_lines.sh || FAIL=1; fi; \
 	echo "==> All packages updated."; \
 	exit $$FAIL
 

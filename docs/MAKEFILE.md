@@ -106,19 +106,30 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
 
 - `make update`
   Runs `brew update`, upgrades all formulae and casks, upgrades MAS
-  apps, updates and prunes mise-managed tool versions, then applies
+  apps, applies the slot-04 (`versionmanagers`) `Install` tiers,
+  updates and prunes mise-managed tool versions, then applies
   `make uninstall` and
   `make remove-and-purge`. Uninstall and purge run *after* the
   upgrade chain so "uninstall wins over install" is the end state:
   even if `brew upgrade` resurrects something via dependency
   resolution, the uninstall step removes it before the user sees the
-  result. Does NOT re-apply `Install/` files.
+  result. Slot 04 is the ONE `Install/` slot `update` applies; no
+  other `Install/` file is re-applied.
 
   It then calls `scripts/strip_asdf_zshrc_lines.sh`. The purge step
   uninstalls `asdf` and `direnv`, and `update` never runs
   `shell_setup.sh`, so without this call it would remove the binaries
   and leave their `~/.zshrc` init lines erroring on every shell
   startup. The script is a no-op once the lines are gone.
+
+  Slot 04's `Install` runs first for the same reason: `brew upgrade`
+  upgrades an installed formula but never installs an absent one, so
+  on a host that never ran `make install` the purge would take asdf
+  and direnv out with no mise to replace them. Install strictly
+  precedes remove — and if mise is still unreachable after that
+  install step, `update` skips slot 04 in both removal loops and
+  skips the strip, warns, and exits non-zero, leaving every other
+  removal slot to apply normally.
 
 - `make self-update`
   Pulls the latest `main` into this repo via `scripts/self_update.sh`.

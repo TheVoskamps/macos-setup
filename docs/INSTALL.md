@@ -306,11 +306,22 @@ still print a visible error.
 ### `make update` applies both removal trees
 
 `make update` runs `make uninstall` and `make remove-and-purge` *after*
-its upgrade chain (Homebrew, casks, MAS, mise), so routine maintenance
+its upgrade chain (Homebrew, casks, MAS, the slot-04 version-manager
+install, then the mise update and prune), so routine maintenance
 keeps the in-scope `Uninstall/` and `RemoveAndPurge/` entries enforced
 even when `brew upgrade` resurrects a package via dependency
 resolution. Adding a package to either removal tree is enough — the
 next `make update` will take it out without a separate command.
+
+The one slot `make update` will hold back is slot 04. Its removal
+entries take asdf and direnv out, and the mise that replaces them is
+installed by the slot-04 `Install` earlier in the same run, so when
+mise is still unreachable after that install step `update` skips slot
+04 in both removal loops (via the `REMOVE_SKIP_BASENAMES` Makefile
+variable that `_uninstall_loop` and `_remove_and_purge_loop` honor),
+skips the `~/.zshrc` strip, warns, and exits non-zero. Every other
+slot applies normally. See
+[VERSION_MANAGEMENT.md](VERSION_MANAGEMENT.md).
 
 See [Makefile Usage](MAKEFILE.md#common-targets) for the full
 `make update` description.
