@@ -663,17 +663,18 @@ The Makefile targets are named `versions-*`, not after
 the tool that implements them, so swapping the
 implementation again leaves the public interface — target
 names, aliases, and doc lines — alone. The change is
-bounded to the scripts that name the tool directly
-(`scripts/versions_setup.sh`, `scripts/mise_common.sh`,
-and the shell/launchd `PATH` lines in
-`scripts/shell_setup.sh` and
-`scripts/launchagent_runner.sh`).
+bounded to the scripts that name the tool directly:
+`scripts/versions_setup.sh` and `scripts/mise_common.sh`
+drive it, `scripts/diagnose.sh` reports on it,
+`scripts/asdf_to_mise.sh` migrates a repo onto it, and
+`scripts/shell_setup.sh` / `scripts/launchagent_runner.sh`
+put its shims on `PATH`.
 
 ```bash
 # Install mise and its global config (included in make install).
-# This is the INSTALL third of the asdf -> mise cutover only; it does
+# This is the INSTALL piece of the asdf -> mise cutover only; it does
 # not uninstall asdf/direnv or clean ~/.zshrc. `make install` and
-# `make update` do all three. See docs/VERSION_MANAGEMENT.md.
+# `make update` do the whole cutover. See docs/VERSION_MANAGEMENT.md.
 make versionmanagers
 
 # Install the versions the resolved config declares

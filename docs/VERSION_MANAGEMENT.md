@@ -13,7 +13,7 @@ name: `version-managers` is the role, not the implementation.
 1. Install Homebrew bundles (including `mise`): `make versionmanagers`.
    This installs only — it does not uninstall `asdf`/`direnv` or touch
    `~/.zshrc`. See "The host-side cutover is hard, not staged" below
-   for the full three-command sequence, or just run `make install`.
+   for the full by-hand sequence, or just run `make install`.
 2. Install the versions the resolved config declares:
    `make versions-install`.
 3. Add a tool to the current project: `mise use <tool>@latest`
@@ -184,7 +184,7 @@ change. Running asdf and mise side by side is the classic failure mode
 
 ### What the cutover consists of
 
-Three separate pieces of work, each owned by a different mechanism:
+Separate pieces of work, each owned by a different mechanism:
 
 | Piece | Owner |
 | --- | --- |
@@ -192,7 +192,7 @@ Three separate pieces of work, each owned by a different mechanism:
 | Uninstall `asdf` + `direnv` | slot 04's `RemoveAndPurge` |
 | Strip orphaned `~/.zshrc` lines | `strip_asdf_zshrc_lines.sh` |
 
-**`make install` and `make update` each do all three.** `make install`
+**`make install` and `make update` each do all of it.** `make install`
 runs the slot-04 install and, as a deliberate one-slot exception to
 "install does not run the removal loops", the slot-04 RemoveAndPurge
 alongside it; the `03-Install.shell` action strips `~/.zshrc`.
@@ -261,7 +261,7 @@ What it does:
 - Writes the `.gitignore` block above, sentinel-guarded so a re-run
   is a no-op.
 - Warns about per-repo leftovers — for `.envrc` and `.tool-versions`,
-  reporting each of the three independent conditions below (on disk,
+  reporting each of the independent conditions below (on disk,
   ignore-ruled, tracked) with its own remedy.
 - Runs `mise cfg` and `mise ls` so you can see what actually
   resolved before trusting it.
@@ -308,11 +308,11 @@ satisfied with the conversion, these are yours to remove:
   decision.
 - `<repo>/.tool-versions` — **check before deleting**; see below.
 
-### Three independent conditions per repo leftover
+### Independent conditions per repo leftover
 
 For `.envrc` and `.tool-versions`, "clean up" is not one action.
-`make asdf-to-mise` reports three conditions, which occur in **any
-combination**, each with its own remedy:
+`make asdf-to-mise` reports the conditions below, which occur in
+**any combination**, each with its own remedy:
 
 | Condition | What it means | Remedy |
 | --- | --- | --- |

@@ -386,7 +386,12 @@ make diagnose  # Run system diagnostics
   `scripts/versions_setup.sh full`: ensures the global
   mise config (importing `~/.tool-versions` when
   present) plus `[settings] env_file = ".env"`, then
-  installs the declared tool versions
+  installs the declared tool versions. Under
+  `make install` (NOT under the per-slot
+  `make versionmanagers`) it then applies slot 04's
+  `RemoveAndPurge` across default + profiles + host, so
+  the asdf -> mise cutover cannot land half-applied —
+  see "Tool Version Configuration"
 - `06-Install.messaging` -> Generates `~/.msmtprc` from `config.toml` `[mailer]`
 - `09-Install.development` -> Installs VS Code extensions
 - `17-Install.ai` -> Installs Cursor extensions,
@@ -622,8 +627,12 @@ trees across ALL tiers, and therefore to every target that
 invokes the removal loops: `make update` (whose `% m update`
 output prompted issue #167), `make uninstall`,
 `make remove-and-purge`, and their dry-run companions.
-(`make install` does NOT run the removal loops, so it is
-unaffected by this gating.) The "does this file have an active
+(`make install` does not run the removal loops in
+general, so it is almost unaffected — its one exception,
+the slot-04 `RemoveAndPurge` it applies inline, goes
+through the same runner with the same `--banner`, so the
+gate covers it too. See "Tool Version Configuration".)
+The "does this file have an active
 directive?" decision lives in ONE place —
 `scripts/remove_runner.sh`, the only code that reads the
 file. The Makefile passes the banner text it would
@@ -659,10 +668,10 @@ plus `eval "$(mise activate zsh)"`;
 directory on `PATH` itself, because launchd never sources
 `~/.zshrc`.
 
-The cutover has three pieces -- install mise, uninstall
-asdf + direnv, strip the `~/.zshrc` lines -- owned by
-three different mechanisms. `make install` and
-`make update` each do all three: `install` runs the
+The cutover breaks into distinct pieces -- install mise,
+uninstall asdf + direnv, strip the `~/.zshrc` lines --
+each owned by a different mechanism. `make install` and
+`make update` each do all of them: `install` runs the
 slot-04 RemoveAndPurge inline (a deliberate one-slot
 exception to "install does not run the removal loops")
 and reaches the strip via `03-Install.shell`, while
@@ -1108,7 +1117,7 @@ former in-repo `logs/` directory. This is macOS-native
 | `host_tier_dir.sh` | Print external host-tier base path (Makefile helper) |
 | `seed_host_tier.sh` | Seed external host tier from template if absent |
 | `shell_setup.sh` | Configures zsh, Oh My Zsh; aggregates `aliases.zsh` |
-| `mise_common.sh` | Global mise config helpers (shared by the two below) |
+| `mise_common.sh` | Global mise config helpers, sourced by the mise scripts |
 | `versions_setup.sh` | Drives mise for the `versions-*` targets and slot 04 |
 | `asdf_to_mise.sh` | One-shot additive asdf+direnv -> mise repo migration |
 | `strip_asdf_zshrc_lines.sh` | Strips the ~/.zshrc lines the cutover orphans |

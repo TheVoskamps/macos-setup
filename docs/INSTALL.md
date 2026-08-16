@@ -195,6 +195,25 @@ outranks. A default entry only shadows the default Install, since
 nothing is below it. A host-tier Install file is only filtered against
 host removals, because nothing outranks it.
 
+#### The one slot `make install` also removes
+
+Filtering is normally the *whole* of `make install`'s relationship to
+the removal trees: it never runs the removal loops, so a package
+already installed on the host stays installed even when a removal slot
+lists it. Slot 04 is the one exception. Inside `make install`'s batch
+loop — not in the per-slot `make versionmanagers` / `make
+04_Install_versionmanagers` target — the `04-Install.versionmanagers`
+post-install action applies
+`RemoveAndPurge/04-RemoveAndPurge.versionmanagers` across default +
+profiles + host, right after `scripts/versions_setup.sh full`. The
+asdf → mise cutover cannot be half-applied — asdf and mise
+both provide shims for the same tools, so a host carrying both is the
+failure mode the cutover exists to prevent — and `make install` is the
+entry point a host reaches after `git pull`. The inline call goes
+through `scripts/remove_runner.sh` with a `--banner`, exactly like the
+loops, so the empty-slot quiet gating below applies to it unchanged.
+See [Version Management](VERSION_MANAGEMENT.md).
+
 ### `make uninstall` and `make uninstall-dry-run`
 
 `make uninstall` walks every `Uninstall/` file in numeric order. For
@@ -276,8 +295,9 @@ line:
 This applies to both the `Uninstall/` and `RemoveAndPurge/` trees across
 all tiers (global + profile + computer-specific), and so to
 `make uninstall`, `make remove-and-purge`, `make update`, the per-slot
-`NN_Uninstall_*` / `NN_RemoveAndPurge_*` targets, and the dry-run
-companions. The active-directive decision is made in one place
+`NN_Uninstall_*` / `NN_RemoveAndPurge_*` targets, the dry-run
+companions, and the slot-04 `RemoveAndPurge` that `make install`
+applies inline. The active-directive decision is made in one place
 (`scripts/remove_runner.sh`); the Makefile hands it the banner text via
 `--banner=<text>`, so the banner and the runner's lines are always shown
 or suppressed together. Malformed-directive aborts are unaffected — they

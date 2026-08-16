@@ -21,9 +21,10 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
 
   `install` does **not** run the removal loops in general — the smart
   filter is what keeps a removal-listed package from being installed.
-  The one exception is slot 04's `RemoveAndPurge`, applied inline in
-  the `04-Install.versionmanagers` post-install action, because the
-  asdf → mise cutover is hard by construction: asdf and mise both
+  The one exception is slot 04's `RemoveAndPurge`, applied inline by
+  the `04-Install.versionmanagers` post-install action in this batch
+  loop only (the per-slot `make versionmanagers` stays install-only),
+  because the asdf → mise cutover is hard by construction: asdf and mise both
   provide shims for the same tools, so leaving asdf installed
   alongside mise is the failure mode the cutover exists to prevent.
   See [Version Management](VERSION_MANAGEMENT.md).
