@@ -35,9 +35,13 @@ mise_global_config_path() {
   printf '%s/mise/config.toml\n' "${XDG_CONFIG_HOME:-$HOME/.config}"
 }
 
-# Directory mise installs its shims into. Kept as a function so the one
-# place that knows the path is here (see launchagent_runner.sh and
-# shell_setup.sh, which both need it on PATH).
+# Directory mise installs its shims into — mise's own default location.
+# This is the canonical statement of that path, but it is not the only
+# one: shell_setup.sh and launchagent_runner.sh each repeat the literal,
+# and neither calls this function. They cannot. shell_setup.sh writes the
+# expression into ~/.zshrc, which must not depend on this repo being
+# present; launchagent_runner.sh needs it on PATH before the repo root is
+# resolved, so it has nothing to source. Keep all three in sync by hand.
 mise_shims_dir() {
   printf '%s/mise/shims\n' "${XDG_DATA_HOME:-$HOME/.local/share}"
 }

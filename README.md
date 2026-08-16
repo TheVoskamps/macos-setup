@@ -44,7 +44,7 @@ configuration management.
 
 ## Quick Start (Recommended)
 
-### Step 1: Bootstrap Your Machine
+### Bootstrap Your Machine
 
 Download and run the bootstrap script from any location:
 
@@ -76,7 +76,7 @@ bash ./bootstrap.sh
 > for when you *do* need SSH auth (pushing to this repo,
 > cloning private repos).
 
-### Step 2: Install Everything
+### Install Everything
 
 ```bash
 cd macos-setup
@@ -661,9 +661,13 @@ them.
 
 The Makefile targets are named `versions-*`, not after
 the tool that implements them, so swapping the
-implementation again is a change to
-`scripts/versions_setup.sh` rather than to every caller,
-alias, and doc line.
+implementation again leaves the public interface — target
+names, aliases, and doc lines — alone. The change is
+bounded to the scripts that name the tool directly
+(`scripts/versions_setup.sh`, `scripts/mise_common.sh`,
+and the shell/launchd `PATH` lines in
+`scripts/shell_setup.sh` and
+`scripts/launchagent_runner.sh`).
 
 ```bash
 # Setup version managers (included in make install)
@@ -981,14 +985,15 @@ open "hammerspoon://launchWorkspace?name=macos-setup"
 
 **Tool versions** are pinned per project in `mise.toml`
 and per host in the global mise config
-(`${XDG_CONFIG_HOME:-~/.config}/mise/config.toml`).
-Neither is tracked in this repo; run `mise ls --current`
-to see what is active and which file set it.
+(`${XDG_CONFIG_HOME:-~/.config}/mise/config.toml`). This
+repo declares no `mise.toml` of its own, and the global
+config lives outside the repo; run `mise ls --current` to
+see what is active and which file set it.
 
 ### Per-repo config for `/issue:address`
 
 `.claude/rules/repo-config.md` at the repo root tells the
-`/issue:address` orchestrator and its four subagents
+`/issue:address` orchestrator and its subagents
 (`issue-developer`, `issue-fixer`, `doc-updater`,
 `pr-reviewer`) which VCS, issue tracker, and branching
 strategy this repo uses. Every run re-reads this file at
@@ -1097,7 +1102,7 @@ missing-script guards still warn-and-skip with success).
   single-winner; no per-key merge beyond that (a
   host-tier file with only `branch` does NOT inherit a
   default-tier `hostname`).
-- Two optional keys (queried with `dasel`):
+- Optional keys (queried with `dasel`):
   - `branch = "<name>"` -- branch to check out in
     `~/.claude/`. Missing / empty / unknown branch
     falls back to the global repo's default branch.

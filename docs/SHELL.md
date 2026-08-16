@@ -1,7 +1,7 @@
 # Shell Configuration
 
 This repo keeps zsh configuration under version control so your shortcuts
-stay consistent across machines. There are two layers:
+stay consistent across machines. The layers are:
 
 1. **Shared system helpers** in `shared/zsh/` — single source of truth,
    used identically on every machine. NOT three-tier resolved.
@@ -107,6 +107,11 @@ export PATH="${XDG_DATA_HOME:-$HOME/.local/share}/mise/shims:$PATH"
 eval "$(mise activate zsh)"
 ```
 
+The activation line is written only once `mise` is on `PATH`; a
+`make shell` that runs before `mise` is installed says so and adds
+the line on the next run. The shims `PATH` export is written
+unconditionally.
+
 Both forms are emitted on purpose. `mise activate zsh` is mise's
 preferred interactive form and is what makes `cd` into a project
 switch tool versions (and, with `[settings] env_file`, load its
@@ -121,8 +126,8 @@ reason (the same pattern it uses for `HOMEBREW_NO_ASK`).
 ### Migrating off asdf + direnv
 
 The `version-managers` profile moved from asdf + direnv to mise. The
-next `make shell` after that change removes the three `~/.zshrc`
-lines it orphans:
+next `make shell` after that change removes the `~/.zshrc` lines it
+orphans:
 
 - `. /opt/homebrew/opt/asdf/libexec/asdf.sh` — already dead before
   the migration (asdf 0.16+ is a single Go binary with no

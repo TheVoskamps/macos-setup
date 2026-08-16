@@ -17,9 +17,13 @@ name: `version-managers` is the role, not the implementation.
    (writes `mise.toml`).
 
 The Makefile targets are named `versions-*`, not after the tool that
-implements them, so swapping the implementation again is a change to
-`scripts/versions_setup.sh` rather than to every caller, alias, and
-doc line.
+implements them, so swapping the implementation again leaves the
+public interface — target names, aliases, and doc lines — alone. The
+change is bounded to the places that name the tool directly:
+`scripts/versions_setup.sh`, `scripts/mise_common.sh`, the `~/.zshrc`
+init lines in `scripts/shell_setup.sh`, the shims `PATH` export in
+`scripts/launchagent_runner.sh`, `scripts/diagnose.sh`, and the
+`version-managers` profile's `Install/04-Install.versionmanagers`.
 
 | Target | What it does |
 | --- | --- |
@@ -150,6 +154,26 @@ unrelated purposes is unaffected.
 `.gitignore` is a *signal*, not enforcement — it prevents committing
 a stray variant, not creating one. `mise cfg` remains the diagnostic
 for "which files actually loaded here".
+
+## The host-side cutover is hard, not staged
+
+The `version-managers` profile installs `mise` in its
+`Install/04-Install.versionmanagers` and removes `asdf` and `direnv`
+in its `RemoveAndPurge/04-RemoveAndPurge.versionmanagers`, in the same
+change. Running asdf and mise side by side is the classic failure mode
+— both provide shims for the same tools — so a host that opts into the
+profile loses the asdf and direnv **binaries** on its next
+`make update` (or `make remove-and-purge`).
+
+Removing the binaries touches none of the data they left behind:
+`~/.asdf/`, `~/.tool-versions`, `~/.config/direnv/lib/use_asdf.sh`,
+and every repo's `.envrc` / `.tool-versions` all survive. The
+"Manual cleanup checklist" below is what removes those, and it is
+yours to run.
+
+The `~/.zshrc` side of the cutover is `make shell`'s: it strips the
+asdf and direnv init lines it once wrote and adds the mise ones. See
+[Shell](SHELL.md) for the exact lines.
 
 ## Migrating a repo from asdf + direnv: `make asdf-to-mise`
 

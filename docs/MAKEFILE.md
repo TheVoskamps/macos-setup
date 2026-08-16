@@ -336,8 +336,12 @@ These per-Install targets also run a follow-up setup script:
 
 Additional targets exist to manage runtimes explicitly. They are named
 `versions-*` rather than after the tool that implements them (mise),
-so swapping the implementation is a change to
-`scripts/versions_setup.sh` rather than to every caller and doc line:
+so swapping the implementation leaves the target names, their callers,
+and the doc lines that reference them alone — the change is bounded to
+the scripts that name the tool directly
+(`scripts/versions_setup.sh`, `scripts/mise_common.sh`, and the
+shell/launchd `PATH` lines in `scripts/shell_setup.sh` and
+`scripts/launchagent_runner.sh`):
 
 - `make versions-install` — install the versions the resolved mise
   config declares

@@ -313,10 +313,12 @@ fi
 #      - the shims dir on PATH covers every non-interactive context that
 #        never sources this file at all.
 #
-#    The shims path is mise's own default install location; see
-#    `mise_shims_dir` in scripts/mise_common.sh, which
-#    scripts/launchagent_runner.sh uses to put the same directory on PATH
-#    for scheduled jobs (launchd does NOT source ~/.zshrc).
+#    The shims path is mise's own default install location. The literal
+#    below is written into ~/.zshrc, so it cannot be sourced from
+#    `mise_shims_dir` in scripts/mise_common.sh; that function states the
+#    same path, and scripts/launchagent_runner.sh repeats the literal a
+#    third time to put the directory on PATH for scheduled jobs (launchd
+#    does NOT source ~/.zshrc). Change one, change all three.
 _ms_ensure_line 'export PATH="${XDG_DATA_HOME:-$HOME/.local/share}/mise/shims:$PATH"' "$ZSHRC_PATH"
 if command -v mise >/dev/null 2>&1; then
   _ms_ensure_line 'eval "$(mise activate zsh)"' "$ZSHRC_PATH"

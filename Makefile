@@ -85,9 +85,12 @@ DRY_RUN_FLAG := $(if $(DRY_RUN),--dry-run,)
 
 # --- Version manager ---
 # The `versions-*` targets are implementation-neutral by design: the tool
-# they drive lives in scripts/versions_setup.sh, so swapping it again is a
-# one-file change rather than a rename of every caller, alias, and doc
-# line. Both the version-manager script and the migration script guard on
+# they drive lives behind scripts/versions_setup.sh, so swapping it again
+# leaves the public interface — target names, aliases, doc lines — alone.
+# The swap is bounded, not one-file: the tool is also named directly in
+# scripts/mise_common.sh, scripts/shell_setup.sh (the ~/.zshrc init lines),
+# scripts/launchagent_runner.sh (the shims PATH) and scripts/diagnose.sh.
+# Both the version-manager script and the migration script guard on
 # `command -v mise` themselves, so there is no bootstrap macro here.
 VERSIONS_SETUP := scripts/versions_setup.sh
 

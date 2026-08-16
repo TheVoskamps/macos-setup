@@ -205,7 +205,8 @@ make development ai aws
 
 # Version management (mise). Targets are named
 # `versions-*`, not after the tool, so swapping the
-# implementation is a one-file change.
+# implementation leaves target names, aliases, and doc
+# lines alone.
 make versionmanagers        # Full mise setup
 make versions-install       # Install declared versions
 make versions-outdated      # Check for newer versions
@@ -282,7 +283,7 @@ the SSH host alias used in the git remote URL are selected from the
 single-winner `[claude]` section of `config.toml` (host >
 the host's profiles in reverse list order > default; the
 highest tier with a non-empty value for a key wins, no per-key
-merge). The `[claude]` section accepts two optional keys:
+merge). The `[claude]` section accepts these optional keys:
 
 - `branch = "<name>"` -- git branch to check out in `~/.claude/`.
   Missing or unknown branch falls back to the global repo's
@@ -448,9 +449,9 @@ prompt the default for `install`/`upgrade`/`reinstall`
 (and, via `brew bundle`'s default upgrade, for `bundle`
 too), so an unattended `make update` / `make install`
 hangs forever with no TTY. `HOMEBREW_NO_ASK=1` disables
-it for every brew call with one lever. It is set in three
-scopes, because each has a distinct environment that the
-others don't reach:
+it for every brew call with one lever. It is set in each
+of the scopes below, because each has a distinct
+environment that the others don't reach:
 
 - **Interactive shell** — `scripts/core_setup.sh` (the
   `00-Install.core` post-install action) appends a
@@ -634,6 +635,24 @@ message regardless of the quiet gate.
 Runtimes are managed by **mise**, installed by the
 `version-managers` profile. The profile keeps its name:
 `version-managers` is the role, not the implementation.
+
+The cutover is hard, not staged: the same profile that
+installs `mise` in
+`Install/04-Install.versionmanagers` removes `asdf` and
+`direnv` in
+`RemoveAndPurge/04-RemoveAndPurge.versionmanagers`,
+because asdf and mise both provide shims for the same
+tools. Only the binaries go — `~/.asdf/`,
+`~/.tool-versions`, `~/.config/direnv/lib/use_asdf.sh`
+and every repo's `.envrc` / `.tool-versions` survive, and
+`make asdf-to-mise` warns about each rather than deleting
+it. `make shell` (`scripts/shell_setup.sh`) strips the
+asdf/direnv `~/.zshrc` init lines it once wrote and adds
+`export PATH="${XDG_DATA_HOME:-$HOME/.local/share}/mise/shims:$PATH"`
+plus `eval "$(mise activate zsh)"`;
+`scripts/launchagent_runner.sh` puts the same shims
+directory on `PATH` itself, because launchd never sources
+`~/.zshrc`.
 
 Per-project config is `mise.toml` -- the **one tracked
 config form**. mise reads several other forms as well
@@ -913,8 +932,8 @@ former in-repo `logs/` directory. This is macOS-native
   Claude Code.
 - `auto-approve-compound-commands.sh` registered
   on `PermissionRequest` and `PreToolUse` for Bash
-- On `PreToolUse`, returns a `deny` verdict for two
-  forbidden command shapes (anywhere in a compound,
+- On `PreToolUse`, returns a `deny` verdict for the
+  forbidden command shapes below (anywhere in a compound,
   anchored to start-of-string or an operator
   boundary `&&`, `||`, `;`, `|`):
   - `cd <path> && <command>` — the
@@ -954,7 +973,7 @@ former in-repo `logs/` directory. This is macOS-native
 - The only file under `.claude/` that is tracked
   in git (via a `.gitignore` negation). Everything
   else under `.claude/` remains ignored.
-- Read by `/issue:address` and the four issue-*
+- Read by `/issue:address` and the issue-*
   subagents (`issue-developer`, `issue-fixer`,
   `doc-updater`, `pr-reviewer`) at the start of
   every run; each aborts if the file is missing.
