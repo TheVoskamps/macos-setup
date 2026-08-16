@@ -245,8 +245,8 @@ else
 fi
 # <<< macos-setup zoxide init <<<
 
-# >>> macos-setup asdf/direnv init >>>
-# Idempotent asdf and direnv initialization (appends to ~/.zshrc only if missing)
+# >>> macos-setup mise init >>>
+# Idempotent mise initialization (appends to ~/.zshrc only if missing)
 _ms_ensure_line() {
   local line="$1" file="$2"
   [ -f "$file" ] || touch "$file"
@@ -256,68 +256,74 @@ _ms_ensure_line() {
   fi
 }
 
-# Resolve Homebrew prefix
-BREW_PREFIX="$(command -v brew >/dev/null 2>&1 && brew --prefix || echo /opt/homebrew)"
-[ -n "$BREW_PREFIX" ] || BREW_PREFIX="/opt/homebrew"
-
-# 1) Ensure asdf init line.
-#    asdf 0.16+ is a single Go binary; there is no longer a libexec/asdf.sh
-#    to source. The new init pattern (per upstream docs) is to put the
-#    shims dir on PATH directly. Older runs of this script wrote a
-#    `. /opt/homebrew/opt/asdf/libexec/asdf.sh` line into ~/.zshrc that now
-#    fails on every shell startup, so first remove any such legacy line
-#    (idempotent: a no-op once it's already gone), then ensure the new
-#    PATH form is present exactly once.
-#
-#    The `^\. ` anchor (literal `. ` at start of line) is deliberate and
-#    only matches the active form this script ever wrote. It intentionally
-#    preserves indented or commented variants ("    . .../asdf.sh",
-#    "# . .../asdf.sh") in case the user has hand-edited their ~/.zshrc to
-#    keep the line around for reference -- those variants are inert and
-#    safe to leave alone. Do not loosen the anchor.
 ZSHRC_PATH="$HOME/.zshrc"
-if [ -f "$ZSHRC_PATH" ] \
-   && grep -Eq '^\. .*/opt/asdf/libexec/asdf\.sh[[:space:]]*$' "$ZSHRC_PATH"; then
-  # Portable in-place edit via `sed -i.bak`, which writes the .bak backup
-  # natively (consistent with the rest of this script's ~/.zshrc mutations).
-  # Using `sed -i.bak` instead of a `grep -Ev` pipeline avoids a subtle
-  # `set -euo pipefail` trap: `grep -Ev` exits 1 when its output is empty
-  # (i.e. every input line matched the strip pattern), which would abort
-  # the script before the subsequent _ms_ensure_line call -- leaving the
-  # broken legacy line in place. `sed -d` has no such failure mode.
-  sed -i.bak -E '/^\. .*\/opt\/asdf\/libexec\/asdf\.sh[[:space:]]*$/d' "$ZSHRC_PATH"
-  echo "[SHELL-SETUP] Removed dead asdf init line (libexec/asdf.sh) from $ZSHRC_PATH (backup at $ZSHRC_PATH.bak)"
-fi
-_ms_ensure_line 'export PATH="${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH"' "$ZSHRC_PATH"
 
-# 2) Ensure direnv hook
-if command -v direnv >/dev/null 2>&1; then
-  _ms_ensure_line 'eval "$(direnv hook zsh)"' "$HOME/.zshrc"
-else
-  echo "[SHELL-SETUP] NOTE: direnv not yet installed; hook will be added after install."
-fi
-
-# 3) Ensure asdf plugins (idempotent). Override with: ASDF_PLUGINS="python nodejs"
-ASDF_BIN="$(command -v asdf || true)"
-[ -z "$ASDF_BIN" ] && [ -x "$BREW_PREFIX/bin/asdf" ] && ASDF_BIN="$BREW_PREFIX/bin/asdf"
-ASDF_PLUGINS_DEFAULT="python nodejs"
-ASDF_PLUGINS="${ASDF_PLUGINS:-$ASDF_PLUGINS_DEFAULT}"
-if [ -n "$ASDF_BIN" ]; then
-  # list existing plugins once to avoid multiple spawns
-  EXISTING="$("$ASDF_BIN" plugin list 2>/dev/null || true)"
-  for plug in $ASDF_PLUGINS; do
-    echo "$EXISTING" | grep -qx "$plug" && continue
-    case "$plug" in
-      python) "$ASDF_BIN" plugin add python https://github.com/asdf-community/asdf-python.git || true ;;
-      nodejs) "$ASDF_BIN" plugin add nodejs https://github.com/asdf-vm/asdf-nodejs.git      || true ;;
-      *)      "$ASDF_BIN" plugin add "$plug"                                              || true ;;
-    esac
-    echo "[SHELL-SETUP] asdf plugin ensured: $plug"
+# 1) Remove the ~/.zshrc lines the asdf -> mise migration orphans.
+#
+#    Three forms, all written by earlier runs of this script and all inert
+#    or broken once asdf and direnv are uninstalled:
+#      a. `. /opt/homebrew/opt/asdf/libexec/asdf.sh` — already dead before
+#         the migration (asdf 0.16+ is a single Go binary with no
+#         libexec/asdf.sh to source), and it errors on every shell startup.
+#      b. the asdf shims PATH export.
+#      c. the direnv hook.
+#
+#    Each pattern is anchored to the exact active form this script wrote.
+#    Indented or commented variants ("    . .../asdf.sh",
+#    "# eval \"$(direnv hook zsh)\"") are deliberately preserved in case
+#    the user hand-edited their ~/.zshrc to keep a line for reference --
+#    those variants are inert and safe to leave alone. Do not loosen the
+#    anchors.
+#
+#    The whole strip is guarded on at least one pattern matching, so a host
+#    that has already migrated is a no-op on re-run and gains no stray
+#    .bak. Portable in-place edit via `sed -i.bak`, which writes the backup
+#    natively (consistent with the rest of this script's ~/.zshrc
+#    mutations). `sed -i.bak` rather than a `grep -Ev` pipeline avoids a
+#    subtle `set -euo pipefail` trap: `grep -Ev` exits 1 when its output is
+#    empty (i.e. every input line matched the strip pattern), which would
+#    abort the script before the _ms_ensure_line calls below -- leaving the
+#    orphaned lines in place. `sed -d` has no such failure mode.
+_MS_ORPHANS=(
+  '^\. .*/opt/asdf/libexec/asdf\.sh[[:space:]]*$'
+  '^export PATH="[$][{]ASDF_DATA_DIR:-[$]HOME/[.]asdf[}]/shims:[$]PATH"[[:space:]]*$'
+  '^eval "[$][(]direnv hook zsh[)]"[[:space:]]*$'
+)
+if [ -f "$ZSHRC_PATH" ]; then
+  _ms_found_orphan=0
+  for _ms_pat in "${_MS_ORPHANS[@]}"; do
+    if grep -Eq "$_ms_pat" "$ZSHRC_PATH"; then _ms_found_orphan=1; fi
   done
-else
-  echo "[SHELL-SETUP] NOTE: asdf CLI not on PATH yet; skipping plugin ensure."
+  if [ "$_ms_found_orphan" -eq 1 ]; then
+    _ms_sed_args=()
+    for _ms_pat in "${_MS_ORPHANS[@]}"; do
+      _ms_sed_args+=(-e "/$_ms_pat/d")
+    done
+    sed -i.bak -E "${_ms_sed_args[@]}" "$ZSHRC_PATH"
+    echo "[SHELL-SETUP] Removed orphaned asdf/direnv init lines from $ZSHRC_PATH (backup at $ZSHRC_PATH.bak)"
+  fi
 fi
-# <<< macos-setup asdf/direnv init <<<
+
+# 2) Ensure the mise init lines.
+#
+#    Both forms are emitted, on purpose:
+#      - `mise activate zsh` is mise's preferred interactive form and is
+#        what makes `cd` into a project switch tool versions (and, with
+#        `[settings] env_file`, load its `.env`).
+#      - the shims dir on PATH covers every non-interactive context that
+#        never sources this file at all.
+#
+#    The shims path is mise's own default install location; see
+#    `mise_shims_dir` in scripts/mise_common.sh, which
+#    scripts/launchagent_runner.sh uses to put the same directory on PATH
+#    for scheduled jobs (launchd does NOT source ~/.zshrc).
+_ms_ensure_line 'export PATH="${XDG_DATA_HOME:-$HOME/.local/share}/mise/shims:$PATH"' "$ZSHRC_PATH"
+if command -v mise >/dev/null 2>&1; then
+  _ms_ensure_line 'eval "$(mise activate zsh)"' "$ZSHRC_PATH"
+else
+  echo "[SHELL-SETUP] NOTE: mise not yet installed; activation line will be added after install."
+fi
+# <<< macos-setup mise init <<<
 
 # >>> macos-setup PATH and claude symlink >>>
 # Ensure $HOME/.local/bin exists and is in PATH

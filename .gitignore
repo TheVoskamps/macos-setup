@@ -57,9 +57,17 @@ docker-data/
 *.log
 *.tmp
 
-#asdf / direnv
-.envrc
-/.tool-versions
+# --- mise (managed by macos-setup `make asdf-to-mise`) ---
+# mise.toml is the ONE tracked config form; it is deliberately NOT
+# ignored. Everything below is either machine-local or a
+# non-canonical location we do not use.
+/mise.local.toml
+/mise/config.toml
+/.mise/config.toml
+/.config/mise.toml
+/.config/mise/config.toml
+/.config/mise/conf.d/
+# --- end mise ---
 
 # Claude config — whitelist shareable files, ignore everything else.
 # New Claude-generated dirs (cache, sessions, projects, todos, ...) stay

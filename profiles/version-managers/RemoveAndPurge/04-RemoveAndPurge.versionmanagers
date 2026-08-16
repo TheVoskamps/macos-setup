@@ -1,0 +1,23 @@
+# 04-RemoveAndPurge.versionmanagers for the 'version-managers' profile
+#
+# mise subsumes both asdf and direnv, so this profile removes them in the
+# same change that installs mise. Running asdf and mise side by side is the
+# classic failure mode (both provide shims for the same tools), so the
+# cutover is hard rather than staged.
+#
+# Removing the binaries does NOT touch the data they left behind:
+# `~/.asdf/`, `~/.tool-versions`, `~/.config/direnv/lib/use_asdf.sh`, and
+# every repo's `.envrc` / `.tool-versions` all survive. `make asdf-to-mise`
+# warns about each of them; you decide when to delete them.
+
+# Taps
+
+# Homebrew formulae
+brew 'asdf'
+brew 'direnv'
+
+# Casks
+
+# Other formulae
+
+# Mac App Store (mas)

@@ -32,8 +32,7 @@
   Shell environment, terminal tools, and related
   utilities
 - [04-Install.versionmanagers](../Install/04-Install.versionmanagers)
-  — Version managers and environment tooling (asdf,
-  direnv, etc.)
+  — Version managers and environment tooling (mise, etc.)
 - [05-Install.tools](../Install/05-Install.tools) —
   General developer tools and utilities
 - [06-Install.messaging](../Install/06-Install.messaging)
@@ -287,7 +286,7 @@ still print a visible error.
 ### `make update` applies both removal trees
 
 `make update` runs `make uninstall` and `make remove-and-purge` *after*
-its upgrade chain (Homebrew, casks, MAS, asdf), so routine maintenance
+its upgrade chain (Homebrew, casks, MAS, mise), so routine maintenance
 keeps the in-scope `Uninstall/` and `RemoveAndPurge/` entries enforced
 even when `brew upgrade` resurrects a package via dependency
 resolution. Adding a package to either removal tree is enough — the

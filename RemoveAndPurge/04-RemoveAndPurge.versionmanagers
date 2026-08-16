@@ -1,4 +1,4 @@
-# 04-RemoveAndPurge.versionmanagers: Packages to remove-and-purge — Version managers and environment tooling (asdf, direnv, etc.)
+# 04-RemoveAndPurge.versionmanagers: Packages to remove-and-purge — Version managers and environment tooling (mise, etc.)
 #
 # Entries listed here are removed by `make remove-and-purge` /
 # `make 04_RemoveAndPurge_versionmanagers` and are filtered out of the matching

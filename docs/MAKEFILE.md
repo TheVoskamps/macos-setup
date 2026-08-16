@@ -96,7 +96,8 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
 
 - `make update`
   Runs `brew update`, upgrades all formulae and casks, upgrades MAS
-  apps, updates asdf-managed tools, then applies `make uninstall` and
+  apps, updates and prunes mise-managed tool versions, then applies
+  `make uninstall` and
   `make remove-and-purge`. Uninstall and purge run *after* the
   upgrade chain so "uninstall wins over install" is the end state:
   even if `brew upgrade` resurrects something via dependency
@@ -126,7 +127,7 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
   ```
 
   Out of scope: this only updates the working tree. Use `make update`
-  to upgrade Homebrew/asdf/installed software.
+  to upgrade Homebrew/managed tool versions/installed software.
 
 - `make verify`
   Runs `scripts/verify.sh` (per-Install-file verification) and then
@@ -238,7 +239,7 @@ fails. Failed tiers are accumulated and reported in an end-of-run
 summary, and the target exits non-zero if any tier failed (otherwise
 it exits 0 with no summary). A failing cask in one tier therefore
 never silently skips the other tiers of the same slot. The slot's
-post-install setup action (e.g. Hammerspoon for `ui`, asdf for
+post-install setup action (e.g. Hammerspoon for `ui`, mise for
 `versionmanagers`) runs only when the brew-bundle tiers all succeed,
 unchanged from before. Per-slot targets honour `VERBOSE=1` the same
 way `make install` does — the per-tier "not found" lines are quiet by
@@ -306,11 +307,11 @@ These per-Install targets also run a follow-up setup script:
   Applies shell tools and then runs `scripts/shell_setup.sh`.
 
 - `make 04_Install_versionmanagers`
-  Applies version managers and then automatically runs:
-  - `make asdf-plugins-init`
-  - `make asdf-pin-latest`
-  - `make asdf-install`
-  - `make direnv-setup`
+  Applies version managers and then runs `scripts/versions_setup.sh
+  full`: ensures the global mise config exists (importing
+  `~/.tool-versions` when the host has one), ensures
+  `[settings] env_file = ".env"` in it, then installs the tool
+  versions the resolved config declares.
 
 - `make 06_Install_messaging`
   Applies messaging tools and then generates `~/.msmtprc` from the
@@ -331,33 +332,47 @@ These per-Install targets also run a follow-up setup script:
   plugins via `~/.claude/plugins.sh --install` (same as
   `make claude-install`).
 
-## asdf and direnv
+## Version management
 
-Additional targets exist to manage runtimes explicitly:
+Additional targets exist to manage runtimes explicitly. They are named
+`versions-*` rather than after the tool that implements them (mise),
+so swapping the implementation is a change to
+`scripts/versions_setup.sh` rather than to every caller and doc line:
 
-- `make asdf-plugins-init`
-- `make asdf-pin-latest`
-- `make asdf-install`
-- `make asdf-lua`
-- `make asdf-node`
-- `make asdf-python`
-- `make asdf-pnpm`
-- `make direnv-setup`
+- `make versions-install` — install the versions the resolved mise
+  config declares
+- `make versions-update` — install latest versions AND bump the
+  config (`mise up --bump`)
+- `make versions-outdated` — report tools with a newer version
+  available
+- `make versions-cleanup` — remove unused installed versions
+  (`mise prune`)
+- `make versions-cleanup-dry-run` — show what cleanup would remove
 
-These integrate with the `.tool-versions` file to ensure
-reproducibility.
+`make update` runs `versions-update` then `versions-cleanup`;
+`make outdated` runs `versions-outdated`.
 
 ---
 
 ## Directory Enablement
 
-To enable asdf+direnv in any project directory, run:
+To convert a project directory from asdf + direnv to mise, run:
 
 ```bash
-make direnv-enable
+make asdf-to-mise
 ```
 
-This writes `use asdf` and `dotenv_if_exists` into `.envrc` (in that
-order) and runs `direnv allow`. The `dotenv_if_exists` line loads a
-local `.env` file when one is present and is a no-op otherwise, so
-directories without a `.env` are unaffected.
+It operates on the directory you invoked it from (`START_DIR`), one
+repo per run. It is **purely additive**: it generates `mise.toml` from
+`.tool-versions`, writes a sentinel-guarded `.gitignore` block pinning
+`mise.toml` as the one tracked config form, and warns about every
+asdf/direnv leftover it finds — while deleting nothing, moving
+nothing, untracking nothing, and committing nothing.
+
+`make asdf-to-mise` is a deliberate exception to the
+implementation-neutral naming above: it names both endpoints on
+purpose because it is a migration verb, and it is deleted once every
+repo and host is over.
+
+See [Version Management](VERSION_MANAGEMENT.md) for the full runbook,
+the multi-version-line pre-flight, and the manual cleanup checklist.

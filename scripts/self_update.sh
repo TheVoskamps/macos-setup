@@ -32,7 +32,7 @@ Refuses (does nothing, exits non-zero) if:
   - `git stash pop` conflicts — the user's changes remain in stash@{0}
     and must be resolved manually.
 
-Out of scope: updating Homebrew/asdf/installed software (use
+Out of scope: updating Homebrew/managed tool versions/installed software (use
 `make update`), rebasing the original branch onto the new `main`,
 auto-resolving conflicts.
 EOF

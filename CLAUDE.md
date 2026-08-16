@@ -36,7 +36,7 @@ trees drive cleanup and a smart filter on `make install`:
    at `${XDG_CONFIG_HOME:-~/.config}/macos-setup/`
    (overridable via `MACOS_SETUP_HOST_DIR`). See
    `host_tier_dir` in `scripts/config_common.sh`.
-4. **Version pinning** via `.tool-versions` ensures
+4. **Version pinning** via `mise.toml` ensures
    reproducible environments
 5. **Post-install automation** for UI, shell, VS Code,
    Claude, AWS CDK, and Hammerspoon
@@ -203,30 +203,28 @@ output on a no-dasel run.
 make core security ui shell versionmanagers
 make development ai aws
 
-# Version management
-make versionmanagers      # Full asdf + direnv setup
-make asdf-plugins-init    # Add plugins
-make asdf-pin-latest      # Pin latest versions
-make asdf-install         # Install pinned versions
-make asdf-outdated        # Check for newer versions
-make asdf-update          # Update and install latest
+# Version management (mise). Targets are named
+# `versions-*`, not after the tool, so swapping the
+# implementation is a one-file change.
+make versionmanagers        # Full mise setup
+make versions-install       # Install declared versions
+make versions-outdated      # Check for newer versions
+make versions-update        # Install latest AND bump the
+                            # config (mise up --bump) --
+                            # one verb, so the version it
+                            # installs is the one active
 
-# Prune old, unused installed versions. Keep-set per
-# plugin = versions referenced in any .tool-versions
-# under $HOME, currently-active versions, and the
-# newest 3 (sort -V). Everything else is uninstalled.
-make asdf-cleanup-dry-run # Show what would be removed
-make asdf-cleanup         # Remove the old versions
-# Note: asdf-cleanup also runs automatically after
-# asdf-update as part of 'make update'.
+# Prune unused installed versions (mise prune).
+make versions-cleanup-dry-run # Show what would be removed
+make versions-cleanup         # Remove them
+# Note: versions-cleanup also runs automatically after
+# versions-update as part of 'make update'.
 
-# Note: asdf-update installs latest versions but
-# does NOT update .tool-versions or activate them.
-# Use 'asdf set <plugin> <version> -u' (home) or
-# '-p' (parent .tool-versions) to activate
-
-make direnv-setup         # Configure direnv
-make direnv-enable        # Enable in current dir
+# One-shot migration verb (deliberate exception to the
+# implementation-neutral naming): convert the CALLING
+# repo from asdf+direnv to mise. Purely additive --
+# deletes, moves, untracks, and commits nothing.
+make asdf-to-mise
 ```
 
 ### Workspace Management
@@ -316,7 +314,7 @@ make claude-plugins-update   # Sync plugins only: ~/.claude/plugins.sh
 `make ai` and `make install` call `claude-install` automatically
 as part of the post-install action for `17-Install.ai`.
 `make update` runs `claude-update` and `make outdated` runs
-`claude-outdated` alongside the existing brew/asdf checks.
+`claude-outdated` alongside the existing brew/tool-version checks.
 
 **Plugin sync:** the global Claude config repo ships its own
 `plugins.sh` at the repo root (`~/.claude/plugins.sh` once cloned),
@@ -356,9 +354,9 @@ helper, leaving the caller's cwd untouched.
 
 ```bash
 make outdated  # Check outdated packages/tools
-make update    # Update Homebrew/packages/asdf, prune
-               # old asdf versions (asdf-cleanup), then
-               # apply Uninstall and RemoveAndPurge
+make update    # Update Homebrew/packages/tool versions,
+               # prune unused versions (versions-cleanup),
+               # then apply Uninstall and RemoveAndPurge
 make verify    # Verify installations + check for
                # same-tier Install/Uninstall+RemoveAndPurge
                # collisions
@@ -380,7 +378,11 @@ make diagnose  # Run system diagnostics
 - `02-Install.ui` -> Runs Finder config and
   Hammerspoon setup
 - `03-Install.shell` -> Runs `scripts/shell_setup.sh`
-- `04-Install.versionmanagers` -> Sets up asdf/direnv
+- `04-Install.versionmanagers` -> Runs
+  `scripts/versions_setup.sh full`: ensures the global
+  mise config (importing `~/.tool-versions` when
+  present) plus `[settings] env_file = ".env"`, then
+  installs the declared tool versions
 - `06-Install.messaging` -> Generates `~/.msmtprc` from `config.toml` `[mailer]`
 - `09-Install.development` -> Installs VS Code extensions
 - `17-Install.ai` -> Installs Cursor extensions,
@@ -555,7 +557,7 @@ the target on the first non-zero exit.) A clean
 `make install` exits 0 with `All Install files
 applied.`; a clean per-slot target exits 0 with no
 summary. Per-slot post-install setup actions
-(hammerspoon, asdf, claude, etc.) are unchanged.
+(hammerspoon, mise, claude, etc.) are unchanged.
 `make update` was already failure-tolerant.
 
 Both code paths are **quiet by default** about
@@ -627,38 +629,78 @@ suppressed or shown together and can never disagree. Real
 errors (malformed directives) still abort with a visible
 message regardless of the quiet gate.
 
-### asdf Plugin Configuration
+### Tool Version Configuration
 
-Per-plugin version resolution is configured via
-`asdf-plugins.toml`, a single-winner file (the
-highest-priority tier with it wins: host > the host's
-profiles in reverse list order > default). Default config
-lives at `default/asdf-plugins.toml`.
+Runtimes are managed by **mise**, installed by the
+`version-managers` profile. The profile keeps its name:
+`version-managers` is the role, not the implementation.
 
-Each `[plugin]` section supports:
+Per-project config is `mise.toml` -- the **one tracked
+config form**. mise reads several other forms as well
+(`mise.local.toml`, `mise/config.toml`,
+`.mise/config.toml`, `.config/mise.toml`,
+`.config/mise/config.toml`, `.config/mise/conf.d/*.toml`),
+all merged with top winning, and the directory walk
+recurses upward to the filesystem root WITHOUT stopping
+at a git boundary -- so a stray `mise.toml` in a parent
+directory silently applies to every repo beneath it.
+The `.gitignore` block `make asdf-to-mise` writes ignores
+every non-canonical form to keep that from happening.
+`mise cfg` is the diagnostic for "which files actually
+loaded here".
 
-- `filter` -- grep pattern applied to
-  `asdf list all <plugin>` (e.g., `"^temurin-"`)
-- `filter_exclude` -- grep -v pattern to remove
-  unwanted matches (e.g., `"jre"`)
-- `max_version` -- version ceiling; only versions
-  `<=` this value (via `sort -V`) are considered
+The global config lives at mise's own default path,
+`${XDG_CONFIG_HOME:-~/.config}/mise/config.toml`, and
+carries `[settings] env_file = ".env"` -- the true
+`dotenv_if_exists` analogue. (The alternative,
+`[env] _.file`, resolves relative to the config file
+that declares it, so in the global config it would look
+for `~/.env`.) Accepted trade-off: the global setting
+fires on mise's directory-change hook, so a new terminal
+tab opened already inside the directory does not load
+the `.env`.
 
-Plugins without a `[plugin]` section use
-`asdf latest <plugin>` as before. All version
-resolution (`make asdf-pin-latest`,
-`make asdf-update`, `make asdf-outdated`) goes
-through `resolve_latest_version()` in
-`scripts/asdf_setup.sh`, which reads this config.
+mise's native version-prefix matching replaces the old
+bespoke `filter` / `filter_exclude` DSL
+(`java = "temurin"` selects the newest Temurin JDK; jre
+builds are named `temurin-jre-*` and are not selected).
+There is no native equivalent of a `max_version`
+ceiling, and none is needed: the one ceiling this repo
+carried was lua's, whose recorded intent was "stay below
+Lua 5.5", so `lua = "5.4"` is the faithful translation.
 
-Example (`asdf-plugins.toml`):
+**The LuaRocks pin.** lua builds must use LuaRocks
+3.12.2 -- 3.13.0 ships a broken rockspec (duplicate
+`tag` key) that fails to parse on Lua 5.5+ and also
+fails during bootstrap on 5.4.x.
+`scripts/versions_setup.sh` exports
+`ASDF_LUA_LUAROCKS_VERSION=3.12.2` so every
+`make versions-*` invocation carries it. Upstream
+`luarocks/luarocks#1851` being closed is NOT license to
+drop the pin -- it was closed by a fix to the release
+tooling, and the shipped 3.13.0 tarball is PGP-signed
+with a pinned `source_digest` and was never re-rolled.
+Dropping the pin needs a 3.13.1 release; tracked in
+issue #6.
 
-```toml
-[java]
-filter = "^temurin-"
-filter_exclude = "jre"
-# max_version = "temurin-25.0.2+10.0.LTS"
-```
+**`make asdf-to-mise`** is the one-shot migration verb
+and a deliberate exception to the
+implementation-neutral naming (it names both endpoints
+on purpose, and is deleted once every repo and host is
+over). It operates on the CALLING directory
+(`START_DIR`), one repo per run, and is purely
+additive: it ensures the global config, generates
+`mise.toml` from `.tool-versions`, writes the
+`.gitignore` block, and warns about every asdf/direnv
+leftover -- while deleting, moving, untracking, and
+committing nothing. It aborts if the target is not a
+git repository root, and aborts (quoting the offending
+line, writing no `mise.toml`) on a multi-version
+`.tool-versions` line such as `java temurin 26.0.1+8`,
+which mise's converter turns into a TOML array that
+resolves as two separate installs. See
+`docs/VERSION_MANAGEMENT.md` for the full runbook and
+the manual cleanup checklist.
 
 ### Mailer Configuration
 
@@ -1016,6 +1058,9 @@ former in-repo `logs/` directory. This is macOS-native
 | `host_tier_dir.sh` | Print external host-tier base path (Makefile helper) |
 | `seed_host_tier.sh` | Seed external host tier from template if absent |
 | `shell_setup.sh` | Configures zsh, Oh My Zsh; aggregates `aliases.zsh` |
+| `mise_common.sh` | Global mise config helpers (shared by the two below) |
+| `versions_setup.sh` | Drives mise for the `versions-*` targets and slot 04 |
+| `asdf_to_mise.sh` | One-shot additive asdf+direnv -> mise repo migration |
 | `vscode_extensions.sh` | Installs VS Code extensions |
 | `vscode_setup.sh` | Symlinks VS Code `settings.json` (single-winner) |
 | `hammerspoon_setup.sh` | Symlinks HS config; robust reload (IPC + relaunch) |
@@ -1044,10 +1089,11 @@ All scripts are in the `scripts/` directory.
 To see what versions are currently installed and active:
 
 ```bash
-asdf list            # All installed versions
-asdf list <plugin>   # Versions for specific plugin
-asdf current         # Currently active versions
-cat .tool-versions   # Pinned versions for project
+mise ls              # All installed versions
+mise ls <tool>       # Versions for a specific tool
+mise ls --current    # Currently active versions
+mise cfg             # Which config files loaded here
+cat mise.toml        # Pinned versions for project
 ```
 
 ## Working with This Repository
