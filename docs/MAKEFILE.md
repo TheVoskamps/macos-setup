@@ -27,6 +27,12 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
   because the asdf → mise cutover is hard by construction: asdf and mise both
   provide shims for the same tools, so leaving asdf installed
   alongside mise is the failure mode the cutover exists to prevent.
+  That inline purge is gated on the `MISE_REACHABLE` Makefile macro —
+  the same probe `update` uses, evaluated immediately before the
+  removal rather than left to the surrounding `set -e`. If mise is not
+  reachable at that moment the purge is skipped entirely, the run
+  warns, and `make install` exits non-zero, so a host is never left
+  with asdf gone and no mise.
   See [Version Management](VERSION_MANAGEMENT.md).
 
   Up-front `dasel` gate: this target (and `update`, `verify`,
@@ -56,7 +62,13 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
   summary listing each failed slot. It exits non-zero if any slot
   failed (otherwise it exits 0 with `All Install files applied.`). This
   lets a single failing cask be left for later without blocking every
-  later slot — fix the listed slots and re-run `make install`.
+  later slot — fix the listed slots and re-run `make install`. A
+  slot-04 `RemoveAndPurge` that returned non-zero lands in that same
+  summary; one that was *held back* by the `MISE_REACHABLE` guard is
+  tracked separately and prints its own
+  `==> Skipped the asdf/direnv removal ...` line after the summary.
+  Either one suppresses `All Install files applied.` and makes the run
+  exit non-zero.
 
   Quiet by default: the tier walk probes every profile and the host
   tier for each Install slot, but only contributing tiers print output
@@ -85,6 +97,16 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
   with at least one active directive prints fully, including
   `skip: <pkg> not installed` lines. Set `VERBOSE=1` to restore all
   lines for every slot, including empty ones, when debugging.
+
+  Both removal loops run through `scripts/remove_runner.sh`, which
+  honors `BREW`, `MAS`, and `SUDO` overrides at **every** shell-out —
+  the `brew list` / `mas list` probes as well as the uninstalls. GNU
+  make exports command-line variables into every recipe's
+  environment, so `make uninstall BREW=<stub> MAS=<stub> SUDO=<stub>`
+  reaches the runner. This is how a test drives the removal loops
+  without touching real Homebrew, the real Mac App Store, or real
+  `sudo`; see
+  [Overriding the package-manager binaries](INSTALL.md#overriding-the-package-manager-binaries).
 
 - `make uninstall-dry-run`
   Same as `make uninstall` but only prints what would happen. Safe to
@@ -126,10 +148,11 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
   upgrades an installed formula but never installs an absent one, so
   on a host that never ran `make install` the purge would take asdf
   and direnv out with no mise to replace them. Install strictly
-  precedes remove — and if mise is still unreachable after that
-  install step, `update` skips slot 04 in both removal loops and
-  skips the strip, warns, and exits non-zero, leaving every other
-  removal slot to apply normally.
+  precedes remove — and if the `MISE_REACHABLE` probe (the same macro
+  `install` gates its inline purge on, so the two destructive paths
+  cannot drift) still finds no mise after that install step, `update`
+  skips slot 04 in both removal loops and skips the strip, warns, and
+  exits non-zero, leaving every other removal slot to apply normally.
 
 - `make self-update`
   Pulls the latest `main` into this repo via `scripts/self_update.sh`.
