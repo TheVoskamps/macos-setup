@@ -259,7 +259,7 @@ ZSHRC_PATH="$HOME/.zshrc"
 #    The patterns, their anchoring rationale, and the sed mechanics live in
 #    scripts/strip_asdf_zshrc_lines.sh, because the `update` Makefile target
 #    needs the same strip and does not run this script: it uninstalls asdf
-#    and direnv via the RemoveAndPurge loop, which would otherwise leave a
+#    and direnv via the purge loop, which would otherwise leave a
 #    broken `direnv hook` line erroring on every shell startup.
 #
 #    Absolute /bin/bash, not a PATH-resolved bare `bash` (issue #37): the

@@ -25,7 +25,7 @@ _macos_setup_repo() {
     else
         # Older checkouts predate resolve_repo_root.sh. Fall back to
         # the inline calculation so a freshly-pulled-but-not-yet-
-        # `make shell`-rerun checkout doesn't break `m`.
+        # `make shell_setup`-rerun checkout doesn't break `m`.
         (cd "$(dirname "$abs_target")/.." && pwd)
     fi
 }

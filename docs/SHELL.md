@@ -47,6 +47,15 @@ works on any machine regardless of where the repo lives. The same
 resolver is used by `scripts/launchagent_runner.sh` so scheduled
 jobs and `m()` always agree on the repo root.
 
+`m` carries its own zsh completer, `_m`, registered in the same file.
+`m <TAB>` offers the `##`-documented Makefile targets plus `profile`;
+`m profile <TAB>` offers the profile directory names, minus the ones
+already typed on the command line. It resolves the repo the same way
+`m()` does, so it works from any cwd, and it reads profile candidates
+straight from the `profiles/` directory glob rather than from
+`make profiles` or a `dasel` query — a config read per keystroke would
+be noticeable.
+
 ## Aliases (`aliases.zsh`)
 
 - Files: `default/aliases.zsh` (in repo, lowest
@@ -180,14 +189,15 @@ either of the paths below, and each must leave `~/.zshrc` clean:
 
 - `make shell_setup` / `make install`, via `scripts/shell_setup.sh`.
 - `make update`, which calls the script directly — it uninstalls asdf
-  and direnv through the `RemoveAndPurge` loop but never runs
-  `shell_setup.sh`, so without the direct call it would remove the
-  binaries and leave their broken init lines behind.
+  and direnv through the purge loop (the `version-managers` tier's
+  `[profile] purge` array) but never runs `shell_setup.sh`, so without
+  the direct call it would remove the binaries and leave their broken
+  init lines behind.
 
 On the `make update` path both rewrites sit behind the same guard as
 the asdf/direnv removal: if mise is still not reachable after the
-slot-04 install, `update` skips the removal and both `~/.zshrc`
-rewrites, warns, and exits non-zero. See
+`version-managers` tier is applied, `update` skips the removal and both
+`~/.zshrc` rewrites, warns, and exits non-zero. See
 [Version Management](VERSION_MANAGEMENT.md).
 
 `ZSHRC_PATH` overrides the file it edits (the test suite points it at

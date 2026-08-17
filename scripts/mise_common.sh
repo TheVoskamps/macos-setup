@@ -24,7 +24,7 @@ MISE="${MISE:-mise}"
 # Abort unless mise is reachable by the configured name.
 require_mise() {
   if ! command -v "$MISE" >/dev/null 2>&1; then
-    mise_warn "mise not found on PATH. If mise is already installed, open a new shell so the shims/activation line from 'make shell' takes effect; otherwise install it first (e.g. 'brew install mise')."
+    mise_warn "mise not found on PATH. If mise is already installed, open a new shell so the shims/activation line from 'make shell_setup' takes effect; otherwise install it first (e.g. 'brew install mise')."
     return 1
   fi
 }

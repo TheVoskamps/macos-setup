@@ -408,9 +408,9 @@ make schedule-daily
 # Weekly updates on Sundays at 11am
 make schedule-weekly
 
-# Remove automatic updates
-make unschedule-daily
-make unschedule-weekly
+# Remove every macos-setup LaunchAgent (daily, weekly,
+# one-time, email-test)
+make unschedule-all
 ```
 
 LaunchAgents run in the user's login session, providing

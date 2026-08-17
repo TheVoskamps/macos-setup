@@ -14,10 +14,12 @@ own `config.toml` rather than in a `case` statement here, so
 no Makefile edit.
 
 Every recipe runs under `BASH_BIN`, the absolute `/bin/bash`, which is
-also what `SHELL` is set from, and every helper script a recipe invokes
-is named as `$(BASH_BIN) scripts/<name>.sh` rather than a
-`PATH`-resolved bare `bash`. A run that removes Homebrew's `bash`
-formula must not lose the interpreter its own later steps need; see
+also what `SHELL` is set from. Wherever a recipe names an interpreter
+for a helper script it writes `$(BASH_BIN) scripts/<name>.sh`, never a
+`PATH`-resolved bare `bash`; scripts invoked directly (by their own
+shebang, e.g. `scripts/resolve_mailto.sh`) name no interpreter at all.
+A run that removes Homebrew's `bash` formula must not lose the
+interpreter its own later steps need; see
 [Removals never cascade, and never lose the interpreter](INSTALL.md#removals-never-cascade-and-never-lose-the-interpreter).
 
 ## Common Targets

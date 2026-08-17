@@ -20,7 +20,7 @@
 # script for the same reason: the cutover reaches a host down either of two
 # paths, and each must leave ~/.zshrc in the same state (issue #38).
 #   - scripts/shell_setup.sh (a core-tier `post_install` action),
-#     i.e. `make install` and `make shell`.
+#     i.e. `make install` and `make shell_setup`.
 #   - the `update` Makefile target, which installs mise and uninstalls
 #     asdf/direnv but never runs shell_setup.sh. Without this call a host
 #     that only ever runs `make update` ends the cutover with mise installed,

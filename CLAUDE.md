@@ -185,8 +185,8 @@ dasel installed but unreachable by bare name, which used to
 surface late and cryptically as a buried `dasel version exited
 127` from `require_dasel_v3` partway into the first tier.
 The `.PHONY: require-dasel` Makefile target (wired as a
-prerequisite on the config-dependent batch targets `install`,
-`update`, `verify`, `outdated`) runs
+prerequisite on every config-dependent target: `install`,
+`core`, `profile`, `update`, `verify`, `outdated`) runs
 `scripts/require_dasel_on_path.sh` BEFORE host-tier seeding,
 the recipe-level config reads, and any install work. On a miss
 it prints `dasel not in PATH` plus new-shell remediation and
@@ -896,9 +896,13 @@ Keys under `[mailer]`:
 The dead `SES_*` fields from the removed SES backend are
 gone, not migrated.
 
-`make messaging` (`scripts/msmtp_setup.sh`) generates
-`~/.msmtprc` (mode 0600) from the resolved `[mailer]`
-values — it no longer symlinks a committed per-host file.
+`scripts/msmtp_setup.sh` — the core tier's third
+`post_install` action, so `make core` and `make install`
+both reach it — generates `~/.msmtprc` (mode 0600) from the
+resolved `[mailer]` values; it no longer symlinks a
+committed per-host file. There is no `make messaging`
+target: the numbered-slot targets it belonged to are gone
+(issue #33).
 The relay **password is never committed** and never written
 to `~/.msmtprc`; msmtp reads it from the login Keychain at
 send time via a `passwordeval` line. The generated
@@ -922,7 +926,7 @@ smtp_user = "you@example.com"
 ```
 
 then store the relay password in the Keychain (same
-service + username) and run `make messaging`. See README.md
+service + username) and run `make core`. See README.md
 "Email Notifications" for the full setup and common-provider
 examples.
 

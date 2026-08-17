@@ -14,13 +14,13 @@
 # More than one caller, because the cutover reaches a host down either of
 # the paths below and each must leave ~/.zshrc clean:
 #   - scripts/shell_setup.sh (a core-tier `post_install` action),
-#     i.e. `make install` and `make shell`.
+#     i.e. `make install` and `make shell_setup`.
 #   - the `update` Makefile target, which uninstalls asdf and direnv via the
-#     RemoveAndPurge loop but never runs shell_setup.sh.
+#     purge loop but never runs shell_setup.sh.
 #
 # ZSHRC_PATH is overridable so the test suite can point it at a fixture.
 #
-# Run: bash scripts/strip_asdf_zshrc_lines.sh
+# Run: /bin/bash scripts/strip_asdf_zshrc_lines.sh
 
 set -euo pipefail
 
