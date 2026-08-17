@@ -405,8 +405,8 @@ so swapping the implementation leaves the target names, their callers,
 and the doc lines that reference them alone — the change is bounded to
 the scripts that name the tool directly
 (`scripts/versions_setup.sh`, `scripts/mise_common.sh`, and the
-shell/launchd `PATH` lines in `scripts/shell_setup.sh` and
-`scripts/launchagent_runner.sh`):
+shell/launchd `PATH` lines in `scripts/ensure_mise_zshrc_lines.sh`
+and `scripts/launchagent_runner.sh`):
 
 - `make versions-install` — install the versions the resolved mise
   config declares

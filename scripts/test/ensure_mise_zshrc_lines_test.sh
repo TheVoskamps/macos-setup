@@ -92,6 +92,33 @@ check "case 5: existing comment kept" "$(grep -c 'my own line' "$Z5")" "1"
 check "case 5: existing export kept"  "$(grep -c 'export FOO=1' "$Z5")" "1"
 check "case 5: shims PATH export added" "$(grep -cF "$SHIMS_LINE" "$Z5")" "1"
 
+# === case 6: a bare-name mise on this shell's PATH is reachable =========
+# The fast path of the two-step gate: no login shell needed when make's own
+# PATH already has it.
+Z6="$SANDBOX/case6-zshrc"
+: > "$Z6"
+OUT="$(ZSHRC_PATH="$Z6" MISE="mise" PATH="$SANDBOX:$PATH" /bin/bash "$SUT" 2>&1)"; RC=$?
+check "case 6: exits zero" "$RC" "0"
+check "case 6: activation line added" "$(grep -cFx "$ACTIVATE_LINE" "$Z6")" "1"
+
+# === case 7: the gate matches the Makefile's MISE_REACHABLE probe ========
+# `update` decides to remove asdf and direnv with MISE_REACHABLE, which runs
+# under a LOGIN shell because a mise installed moments earlier in the same run
+# lands on a login shell's PATH, not necessarily on make's. If this script
+# checked only make's PATH the two gates could disagree within one run — the
+# removal happens, the activation line is withheld. So the script must fall
+# back to the same login-shell probe.
+if grep -qE '/bin/bash -lc .*command -v' "$SUT"; then
+  ok "case 7: the gate falls back to a login-shell probe"
+else
+  bad "case 7: the gate falls back to a login-shell probe"
+fi
+if grep -qE '^MISE_REACHABLE = .*-lc' "$MAKEFILE"; then
+  ok "case 7: MISE_REACHABLE still probes under a login shell"
+else
+  bad "case 7: MISE_REACHABLE still probes under a login shell"
+fi
+
 echo "=== Block 2: both writers reach it ==="
 
 update_recipe() {

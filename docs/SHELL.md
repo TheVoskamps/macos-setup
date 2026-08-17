@@ -114,6 +114,17 @@ shell startup. The shims `PATH` export is written unconditionally — a
 `PATH` entry naming a directory that does not exist yet is inert, and
 it is correct the moment mise lands.
 
+"On `PATH`" is decided by the same two-step probe the Makefile's
+`MISE_REACHABLE` macro uses: the calling shell's `PATH` first, then a
+login shell's (`/bin/bash -lc`). The login-shell half matters because a
+mise installed moments earlier in the same run lands on a login shell's
+`PATH`, not necessarily on make's — and `MISE_REACHABLE` is what lets
+`make update` remove asdf and direnv. If this script checked only make's
+`PATH`, the two gates could disagree within one run: the removal
+happens, the activation line is withheld, and the host ends the cutover
+with no version manager wired into the interactive shell — exactly the
+failure issue #38 exists to fix.
+
 Like the strip below, the script has more than one caller, and for the
 same reason:
 

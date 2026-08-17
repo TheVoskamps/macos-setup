@@ -24,7 +24,8 @@ implements them, so swapping the implementation again leaves the
 public interface — target names, aliases, and doc lines — alone. The
 change is bounded to the places that name the tool directly:
 `scripts/versions_setup.sh`, `scripts/mise_common.sh`, the `~/.zshrc`
-init lines in `scripts/shell_setup.sh`, the shims `PATH` export in
+init lines in `scripts/ensure_mise_zshrc_lines.sh`, the shims `PATH`
+export in
 `scripts/launchagent_runner.sh`, `scripts/diagnose.sh`, and the
 `version-managers` profile's `Install/04-Install.versionmanagers`.
 

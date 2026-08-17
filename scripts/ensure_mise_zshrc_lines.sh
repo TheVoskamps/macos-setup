@@ -33,6 +33,17 @@
 # gated — a PATH entry pointing at a directory that does not exist yet is
 # inert, and it is correct the moment mise lands.
 #
+# That reachability decision must agree with the Makefile's MISE_REACHABLE
+# probe, which is what let `update` remove asdf and direnv in the first place.
+# MISE_REACHABLE runs under `/bin/bash -lc` precisely because a mise installed
+# moments earlier in the same run lands on a LOGIN shell's PATH, not
+# necessarily on make's. A plain `command -v` here would see only make's
+# non-login PATH, so the two gates could disagree within one run: the probe
+# passes, the old version manager goes, and the activation line is withheld —
+# exactly the fresh-install scenario issue #38 exists to fix. So the gate below
+# checks this shell's PATH first and falls back to the same login-shell probe
+# the Makefile uses.
+#
 # ZSHRC_PATH is overridable so the test suite can point it at a fixture, and
 # MISE is overridable (the same knob scripts/mise_common.sh reads) so a test
 # can drive both the reachable and unreachable branches. MISE gates the
@@ -57,7 +68,15 @@ _ms_ensure_line() {
 
 _ms_ensure_line 'export PATH="${XDG_DATA_HOME:-$HOME/.local/share}/mise/shims:$PATH"' "$ZSHRC_PATH"
 
-if command -v "$MISE" >/dev/null 2>&1; then
+# Mirrors the Makefile's MISE_REACHABLE macro: this shell's PATH first, then a
+# login shell's, so the two gates cannot disagree within one run. MISE is
+# passed through explicitly because it is a shell variable here, not exported.
+_ms_mise_reachable() {
+  command -v "$MISE" >/dev/null 2>&1 && return 0
+  MISE="$MISE" /bin/bash -lc 'command -v "${MISE:-mise}" >/dev/null 2>&1'
+}
+
+if _ms_mise_reachable; then
   _ms_ensure_line 'eval "$(mise activate zsh)"' "$ZSHRC_PATH"
 else
   echo "[SHELL-SETUP] NOTE: mise not yet installed; activation line will be added after install."
