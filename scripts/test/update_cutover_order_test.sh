@@ -123,7 +123,14 @@ order_test() {
 # Block 2: REMOVE_SKIP_BASENAMES in the real removal loops.
 # ---------------------------------------------------------------------
 
-# A stub `brew` that reports nothing installed and never fails.
+# A stub `brew` that reports nothing installed, so the runner only ever
+# emits `skip: <pkg> not installed` and never uninstalls anything.
+#
+# It is shimmed onto PATH as `brew` (not merely passed as the BREW make
+# variable) because scripts/remove_runner.sh invokes `brew` by BARE NAME.
+# Passing BREW= alone would leave these tests driving the REAL brew
+# against the host's real asdf and direnv -- i.e. a test run that
+# uninstalls the very packages this cutover is careful about.
 write_stub_brew() {
   cat > "$1" <<'STUB'
 #!/usr/bin/env bash
@@ -160,9 +167,10 @@ run_make() {
   local root host_dir brew_stub
   root="$(make_repo)"
   host_dir="$(mktemp -d)"
-  brew_stub="$root/scripts/stub_brew.sh"
+  mkdir -p "$root/bin"
+  brew_stub="$root/bin/brew"
   write_stub_brew "$brew_stub"
-  RUN_OUT="$(cd "$root" && MACOS_SETUP_HOST_DIR="$host_dir" \
+  RUN_OUT="$(cd "$root" && PATH="$root/bin:$PATH" MACOS_SETUP_HOST_DIR="$host_dir" \
     make "$target" BREW="$brew_stub" REMOVE_SKIP_BASENAMES="$skip" 2>&1)"; RUN_RC=$?
   rm -rf "$root" "$host_dir"
 }

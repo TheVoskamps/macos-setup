@@ -101,8 +101,28 @@ REMOVE_SKIP_BASENAMES ?=
 # scripts/mise_common.sh, scripts/shell_setup.sh (the ~/.zshrc init lines),
 # scripts/launchagent_runner.sh (the shims PATH) and scripts/diagnose.sh.
 # Both the version-manager script and the migration script guard on
-# `command -v mise` themselves, so there is no bootstrap macro here.
+# `command -v mise` themselves, so nothing here needs to bootstrap mise.
 VERSIONS_SETUP := scripts/versions_setup.sh
+
+# The mise-reachability probe that gates the DESTRUCTIVE half of the
+# asdf -> mise cutover. Removing the old version manager on a host where
+# the replacement is not in place leaves that host with NO version
+# manager at all, which is strictly worse than leaving both installed --
+# so every code path that removes asdf/direnv must run this probe
+# immediately before it removes anything, and hold the removal back when
+# the probe fails. Both such paths use it: `install` (which applies slot
+# 04's RemoveAndPurge inline) and `update` (which drives the batch
+# removal loops via REMOVE_SKIP_BASENAMES).
+#
+# It is a macro, not two hand-written `command -v` calls, so the two
+# paths cannot drift and neither can lose the guard silently.
+#
+# `bash -lc` because a mise installed moments earlier in the same run
+# lands on a login shell's PATH, not necessarily on make's. `$${MISE:-mise}`
+# honors the same override scripts/mise_common.sh reads, which is also
+# what lets scripts/test/install_cutover_guard_test.sh point it at an
+# absent binary.
+MISE_REACHABLE = bash -lc 'command -v "$${MISE:-mise}" >/dev/null 2>&1'
 
 # Helpers
 CANON      = $(subst -,_,$(subst .,_,$(1)))
@@ -417,12 +437,27 @@ require-dasel:
 # direnv installed alongside it. Per-slot `make versionmanagers` deliberately
 # does NOT do this -- see docs/VERSION_MANAGEMENT.md for the three-command
 # sequence a per-slot driver runs by hand.
+#
+# That inline purge is gated on $(MISE_REACHABLE), evaluated immediately
+# before it and after the slot-04 install step, exactly as `update` gates its
+# removal loops: if mise is not reachable at that moment the purge is skipped
+# entirely, the run warns, and it exits non-zero. The guard is explicit on
+# purpose. In practice `set -e` (this recipe is one .ONESHELL shell) would
+# already abort the run before the purge lines, because versions_setup.sh
+# runs `require_mise || exit 1` at the top of the script. But that protection
+# is incidental -- it lives in another file, for every mode rather than for
+# this call site, and a refactor that moves the purge or reorders
+# require_mise reopens the hazard with no test failing. Removing a host's
+# only version manager is not a hazard to leave resting on an accident, so
+# the guard is stated here and pinned by
+# scripts/test/install_cutover_guard_test.sh.
 .PHONY: install uninstall uninstall-dry-run remove-and-purge remove-and-purge-dry-run update help
 install: require-dasel ## Apply all Install files in numeric order (filtered against in-scope Uninstall files); seeds the external host tier if absent
 	@set -euo pipefail
 	@$(MAKE) -s seed-host-tier
 	@if [ -z "$(ORDERED_INSTALL_FILES)" ]; then echo "No Install files found in $(INSTALL_DIR)/"; exit 0; fi
 	@failed=""; \
+	vm_purge_skipped=""; \
 	for f in $(ORDERED_INSTALL_FILES); do \
 		echo "==> Applying $$f (filtered)"; \
 		tmp="$$($(INSTALL_FILTER) "$$f")"; \
@@ -458,18 +493,27 @@ install: require-dasel ## Apply all Install files in numeric order (filtered aga
 				if [ -x "scripts/shell_setup.sh" ]; then scripts/shell_setup.sh; else echo "[shell] scripts/shell_setup.sh not found or not executable"; fi ;; \
 			04-Install.versionmanagers) \
 				if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) full; else echo "[versionmanagers] $(VERSIONS_SETUP) not found or not executable"; fi; \
-				vmp="04-RemoveAndPurge.versionmanagers"; \
-				if [ -f "$(PURGE_DIR)/$$vmp" ]; then \
-					bash $(REMOVE_RUNNER) "$(PURGE_DIR)/$$vmp" --mode=purge --banner="==> Applying global RemoveAndPurge: $(PURGE_DIR)/$$vmp" || failed="$$failed $(PURGE_DIR)/$$vmp"; \
-				fi; \
-				for prof in $(PROFILES); do \
-					vpf="profiles/$$prof/$(PURGE_DIR)/$$vmp"; \
-					if [ -f "$$vpf" ]; then \
-						bash $(REMOVE_RUNNER) "$$vpf" --mode=purge --banner="==> Applying profile RemoveAndPurge: $$vpf" || failed="$$failed $$vpf"; \
+				vmp="$(VM_PURGE)"; \
+				if $(MISE_REACHABLE); then \
+					if [ -f "$(PURGE_DIR)/$$vmp" ]; then \
+						bash $(REMOVE_RUNNER) "$(PURGE_DIR)/$$vmp" --mode=purge --banner="==> Applying global RemoveAndPurge: $(PURGE_DIR)/$$vmp" || failed="$$failed $(PURGE_DIR)/$$vmp"; \
 					fi; \
-				done; \
-				if [ -f "$(COMPUTER_PURGE_DIR)/$$vmp" ]; then \
-					bash $(REMOVE_RUNNER) "$(COMPUTER_PURGE_DIR)/$$vmp" --mode=purge --banner="==> Applying computer-specific RemoveAndPurge: $(COMPUTER_PURGE_DIR)/$$vmp" || failed="$$failed $(COMPUTER_PURGE_DIR)/$$vmp"; \
+					for prof in $(PROFILES); do \
+						vpf="profiles/$$prof/$(PURGE_DIR)/$$vmp"; \
+						if [ -f "$$vpf" ]; then \
+							bash $(REMOVE_RUNNER) "$$vpf" --mode=purge --banner="==> Applying profile RemoveAndPurge: $$vpf" || failed="$$failed $$vpf"; \
+						fi; \
+					done; \
+					if [ -f "$(COMPUTER_PURGE_DIR)/$$vmp" ]; then \
+						bash $(REMOVE_RUNNER) "$(COMPUTER_PURGE_DIR)/$$vmp" --mode=purge --banner="==> Applying computer-specific RemoveAndPurge: $(COMPUTER_PURGE_DIR)/$$vmp" || failed="$$failed $(COMPUTER_PURGE_DIR)/$$vmp"; \
+					fi; \
+				else \
+					vm_purge_skipped="$$vmp"; \
+					echo "WARNING: mise is not reachable after the slot-04 install step." >&2; \
+					echo "         Skipping the asdf/direnv removal ($$vmp), so this host is not" >&2; \
+					echo "         left with no version manager at all." >&2; \
+					echo "         Every other Install slot still applies. Fix the mise install" >&2; \
+					echo "         and re-run 'make install'." >&2; \
 				fi ;; \
 			06-Install.messaging) \
 				if [ -x "scripts/msmtp_setup.sh" ]; then scripts/msmtp_setup.sh; else echo "[messaging] scripts/msmtp_setup.sh not found or not executable"; fi ;; \
@@ -485,13 +529,20 @@ install: require-dasel ## Apply all Install files in numeric order (filtered aga
 				if [ -x "scripts/claude_repo_setup.sh" ]; then scripts/claude_repo_setup.sh install; else echo "[ai] scripts/claude_repo_setup.sh not found or not executable"; fi ;; \
 			esac; \
 		done; \
+	rc=0; \
 	if [ -n "$$failed" ]; then \
 		echo "==> The following Install slots failed (brew bundle returned non-zero):"; \
 		for s in $$failed; do echo "  - $$s"; done; \
 		echo "All other Install files were applied. Re-run 'make install' after resolving the above."; \
-		exit 1; \
+		rc=1; \
 	fi; \
-	echo "All Install files applied."
+	if [ -n "$$vm_purge_skipped" ]; then \
+		echo "==> Skipped the asdf/direnv removal ($$vm_purge_skipped): mise was not reachable."; \
+		echo "Fix the mise install and re-run 'make install' to complete the cutover."; \
+		rc=1; \
+	fi; \
+	if [ $$rc -eq 0 ]; then echo "All Install files applied."; fi; \
+	exit $$rc
 
 # uninstall: walk every Uninstall file in numeric order across all tiers.
 # Skips entries already absent. Uses --dry-run? See `make uninstall-dry-run`.
@@ -610,7 +661,7 @@ update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed too
 	if command -v mas >/dev/null 2>&1; then mas upgrade || FAIL=1; fi; \
 	echo "==> Installing version managers ($(INSTALL_DIR)/$(VM_INSTALL))..."; \
 	$(MAKE) -s $(call CANON,$(VM_INSTALL)) || FAIL=1; \
-	if bash -lc 'command -v "$${MISE:-mise}" >/dev/null 2>&1'; then \
+	if $(MISE_REACHABLE); then \
 		VM_SKIP=""; \
 	else \
 		VM_SKIP="$(VM_UNINSTALL) $(VM_PURGE)"; \

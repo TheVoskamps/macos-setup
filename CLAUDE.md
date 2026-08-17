@@ -391,7 +391,10 @@ make diagnose  # Run system diagnostics
   `make versionmanagers`) it then applies slot 04's
   `RemoveAndPurge` across default + profiles + host, so
   the asdf -> mise cutover cannot land half-applied —
-  see "Tool Version Configuration"
+  but only if the shared `MISE_REACHABLE` probe finds a
+  reachable mise at that moment; otherwise the purge is
+  skipped, the run warns, and `make install` exits
+  non-zero — see "Tool Version Configuration"
 - `06-Install.messaging` -> Generates `~/.msmtprc` from `config.toml` `[mailer]`
 - `09-Install.development` -> Installs VS Code extensions
 - `17-Install.ai` -> Installs Cursor extensions,
@@ -562,7 +565,12 @@ failed slot, and exit non-zero if any failed. In the
 `install` batch loop that same accumulator also takes a
 non-zero exit from the slot-04 `RemoveAndPurge` applied
 inline, so such a failure lands in the summary too, even
-though the summary's wording names `brew bundle`. (The
+though the summary's wording names `brew bundle`. A
+slot-04 purge that was HELD BACK by the `MISE_REACHABLE`
+guard is tracked separately: it prints its own
+`Skipped the asdf/direnv removal ...` line after that
+summary, suppresses the success message, and also makes
+the run exit non-zero. (The
 per-slot helper is a single shell precisely so an
 earlier tier's failure cannot make `make` skip the
 later tiers — three separate recipe lines would abort
@@ -687,12 +695,18 @@ install step because `brew upgrade` upgrades an
 installed formula but never installs an absent one, so a
 host that never ran `make install` would otherwise lose
 asdf and direnv and gain no mise. Install strictly
-precedes remove: if mise is still unreachable after the
-install step, `update` skips slot 04's `Uninstall` and
-`RemoveAndPurge` (via the `REMOVE_SKIP_BASENAMES`
-Makefile variable, which the batch removal loops honor)
-and skips the strip, warns, and exits non-zero -- every
-other removal slot still applies. The per-slot
+precedes remove, and BOTH paths gate the removal on the
+same explicit probe -- the `MISE_REACHABLE` Makefile
+macro, evaluated immediately before the destructive call
+rather than left to the surrounding `set -e`. If mise is
+still unreachable after the install step, `update` skips
+slot 04's `Uninstall` and `RemoveAndPurge` (via the
+`REMOVE_SKIP_BASENAMES` Makefile variable, which the
+batch removal loops honor) and skips the strip, while
+`install` skips its inline slot-04 `RemoveAndPurge`;
+both warn and exit non-zero, and every other removal
+slot still applies. `scripts/test/install_cutover_guard_test.sh`
+fails if the `install`-side guard is removed. The per-slot
 `make versionmanagers` does ONLY the install piece --
 per-slot targets install, they do not remove. Driving it
 by hand is `make versionmanagers`,

@@ -204,13 +204,23 @@ step is what carries a host that has never run `make install`:
 installs an absent one, so without it `update` would remove asdf and
 direnv and put nothing in their place.
 
-**Install strictly precedes remove.** If mise is still unreachable
-after `make update`'s install step — `brew bundle` failed, the host
-never opted into the `version-managers` profile, the binary is off
-`PATH` — the run skips slot 04's `Uninstall` and `RemoveAndPurge` and
-skips the `~/.zshrc` strip, warns, and exits non-zero. Every other
-removal slot still applies; only slot 04 is held back. A host is never
-left with the old version manager gone and no replacement.
+**Install strictly precedes remove, and the removal is guarded.**
+Both paths probe for a reachable mise immediately before they remove
+anything, through one shared Makefile macro (`MISE_REACHABLE`), and
+hold the removal back when the probe fails — `brew bundle` failed,
+the host never opted into the `version-managers` profile, the binary
+is off `PATH`. `make update` skips slot 04's `Uninstall` and
+`RemoveAndPurge` and skips the `~/.zshrc` strip; `make install` skips
+its inline slot-04 `RemoveAndPurge`. Both warn and exit non-zero.
+Every other slot still applies; only slot 04 is held back. A host is
+never left with the old version manager gone and no replacement.
+
+The guard is written out at each destructive call rather than
+inferred from the surrounding `set -e`, and
+`scripts/test/install_cutover_guard_test.sh` fails if it is removed:
+losing a host's only version manager is the failure this whole
+section exists to prevent, so it does not rest on a side effect of
+some other file's error handling.
 
 **`make versionmanagers` does only the install piece.** It is a
 per-slot target, and per-slot targets install; they do not remove.
