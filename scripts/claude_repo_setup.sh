@@ -207,7 +207,11 @@ sync_claude_plugins() {
 
     info "Syncing Claude plugins via $CLAUDE_PLUGINS_SCRIPT $flag..."
     local rc=0
-    bash "$CLAUDE_PLUGINS_SCRIPT" "$flag" || rc=$?
+    # Absolute /bin/bash, not a PATH-resolved bare `bash` (issue #37): a
+    # removal earlier in the same `make install` / `make update` run can take
+    # Homebrew's bash out from under a PATH that prefers it, and /bin/bash is
+    # the one bash no Homebrew operation can remove.
+    /bin/bash "$CLAUDE_PLUGINS_SCRIPT" "$flag" || rc=$?
     return $rc
 }
 

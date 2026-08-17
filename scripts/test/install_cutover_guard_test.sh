@@ -88,7 +88,10 @@ recipe_of() {
 # Block 1: the guard is defined once and used by both destructive paths.
 # ---------------------------------------------------------------------
 static_test() {
-  ok "$(grep -q '^MISE_REACHABLE *= *bash -lc ' "$MAKEFILE" && echo 0 || echo 1)" \
+  # $(BASH_BIN), not a bare `bash`: the probe runs immediately before the
+  # destructive half of the cutover, on a run that may already have removed
+  # Homebrew's bash formula (issue #37).
+  ok "$(grep -q '^MISE_REACHABLE *= *\$(BASH_BIN) -lc ' "$MAKEFILE" && echo 0 || echo 1)" \
     "MISE_REACHABLE is defined as a shared probe"
   ok "$(grep -q "^MISE_REACHABLE *=.*command -v" "$MAKEFILE" && echo 0 || echo 1)" \
     "MISE_REACHABLE probes for the mise binary"

@@ -99,7 +99,7 @@ macos-setup itself) in `shared/zsh/` instead.
 
 ## mise init lines
 
-`make shell` (via `scripts/shell_setup.sh`) idempotently appends the
+`scripts/ensure_mise_zshrc_lines.sh` idempotently appends the
 following to `~/.zshrc` (each line at most once):
 
 ```zsh
@@ -107,10 +107,40 @@ export PATH="${XDG_DATA_HOME:-$HOME/.local/share}/mise/shims:$PATH"
 eval "$(mise activate zsh)"
 ```
 
-The activation line is written only once `mise` is on `PATH`; a
-`make shell` that runs before `mise` is installed says so and adds
-the line on the next run. The shims `PATH` export is written
-unconditionally.
+The activation line is written only once `mise` is on `PATH`; a run
+before `mise` is installed says so and adds the line on the next one.
+Pointing `~/.zshrc` at a mise that is not there would error on every
+shell startup. The shims `PATH` export is written unconditionally — a
+`PATH` entry naming a directory that does not exist yet is inert, and
+it is correct the moment mise lands.
+
+"On `PATH`" is decided in two steps: the calling shell's `PATH` first,
+then a fallback to `/bin/bash -lc` — which is exactly what the
+Makefile's `MISE_REACHABLE` macro is. The login-shell half matters
+because a
+mise installed moments earlier in the same run lands on a login shell's
+`PATH`, not necessarily on make's — and `MISE_REACHABLE` is what lets
+`make update` remove asdf and direnv. If this script checked only make's
+`PATH`, the two gates could disagree within one run: the removal
+happens, the activation line is withheld, and the host ends the cutover
+with no version manager wired into the interactive shell — exactly the
+failure issue #38 exists to fix.
+
+Like the strip below, the script has more than one caller, and for the
+same reason:
+
+- `make shell` / `make install`, via `scripts/shell_setup.sh`.
+- `make update`, which calls it directly — it installs mise and
+  uninstalls asdf and direnv but never runs `shell_setup.sh`, so
+  without the direct call a host that goes through the cutover purely
+  via `make update` would end it with no version manager wired into
+  the interactive shell at all (issue #38).
+
+`ZSHRC_PATH` overrides the file it edits and `MISE` overrides the
+binary the reachability check looks for (both so the test suite can
+drive the script against a fixture); the line written into `~/.zshrc`
+always names bare `mise` regardless of `MISE`, because that is what
+your interactive shell will find.
 
 Both forms are emitted on purpose. `mise activate zsh` is mise's
 preferred interactive form and is what makes `cd` into a project
@@ -126,7 +156,11 @@ reason (the same pattern it uses for `HOMEBREW_NO_ASK`).
 ### Migrating off asdf + direnv
 
 The `version-managers` profile moved from asdf + direnv to mise. The
-strip lives in `scripts/strip_asdf_zshrc_lines.sh` and removes the
+`~/.zshrc` half of that cutover is a pair of scripts — the strip below
+and the add above — and every caller runs both, in that order, so the
+two cutover paths leave `~/.zshrc` in the same state.
+
+The strip lives in `scripts/strip_asdf_zshrc_lines.sh` and removes the
 `~/.zshrc` lines that the change orphaned:
 
 - `. /opt/homebrew/opt/asdf/libexec/asdf.sh` — already dead before
@@ -149,6 +183,12 @@ either of the paths below, and each must leave `~/.zshrc` clean:
   and direnv through the `RemoveAndPurge` loop but never runs
   `shell_setup.sh`, so without the direct call it would remove the
   binaries and leave their broken init lines behind.
+
+On the `make update` path both rewrites sit behind the same guard as
+the asdf/direnv removal: if mise is still not reachable after the
+slot-04 install, `update` skips the removal and both `~/.zshrc`
+rewrites, warns, and exits non-zero. See
+[Version Management](VERSION_MANAGEMENT.md).
 
 `ZSHRC_PATH` overrides the file it edits (the test suite points it at
 a fixture); it defaults to `~/.zshrc`.

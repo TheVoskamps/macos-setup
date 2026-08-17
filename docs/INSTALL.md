@@ -397,6 +397,36 @@ Mac App Store, or real `sudo`.
 `scripts/test/remove_runner_brew_override_test.sh` fails if a bare
 `brew`, `mas`, or `sudo` call is reintroduced into the runner.
 
+### Removals never cascade, and never lose the interpreter
+
+Two invariants keep a removal run from breaking its own later steps.
+
+`scripts/remove_runner.sh` exports `HOMEBREW_NO_AUTOREMOVE=1`. By
+default `brew uninstall` follows up with an automatic `brew autoremove`
+that drops every formula nothing depends on any more — which is how
+uninstalling `asdf` once took Homebrew's `bash` formula with it
+mid-run. The runner is the one place both removal trees actually call
+`brew`, so the export covers `make uninstall`, `make remove-and-purge`,
+both of `make update`'s loops, and the slot-04 purge `make install`
+applies inline. Pruning genuinely unneeded dependencies stays available
+as a deliberate, separate `brew autoremove`.
+
+Every Makefile recipe names bash as `$(BASH_BIN)` — the absolute
+`/bin/bash`, which is also `SHELL` — rather than a `PATH`-resolved bare
+`bash`. On a host whose `PATH` prefers `/opt/homebrew/bin`, losing the
+Homebrew bash mid-run made every later recipe line die with
+`/bin/bash: /opt/homebrew/bin/bash: No such file or directory`, and the
+casualty that mattered was `make update`'s `~/.zshrc` strip: asdf and
+direnv were removed but their init lines stayed, erroring on every
+shell startup. `/bin/bash` ships with macOS and no Homebrew operation
+can remove it. The same holds for the scripts that re-invoke bash
+themselves: `shell_setup.sh` and `claude_repo_setup.sh` run their
+helper scripts under `/bin/bash`, and
+`ensure_mise_zshrc_lines.sh` runs its reachability probe under
+`/bin/bash -lc`. `scripts/test/absolute_bash_test.sh` fails if a bare
+`bash` invocation is reintroduced into the Makefile, `shell_setup.sh`,
+or `claude_repo_setup.sh`, or if the export above is dropped.
+
 ## See also
 
 - [Makefile Usage](MAKEFILE.md)

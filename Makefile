@@ -13,7 +13,23 @@
 #   - 06-Install.messaging       : sets up msmtp configuration
 #   - 09-Install.development     : sets up VSCode extensions and configuration
 
-SHELL := /bin/bash
+# The bash EVERY recipe uses -- both as make's own recipe shell and as the
+# interpreter every `$(BASH_BIN) scripts/foo.sh` invocation names (issue #37).
+# It is an ABSOLUTE path on purpose: a bare `bash` is resolved through PATH,
+# and on a host whose PATH puts /opt/homebrew/bin first, a removal that takes
+# Homebrew's bash formula out mid-run -- directly, or via the `brew autoremove`
+# that `brew uninstall` triggers -- makes every LATER recipe line die with
+# `/bin/bash: /opt/homebrew/bin/bash: No such file or directory`. That is not
+# hypothetical: it happened during the asdf -> mise cutover and cost the
+# `update` target its ~/.zshrc strip, leaving the host with dead direnv/asdf
+# init lines erroring on every shell startup. /bin/bash ships with macOS and
+# no Homebrew operation can remove it.
+#
+# /bin/bash is bash 3.2. Every script in scripts/ is already written to 3.2
+# (see the mapfile note in scripts/test/hammerspoon_reload_test.sh), so
+# naming it here changes no script's behavior.
+BASH_BIN := /bin/bash
+SHELL := $(BASH_BIN)
 START_DIR ?= $(CURDIR)
 .ONESHELL:
 .NOTPARALLEL:
@@ -37,7 +53,7 @@ COMPUTER_NAME_LOWER := $(shell scutil --get LocalHostName 2>/dev/null | tr '[:up
 # the default is $${XDG_CONFIG_HOME:-$$HOME/.config}/macos-setup.
 # Delegated to a script (rather than inlined) for the same reason as
 # PROFILES below: keep host-path logic in one place (config_common.sh).
-HOST_DIR := $(shell bash scripts/host_tier_dir.sh 2>/dev/null)
+HOST_DIR := $(shell $(BASH_BIN) scripts/host_tier_dir.sh 2>/dev/null)
 COMPUTER_SPECIFIC_DIR   := $(HOST_DIR)/$(INSTALL_DIR)
 COMPUTER_UNINSTALL_DIR  := $(HOST_DIR)/$(UNINSTALL_DIR)
 COMPUTER_PURGE_DIR      := $(HOST_DIR)/$(PURGE_DIR)
@@ -50,7 +66,7 @@ COMPUTER_PURGE_DIR      := $(HOST_DIR)/$(PURGE_DIR)
 # Parsing is delegated to scripts/list_profiles.sh (which reuses
 # get_profiles in config_common.sh, querying config.toml via dasel)
 # rather than inlined here.
-PROFILES := $(shell bash scripts/list_profiles.sh 2>/dev/null)
+PROFILES := $(shell $(BASH_BIN) scripts/list_profiles.sh 2>/dev/null)
 
 INSTALL_FILTER := scripts/install_filter.sh
 REMOVE_RUNNER  := scripts/remove_runner.sh
@@ -117,12 +133,12 @@ VERSIONS_SETUP := scripts/versions_setup.sh
 # It is a macro, not two hand-written `command -v` calls, so the two
 # paths cannot drift and neither can lose the guard silently.
 #
-# `bash -lc` because a mise installed moments earlier in the same run
+# `$(BASH_BIN) -lc` because a mise installed moments earlier in the same run
 # lands on a login shell's PATH, not necessarily on make's. `$${MISE:-mise}`
 # honors the same override scripts/mise_common.sh reads, which is also
 # what lets scripts/test/install_cutover_guard_test.sh point it at an
 # absent binary.
-MISE_REACHABLE = bash -lc 'command -v "$${MISE:-mise}" >/dev/null 2>&1'
+MISE_REACHABLE = $(BASH_BIN) -lc 'command -v "$${MISE:-mise}" >/dev/null 2>&1'
 
 # Helpers
 CANON      = $(subst -,_,$(subst .,_,$(1)))
@@ -190,7 +206,7 @@ endef
 define RUN_GLOBAL_UNINSTALL
 	@set -euo pipefail; \
 	if [ -f "$(UNINSTALL_DIR)/$(1)" ]; then \
-		bash $(REMOVE_RUNNER) "$(UNINSTALL_DIR)/$(1)" --mode=uninstall --banner="==> Applying global Uninstall: $(UNINSTALL_DIR)/$(1)" $(2); \
+		$(BASH_BIN) $(REMOVE_RUNNER) "$(UNINSTALL_DIR)/$(1)" --mode=uninstall --banner="==> Applying global Uninstall: $(UNINSTALL_DIR)/$(1)" $(2); \
 	fi
 endef
 
@@ -199,7 +215,7 @@ define RUN_PROFILE_UNINSTALL
 	for prof in $(PROFILES); do \
 		pf="profiles/$$prof/$(UNINSTALL_DIR)/$(1)"; \
 		if [ -f "$$pf" ]; then \
-			bash $(REMOVE_RUNNER) "$$pf" --mode=uninstall --banner="==> Applying profile Uninstall: $$pf" $(2); \
+			$(BASH_BIN) $(REMOVE_RUNNER) "$$pf" --mode=uninstall --banner="==> Applying profile Uninstall: $$pf" $(2); \
 		fi; \
 	done
 endef
@@ -207,7 +223,7 @@ endef
 define RUN_COMPUTER_UNINSTALL
 	@set -euo pipefail; \
 	if [ -f "$(COMPUTER_UNINSTALL_DIR)/$(1)" ]; then \
-		bash $(REMOVE_RUNNER) "$(COMPUTER_UNINSTALL_DIR)/$(1)" --mode=uninstall --banner="==> Applying computer-specific Uninstall: $(COMPUTER_UNINSTALL_DIR)/$(1)" $(2); \
+		$(BASH_BIN) $(REMOVE_RUNNER) "$(COMPUTER_UNINSTALL_DIR)/$(1)" --mode=uninstall --banner="==> Applying computer-specific Uninstall: $(COMPUTER_UNINSTALL_DIR)/$(1)" $(2); \
 	fi
 endef
 
@@ -218,7 +234,7 @@ endef
 define RUN_GLOBAL_PURGE
 	@set -euo pipefail; \
 	if [ -f "$(PURGE_DIR)/$(1)" ]; then \
-		bash $(REMOVE_RUNNER) "$(PURGE_DIR)/$(1)" --mode=purge --banner="==> Applying global RemoveAndPurge: $(PURGE_DIR)/$(1)" $(2); \
+		$(BASH_BIN) $(REMOVE_RUNNER) "$(PURGE_DIR)/$(1)" --mode=purge --banner="==> Applying global RemoveAndPurge: $(PURGE_DIR)/$(1)" $(2); \
 	fi
 endef
 
@@ -227,7 +243,7 @@ define RUN_PROFILE_PURGE
 	for prof in $(PROFILES); do \
 		pf="profiles/$$prof/$(PURGE_DIR)/$(1)"; \
 		if [ -f "$$pf" ]; then \
-			bash $(REMOVE_RUNNER) "$$pf" --mode=purge --banner="==> Applying profile RemoveAndPurge: $$pf" $(2); \
+			$(BASH_BIN) $(REMOVE_RUNNER) "$$pf" --mode=purge --banner="==> Applying profile RemoveAndPurge: $$pf" $(2); \
 		fi; \
 	done
 endef
@@ -235,7 +251,7 @@ endef
 define RUN_COMPUTER_PURGE
 	@set -euo pipefail; \
 	if [ -f "$(COMPUTER_PURGE_DIR)/$(1)" ]; then \
-		bash $(REMOVE_RUNNER) "$(COMPUTER_PURGE_DIR)/$(1)" --mode=purge --banner="==> Applying computer-specific RemoveAndPurge: $(COMPUTER_PURGE_DIR)/$(1)" $(2); \
+		$(BASH_BIN) $(REMOVE_RUNNER) "$(COMPUTER_PURGE_DIR)/$(1)" --mode=purge --banner="==> Applying computer-specific RemoveAndPurge: $(COMPUTER_PURGE_DIR)/$(1)" $(2); \
 	fi
 endef
 
@@ -258,7 +274,7 @@ finder_defaults: ## Set Finder to List view & show hidden files; purge .DS_Store
 .PHONY: shell_setup
 shell_setup: ## Configure zsh, Oh My Zsh, theme, plugins, aliases (idempotent)
 	@set -euo pipefail
-	bash scripts/shell_setup.sh
+	$(BASH_BIN) scripts/shell_setup.sh
 
 # --- Per-Install targets (auto-generated, excluding special-cased ones) ---
 CORE_INSTALL  := 00-Install.core
@@ -289,35 +305,35 @@ $(foreach b,$(INSTALL_NO_SPECIAL),$(eval $(call GEN_INSTALL_TARGET,$(b))))
 # Special cases
 00_Install_core: ## Apply $(INSTALL_DIR)/$(CORE_INSTALL) and setup computer names
 	$(call APPLY_INSTALL_TIERS,$(CORE_INSTALL))
-	@bash -lc 'if [ -x "scripts/core_setup.sh" ]; then scripts/core_setup.sh; else echo "[core] scripts/core_setup.sh not found or not executable"; fi'
+	@$(BASH_BIN) -lc 'if [ -x "scripts/core_setup.sh" ]; then scripts/core_setup.sh; else echo "[core] scripts/core_setup.sh not found or not executable"; fi'
 
 02_Install_ui: ## Apply $(INSTALL_DIR)/$(UI_INSTALL) and setup Hammerspoon
 	$(call APPLY_INSTALL_TIERS,$(UI_INSTALL))
-	@bash -lc 'if [ -x "scripts/hammerspoon_setup.sh" ]; then scripts/hammerspoon_setup.sh; else echo "[hammerspoon] scripts/hammerspoon_setup.sh not found or not executable"; fi'
+	@$(BASH_BIN) -lc 'if [ -x "scripts/hammerspoon_setup.sh" ]; then scripts/hammerspoon_setup.sh; else echo "[hammerspoon] scripts/hammerspoon_setup.sh not found or not executable"; fi'
 
 03_Install_shell: ## Apply $(INSTALL_DIR)/$(SHELL_INSTALL) and run shell setup
 	$(call APPLY_INSTALL_TIERS,$(SHELL_INSTALL))
-	@bash -lc 'if [ -x "scripts/shell_setup.sh" ]; then scripts/shell_setup.sh; else echo "[shell] scripts/shell_setup.sh not found or not executable"; fi'
+	@$(BASH_BIN) -lc 'if [ -x "scripts/shell_setup.sh" ]; then scripts/shell_setup.sh; else echo "[shell] scripts/shell_setup.sh not found or not executable"; fi'
 
 06_Install_messaging: ## Apply $(INSTALL_DIR)/$(MSG_INSTALL) and setup msmtp config
 	$(call APPLY_INSTALL_TIERS,$(MSG_INSTALL))
-	@bash -lc 'if [ -x "scripts/msmtp_setup.sh" ]; then scripts/msmtp_setup.sh; else echo "[messaging] scripts/msmtp_setup.sh not found or not executable"; fi'
+	@$(BASH_BIN) -lc 'if [ -x "scripts/msmtp_setup.sh" ]; then scripts/msmtp_setup.sh; else echo "[messaging] scripts/msmtp_setup.sh not found or not executable"; fi'
 
 09_Install_development: ## Apply $(INSTALL_DIR)/$(DEV_INSTALL), install VSCode extensions, and setup VSCode config
 	$(call APPLY_INSTALL_TIERS,$(DEV_INSTALL))
-	@bash -lc 'if [ -x "scripts/vscode_extensions.sh" ]; then scripts/vscode_extensions.sh code; else echo "[development] scripts/vscode_extensions.sh not found or not executable"; fi' || true
-	@bash -lc 'if [ -x "scripts/vscode_setup.sh" ]; then scripts/vscode_setup.sh; else echo "[development] scripts/vscode_setup.sh not found or not executable"; fi'
+	@$(BASH_BIN) -lc 'if [ -x "scripts/vscode_extensions.sh" ]; then scripts/vscode_extensions.sh code; else echo "[development] scripts/vscode_extensions.sh not found or not executable"; fi' || true
+	@$(BASH_BIN) -lc 'if [ -x "scripts/vscode_setup.sh" ]; then scripts/vscode_setup.sh; else echo "[development] scripts/vscode_setup.sh not found or not executable"; fi'
 
 11_Install_aws: ## Apply $(INSTALL_DIR)/$(AWS_INSTALL) and setup CDK config
 	$(call APPLY_INSTALL_TIERS,$(AWS_INSTALL))
-	@bash -lc 'if [ -x "scripts/cdk_setup.sh" ]; then scripts/cdk_setup.sh; else echo "[aws] scripts/cdk_setup.sh not found or not executable"; fi'
+	@$(BASH_BIN) -lc 'if [ -x "scripts/cdk_setup.sh" ]; then scripts/cdk_setup.sh; else echo "[aws] scripts/cdk_setup.sh not found or not executable"; fi'
 
 17_Install_ai: ## Apply $(INSTALL_DIR)/$(AI_INSTALL), install Cursor extensions, disable auto-updates, and setup Claude config
 	$(call APPLY_INSTALL_TIERS,$(AI_INSTALL))
-	@bash -lc 'if [ -x "scripts/vscode_extensions.sh" ]; then scripts/vscode_extensions.sh cursor; else echo "[ai] scripts/vscode_extensions.sh not found or not executable"; fi' || true
+	@$(BASH_BIN) -lc 'if [ -x "scripts/vscode_extensions.sh" ]; then scripts/vscode_extensions.sh cursor; else echo "[ai] scripts/vscode_extensions.sh not found or not executable"; fi' || true
 	@claude config set -g autoUpdates false >/dev/null 2>&1 || true
-	@bash -lc 'if [ -x "scripts/claude_disable_autoupdater.sh" ]; then scripts/claude_disable_autoupdater.sh; else echo "[ai] scripts/claude_disable_autoupdater.sh not found or not executable"; fi'
-	@bash -lc 'if [ -x "scripts/claude_repo_setup.sh" ]; then scripts/claude_repo_setup.sh install; else echo "[ai] scripts/claude_repo_setup.sh not found or not executable"; fi'
+	@$(BASH_BIN) -lc 'if [ -x "scripts/claude_disable_autoupdater.sh" ]; then scripts/claude_disable_autoupdater.sh; else echo "[ai] scripts/claude_disable_autoupdater.sh not found or not executable"; fi'
+	@$(BASH_BIN) -lc 'if [ -x "scripts/claude_repo_setup.sh" ]; then scripts/claude_repo_setup.sh install; else echo "[ai] scripts/claude_repo_setup.sh not found or not executable"; fi'
 
 
 # --- Per-Uninstall targets (auto-generated for every Uninstall/<NN-Uninstall.suffix>) ---
@@ -369,19 +385,19 @@ $(foreach p,$(PURGE_BASENAMES),$(eval $(call GEN_PURGE_TARGET,$(p))))
 .PHONY: claude-install claude-update claude-outdated claude-plugins-install claude-plugins-update
 
 claude-install: ## Install or migrate ~/.claude/ from the global Claude config repo
-	@bash scripts/claude_repo_setup.sh install
+	@$(BASH_BIN) scripts/claude_repo_setup.sh install
 
 claude-update: ## Update ~/.claude/ (errors if not yet installed via claude-install)
-	@bash scripts/claude_repo_setup.sh update
+	@$(BASH_BIN) scripts/claude_repo_setup.sh update
 
 claude-outdated: ## Show pending pulls/pushes and dirty files in ~/.claude/ (read-only)
-	@bash scripts/claude_repo_setup.sh outdated
+	@$(BASH_BIN) scripts/claude_repo_setup.sh outdated
 
 claude-plugins-install: ## Sync Claude plugins via the clone's own ~/.claude/plugins.sh --install
-	@bash scripts/claude_repo_setup.sh plugins-install
+	@$(BASH_BIN) scripts/claude_repo_setup.sh plugins-install
 
 claude-plugins-update: ## Update Claude plugins via the clone's own ~/.claude/plugins.sh --update
-	@bash scripts/claude_repo_setup.sh plugins-update
+	@$(BASH_BIN) scripts/claude_repo_setup.sh plugins-update
 
 
 # --- Host-tier seeding ---
@@ -391,7 +407,7 @@ claude-plugins-update: ## Update Claude plugins via the clone's own ~/.claude/pl
 # overwritten. This target exposes the same step standalone.
 .PHONY: seed-host-tier
 seed-host-tier: ## Seed the external host tier from the template if absent (no-op if it already exists)
-	@bash scripts/seed_host_tier.sh
+	@$(BASH_BIN) scripts/seed_host_tier.sh
 
 # --- dasel reachability gate (issue #4) ---
 # Every config.toml read in this repo invokes `dasel` by BARE NAME (the
@@ -422,7 +438,7 @@ seed-host-tier: ## Seed the external host tier from the template if absent (no-o
 # `Error: dasel not in PATH.` the sole output on a no-dasel run.
 .PHONY: require-dasel
 require-dasel:
-	@bash scripts/require_dasel_on_path.sh
+	@$(BASH_BIN) scripts/require_dasel_on_path.sh
 
 # --- Batch targets ---
 #
@@ -496,16 +512,16 @@ install: require-dasel ## Apply all Install files in numeric order (filtered aga
 				vmp="$(VM_PURGE)"; \
 				if $(MISE_REACHABLE); then \
 					if [ -f "$(PURGE_DIR)/$$vmp" ]; then \
-						bash $(REMOVE_RUNNER) "$(PURGE_DIR)/$$vmp" --mode=purge --banner="==> Applying global RemoveAndPurge: $(PURGE_DIR)/$$vmp" || failed="$$failed $(PURGE_DIR)/$$vmp"; \
+						$(BASH_BIN) $(REMOVE_RUNNER) "$(PURGE_DIR)/$$vmp" --mode=purge --banner="==> Applying global RemoveAndPurge: $(PURGE_DIR)/$$vmp" || failed="$$failed $(PURGE_DIR)/$$vmp"; \
 					fi; \
 					for prof in $(PROFILES); do \
 						vpf="profiles/$$prof/$(PURGE_DIR)/$$vmp"; \
 						if [ -f "$$vpf" ]; then \
-							bash $(REMOVE_RUNNER) "$$vpf" --mode=purge --banner="==> Applying profile RemoveAndPurge: $$vpf" || failed="$$failed $$vpf"; \
+							$(BASH_BIN) $(REMOVE_RUNNER) "$$vpf" --mode=purge --banner="==> Applying profile RemoveAndPurge: $$vpf" || failed="$$failed $$vpf"; \
 						fi; \
 					done; \
 					if [ -f "$(COMPUTER_PURGE_DIR)/$$vmp" ]; then \
-						bash $(REMOVE_RUNNER) "$(COMPUTER_PURGE_DIR)/$$vmp" --mode=purge --banner="==> Applying computer-specific RemoveAndPurge: $(COMPUTER_PURGE_DIR)/$$vmp" || failed="$$failed $(COMPUTER_PURGE_DIR)/$$vmp"; \
+						$(BASH_BIN) $(REMOVE_RUNNER) "$(COMPUTER_PURGE_DIR)/$$vmp" --mode=purge --banner="==> Applying computer-specific RemoveAndPurge: $(COMPUTER_PURGE_DIR)/$$vmp" || failed="$$failed $(COMPUTER_PURGE_DIR)/$$vmp"; \
 					fi; \
 				else \
 					vm_purge_skipped="$$vmp"; \
@@ -564,16 +580,16 @@ _uninstall_loop:
 		ubase="$$(basename "$$u")"; \
 		case " $(REMOVE_SKIP_BASENAMES) " in *" $$ubase "*) continue;; esac; \
 		if [ -f "$$u" ]; then \
-			bash $(REMOVE_RUNNER) "$$u" --mode=uninstall --banner="==> Applying global Uninstall: $$u" $(UNINSTALL_DRY_RUN); \
+			$(BASH_BIN) $(REMOVE_RUNNER) "$$u" --mode=uninstall --banner="==> Applying global Uninstall: $$u" $(UNINSTALL_DRY_RUN); \
 		fi; \
 		for prof in $(PROFILES); do \
 			pf="profiles/$$prof/$(UNINSTALL_DIR)/$$ubase"; \
 			if [ -f "$$pf" ]; then \
-				bash $(REMOVE_RUNNER) "$$pf" --mode=uninstall --banner="==> Applying profile Uninstall: $$pf" $(UNINSTALL_DRY_RUN); \
+				$(BASH_BIN) $(REMOVE_RUNNER) "$$pf" --mode=uninstall --banner="==> Applying profile Uninstall: $$pf" $(UNINSTALL_DRY_RUN); \
 			fi; \
 		done; \
 		if [ -f "$(COMPUTER_UNINSTALL_DIR)/$$ubase" ]; then \
-			bash $(REMOVE_RUNNER) "$(COMPUTER_UNINSTALL_DIR)/$$ubase" --mode=uninstall --banner="==> Applying computer-specific Uninstall: $(COMPUTER_UNINSTALL_DIR)/$$ubase" $(UNINSTALL_DRY_RUN); \
+			$(BASH_BIN) $(REMOVE_RUNNER) "$(COMPUTER_UNINSTALL_DIR)/$$ubase" --mode=uninstall --banner="==> Applying computer-specific Uninstall: $(COMPUTER_UNINSTALL_DIR)/$$ubase" $(UNINSTALL_DRY_RUN); \
 		fi; \
 	done; \
 	if [ $$any -eq 0 ]; then echo "No Uninstall files found in $(UNINSTALL_DIR)/"; fi; \
@@ -600,16 +616,16 @@ _remove_and_purge_loop:
 		ubase="$$(basename "$$u")"; \
 		case " $(REMOVE_SKIP_BASENAMES) " in *" $$ubase "*) continue;; esac; \
 		if [ -f "$$u" ]; then \
-			bash $(REMOVE_RUNNER) "$$u" --mode=purge --banner="==> Applying global RemoveAndPurge: $$u" $(PURGE_DRY_RUN); \
+			$(BASH_BIN) $(REMOVE_RUNNER) "$$u" --mode=purge --banner="==> Applying global RemoveAndPurge: $$u" $(PURGE_DRY_RUN); \
 		fi; \
 		for prof in $(PROFILES); do \
 			pf="profiles/$$prof/$(PURGE_DIR)/$$ubase"; \
 			if [ -f "$$pf" ]; then \
-				bash $(REMOVE_RUNNER) "$$pf" --mode=purge --banner="==> Applying profile RemoveAndPurge: $$pf" $(PURGE_DRY_RUN); \
+				$(BASH_BIN) $(REMOVE_RUNNER) "$$pf" --mode=purge --banner="==> Applying profile RemoveAndPurge: $$pf" $(PURGE_DRY_RUN); \
 			fi; \
 		done; \
 		if [ -f "$(COMPUTER_PURGE_DIR)/$$ubase" ]; then \
-			bash $(REMOVE_RUNNER) "$(COMPUTER_PURGE_DIR)/$$ubase" --mode=purge --banner="==> Applying computer-specific RemoveAndPurge: $(COMPUTER_PURGE_DIR)/$$ubase" $(PURGE_DRY_RUN); \
+			$(BASH_BIN) $(REMOVE_RUNNER) "$(COMPUTER_PURGE_DIR)/$$ubase" --mode=purge --banner="==> Applying computer-specific RemoveAndPurge: $(COMPUTER_PURGE_DIR)/$$ubase" $(PURGE_DRY_RUN); \
 		fi; \
 	done; \
 	if [ $$any -eq 0 ]; then echo "No RemoveAndPurge files found in $(PURGE_DIR)/"; fi; \
@@ -619,22 +635,31 @@ _remove_and_purge_loop:
 # Homebrew's "Error: <cask>: ..." format. If it changes, unmatched errors safely fall
 # through to the generic error check which sets FAIL=1.
 #
-# `update` also completes the asdf -> mise cutover, all three pieces of it:
-# it applies the slot-04 Install tiers (which is what puts `mise` on a host
-# that has never run `make install` -- `brew upgrade` upgrades an installed
-# formula but never installs an absent one), then the RemoveAndPurge loop
-# uninstalls asdf and direnv, then strip_asdf_zshrc_lines.sh removes the
-# ~/.zshrc init lines that would otherwise error on every shell startup.
-# `update` never runs shell_setup.sh, so without that last call the binaries
-# would go while their broken init lines stayed.
+# `update` also completes the asdf -> mise cutover end to end: it applies the
+# slot-04 Install tiers (which is what puts `mise` on a host that has never
+# run `make install` -- `brew upgrade` upgrades an installed formula but never
+# installs an absent one), then the RemoveAndPurge loop uninstalls asdf and
+# direnv, then it rewrites ~/.zshrc from both sides --
+# strip_asdf_zshrc_lines.sh removes the asdf/direnv init lines that would
+# otherwise error on every shell startup, and ensure_mise_zshrc_lines.sh adds
+# the mise shims PATH export and `mise activate zsh` that replace them.
+#
+# Both ~/.zshrc calls are here because `update` never runs shell_setup.sh, the
+# only other writer of those lines. Without the strip the binaries would go
+# while their broken init lines stayed; without the ensure (issue #38) a host
+# that reaches the cutover purely via `make update` would end it with mise
+# installed, asdf and direnv gone, and NO version manager wired into the
+# interactive shell at all.
 #
 # Order is load-bearing: INSTALL BEFORE REMOVE. The install step also runs
 # ahead of `versions-update`, which needs a mise to drive. If mise is still
 # not reachable after the install step -- brew bundle failed, the profile is
 # absent, the binary is off PATH -- the removal of asdf and direnv is skipped
 # via REMOVE_SKIP_BASENAMES (slot 04 only; every other slot still applies)
-# and so is the ~/.zshrc strip, because removing the old version manager
-# without a working replacement is strictly worse than leaving both in place.
+# and so are BOTH ~/.zshrc rewrites, because removing the old version manager
+# without a working replacement is strictly worse than leaving both in place --
+# and pointing ~/.zshrc at a mise that is not there would error on every shell
+# startup, which is the failure the strip exists to prevent.
 # That path warns and sets FAIL, so the run exits non-zero.
 update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed tool versions, then apply Uninstall and RemoveAndPurge
 	@FAIL=0; \
@@ -676,12 +701,15 @@ update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed too
 	echo "==> Pruning unused mise-managed versions..."; \
 	$(MAKE) -s versions-cleanup || FAIL=1; \
 	echo "==> Updating ~/.claude/ from the global Claude config repo..."; \
-	if [ -x "scripts/claude_repo_setup.sh" ]; then bash scripts/claude_repo_setup.sh update || FAIL=1; else echo "scripts/claude_repo_setup.sh not found or not executable"; fi; \
+	if [ -x "scripts/claude_repo_setup.sh" ]; then $(BASH_BIN) scripts/claude_repo_setup.sh update || FAIL=1; else echo "scripts/claude_repo_setup.sh not found or not executable"; fi; \
 	echo "==> Applying Uninstall/ files..."; \
 	$(MAKE) -s uninstall REMOVE_SKIP_BASENAMES="$$VM_SKIP" || FAIL=1; \
 	echo "==> Applying RemoveAndPurge/ files..."; \
 	$(MAKE) -s remove-and-purge REMOVE_SKIP_BASENAMES="$$VM_SKIP" || FAIL=1; \
-	if [ -z "$$VM_SKIP" ]; then bash scripts/strip_asdf_zshrc_lines.sh || FAIL=1; fi; \
+	if [ -z "$$VM_SKIP" ]; then \
+		$(BASH_BIN) scripts/strip_asdf_zshrc_lines.sh || FAIL=1; \
+		$(BASH_BIN) scripts/ensure_mise_zshrc_lines.sh || FAIL=1; \
+	fi; \
 	echo "==> All packages updated."; \
 	exit $$FAIL
 
@@ -689,7 +717,7 @@ update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed too
 # top of this file) and is forwarded to scripts/self_update.sh so
 # `make self-update DRY_RUN=1` rehearses without making changes.
 self-update: ## Pull latest main; auto-stash if dirty (DRY_RUN=1 to rehearse)
-	@bash scripts/self_update.sh $(DRY_RUN_FLAG)
+	@$(BASH_BIN) scripts/self_update.sh $(DRY_RUN_FLAG)
 
 # --- Help ---
 help: ## Show help for available targets (documented + auto-detected Install/Uninstall/RemoveAndPurge + alias targets)
@@ -719,19 +747,19 @@ help: ## Show help for available targets (documented + auto-detected Install/Uni
 .PHONY: versions-install versions-update versions-outdated versions-cleanup versions-cleanup-dry-run asdf-to-mise
 
 versions-install: ## Install the tool versions the resolved mise config declares
-	@bash -lc 'if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) install; else echo "$(VERSIONS_SETUP) not found"; fi'
+	@$(BASH_BIN) -lc 'if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) install; else echo "$(VERSIONS_SETUP) not found"; fi'
 
 versions-update: ## Install latest tool versions and bump the config (mise up --bump)
-	@bash -lc 'if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) update; else echo "$(VERSIONS_SETUP) not found"; fi'
+	@$(BASH_BIN) -lc 'if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) update; else echo "$(VERSIONS_SETUP) not found"; fi'
 
 versions-outdated: ## Check for outdated mise-managed tools
-	@bash -lc 'if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) outdated; else echo "$(VERSIONS_SETUP) not found"; fi'
+	@$(BASH_BIN) -lc 'if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) outdated; else echo "$(VERSIONS_SETUP) not found"; fi'
 
 versions-cleanup: ## Prune unused installed tool versions (mise prune)
-	@bash -lc 'if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) cleanup; else echo "$(VERSIONS_SETUP) not found"; fi'
+	@$(BASH_BIN) -lc 'if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) cleanup; else echo "$(VERSIONS_SETUP) not found"; fi'
 
 versions-cleanup-dry-run: ## Show what versions-cleanup would remove
-	@bash -lc 'if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) cleanup-dry-run; else echo "$(VERSIONS_SETUP) not found"; fi'
+	@$(BASH_BIN) -lc 'if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) cleanup-dry-run; else echo "$(VERSIONS_SETUP) not found"; fi'
 
 # One-shot migration verb. A deliberate exception to the
 # implementation-neutral naming above: it names both endpoints on purpose,
@@ -742,11 +770,11 @@ versions-cleanup-dry-run: ## Show what versions-cleanup would remove
 # and warns about leftovers, and deletes, moves, untracks, and commits
 # nothing.
 asdf-to-mise: ## Convert the calling repo from asdf+direnv to mise (additive; deletes nothing)
-	@START_DIR="$(START_DIR)" bash scripts/asdf_to_mise.sh
+	@START_DIR="$(START_DIR)" $(BASH_BIN) scripts/asdf_to_mise.sh
 
 04_Install_versionmanagers: ## Apply $(INSTALL_DIR)/$(VM_INSTALL) and set up mise
 	$(call APPLY_INSTALL_TIERS,$(VM_INSTALL))
-	@bash -lc 'if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) full; else echo "[versionmanagers] $(VERSIONS_SETUP) not found or not executable"; fi'
+	@$(BASH_BIN) -lc 'if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) full; else echo "[versionmanagers] $(VERSIONS_SETUP) not found or not executable"; fi'
 
 # Allows: `make 02`, `make ui`, `make shell`, `make versionmanagers`, etc.
 
@@ -798,20 +826,20 @@ contentviewers: ; @$(MAKE) $(call CANON,19-Install.contentviewers)
 .PHONY: 00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 ai aws backups browsers componentization contentviewers core data databases development messaging msoffice proton ripping sdcards security shell tools ui versionmanagers
 
 diagnose: ## Run system diagnostics and check installation status
-	@bash ./scripts/diagnose.sh
+	@$(BASH_BIN) ./scripts/diagnose.sh
 .PHONY: diagnose
 
 .PHONY: verify sanitize
 verify: require-dasel ## Verify installations and check for same-tier Install/Uninstall+RemoveAndPurge collisions
 	@set -uo pipefail; FAIL=0; \
-	bash ./scripts/verify.sh || FAIL=1; \
+	$(BASH_BIN) ./scripts/verify.sh || FAIL=1; \
 	echo; \
 	echo "=== same-tier collision check ==="; \
-	bash ./scripts/collision_check.sh || FAIL=1; \
+	$(BASH_BIN) ./scripts/collision_check.sh || FAIL=1; \
 	exit $$FAIL
 
 sanitize: ## Resolve same-tier Install/Uninstall+RemoveAndPurge collisions by commenting out the Install line (writes .bak)
-	@bash ./scripts/collision_check.sh --fix
+	@$(BASH_BIN) ./scripts/collision_check.sh --fix
 
 .PHONY: outdated
 outdated: require-dasel ## Check for outdated formulae, casks, MAS apps, and managed tool versions
@@ -830,7 +858,7 @@ outdated: require-dasel ## Check for outdated formulae, casks, MAS apps, and man
 	@$(MAKE) -s versions-outdated 2>/dev/null || echo "  (unable to check)"
 	@echo
 	@echo "==> Pending updates in ~/.claude/ (global Claude config repo):"
-	@if [ -x "scripts/claude_repo_setup.sh" ]; then bash scripts/claude_repo_setup.sh outdated || true; else echo "  scripts/claude_repo_setup.sh not found or not executable"; fi
+	@if [ -x "scripts/claude_repo_setup.sh" ]; then $(BASH_BIN) scripts/claude_repo_setup.sh outdated || true; else echo "  scripts/claude_repo_setup.sh not found or not executable"; fi
 	@echo
 	@echo "To update all packages, run: make update"
 

@@ -476,6 +476,29 @@ SUDO=<stub>` reaches the runner for all three.
 fails if a bare `brew`, `mas`, or `sudo` call is
 reintroduced into the runner. See `docs/INSTALL.md`.
 
+Two further invariants stop a removal run from
+breaking its own later steps (issue #37).
+`remove_runner.sh` exports `HOMEBREW_NO_AUTOREMOVE=1`,
+so `brew uninstall`'s automatic `brew autoremove`
+never cascades into a shared dependency — that
+cascade is how uninstalling `asdf` once removed
+Homebrew's `bash` formula mid-run. And every
+Makefile recipe names bash as `$(BASH_BIN)`, the
+absolute `/bin/bash` that `SHELL` is also set from,
+rather than a PATH-resolved bare `bash` that would
+die with `/bin/bash: /opt/homebrew/bin/bash: No such
+file or directory` once that formula was gone. Every
+script that re-invokes bash itself names `/bin/bash`
+for the same reason: `shell_setup.sh` and
+`claude_repo_setup.sh`, which run helper scripts, and
+`ensure_mise_zshrc_lines.sh`, whose reachability probe
+runs `/bin/bash -lc`.
+`scripts/test/absolute_bash_test.sh` fails if either
+invariant is dropped — it pins the
+`HOMEBREW_NO_AUTOREMOVE` export and scans the Makefile,
+`shell_setup.sh`, and `claude_repo_setup.sh` for a bare
+`bash`.
+
 A second Homebrew 6.0 quirk is **interactive ask-mode**
 (issue #20): 6.0 made a `Do you want to proceed? [y/n]`
 prompt the default for `install`/`upgrade`/`reinstall`
@@ -692,26 +715,41 @@ tools. Only the binaries go — `~/.asdf/`,
 `~/.tool-versions`, `~/.config/direnv/lib/use_asdf.sh`
 and every repo's `.envrc` / `.tool-versions` survive, and
 `make asdf-to-mise` warns about each rather than deleting
-it. `scripts/strip_asdf_zshrc_lines.sh` removes the
-asdf/direnv `~/.zshrc` init lines this repo once wrote,
-and `make shell` (`scripts/shell_setup.sh`) calls it
-before adding
+it. The `~/.zshrc` work is a PAIR of scripts, so both
+cutover paths do identical work:
+`scripts/strip_asdf_zshrc_lines.sh` removes the
+asdf/direnv init lines this repo once wrote, and
+`scripts/ensure_mise_zshrc_lines.sh` adds
 `export PATH="${XDG_DATA_HOME:-$HOME/.local/share}/mise/shims:$PATH"`
-plus `eval "$(mise activate zsh)"`;
+plus `eval "$(mise activate zsh)"` (the activation line
+only when mise is reachable — this shell's `PATH`
+first, then a fallback to the `/bin/bash -lc`
+login-shell probe the `MISE_REACHABLE` Makefile macro
+is, so the gate that removes asdf and the gate that
+writes the activation line cannot disagree within one
+run). `make shell`
+(`scripts/shell_setup.sh`) calls both, in that order, and
+so does `make update` — which never runs
+`shell_setup.sh`, so before issue #38 it stripped without
+adding and left the host with no version manager wired
+into the interactive shell.
 `scripts/launchagent_runner.sh` puts the same shims
 directory on `PATH` itself, because launchd never sources
 `~/.zshrc`.
 
 The cutover breaks into distinct pieces -- install mise,
-uninstall asdf + direnv, strip the `~/.zshrc` lines --
-each owned by a different mechanism. `make install` and
+uninstall asdf + direnv, strip the old `~/.zshrc` lines,
+add the mise `~/.zshrc` lines -- each owned by a
+different mechanism. `make install` and
 `make update` each do all of them: `install` runs the
 slot-04 RemoveAndPurge inline (a deliberate one-slot
 exception to "install does not run the removal loops")
-and reaches the strip via `03-Install.shell`, while
+and reaches both `~/.zshrc` rewrites via
+`03-Install.shell`, while
 `update` applies the slot-04 `Install` tiers itself
 before the removal loops and calls
-`strip_asdf_zshrc_lines.sh` directly because it never
+`strip_asdf_zshrc_lines.sh` and then
+`ensure_mise_zshrc_lines.sh` directly because it never
 runs `shell_setup.sh`. `update` needs that explicit
 install step because `brew upgrade` upgrades an
 installed formula but never installs an absent one, so a
@@ -724,7 +762,8 @@ rather than left to the surrounding `set -e`. If mise is
 still unreachable after the install step, `update` skips
 slot 04's `Uninstall` and `RemoveAndPurge` (via the
 `REMOVE_SKIP_BASENAMES` Makefile variable, which the
-batch removal loops honor) and skips the strip, while
+batch removal loops honor) and skips both `~/.zshrc`
+rewrites, while
 `install` skips its inline slot-04 `RemoveAndPurge`;
 both warn and exit non-zero, and every other removal
 slot still applies. `scripts/test/install_cutover_guard_test.sh`
@@ -1172,6 +1211,7 @@ former in-repo `logs/` directory. This is macOS-native
 | `versions_setup.sh` | Drives mise for the `versions-*` targets and slot 04 |
 | `asdf_to_mise.sh` | One-shot additive asdf+direnv -> mise repo migration |
 | `strip_asdf_zshrc_lines.sh` | Strips the ~/.zshrc lines the cutover orphans |
+| `ensure_mise_zshrc_lines.sh` | Adds the mise ~/.zshrc shims/activate lines |
 | `vscode_extensions.sh` | Installs VS Code extensions |
 | `vscode_setup.sh` | Symlinks VS Code `settings.json` (single-winner) |
 | `hammerspoon_setup.sh` | Symlinks HS config; robust reload (IPC + relaunch) |

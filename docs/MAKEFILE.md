@@ -4,6 +4,13 @@ This repository uses a dynamic `Makefile` to orchestrate applying
 `Install/` files (formerly `Brewfiles`) and the parallel `Uninstall/`
 and `RemoveAndPurge/` frameworks, plus related setup tasks.
 
+Every recipe runs under `BASH_BIN`, the absolute `/bin/bash`, which is
+also what `SHELL` is set from, and every helper script a recipe invokes
+is named as `$(BASH_BIN) scripts/<name>.sh` rather than a
+`PATH`-resolved bare `bash`. A run that removes Homebrew's `bash`
+formula must not lose the interpreter its own later steps need; see
+[Removals never cascade, and never lose the interpreter](INSTALL.md#removals-never-cascade-and-never-lose-the-interpreter).
+
 ## Common Targets
 
 - `make install`
@@ -107,6 +114,8 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
   without touching real Homebrew, the real Mac App Store, or real
   `sudo`; see
   [Overriding the package-manager binaries](INSTALL.md#overriding-the-package-manager-binaries).
+  The runner also exports `HOMEBREW_NO_AUTOREMOVE=1`, so an uninstall
+  never cascades into a shared dependency.
 
 - `make uninstall-dry-run`
   Same as `make uninstall` but only prints what would happen. Safe to
@@ -138,11 +147,16 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
   result. Slot 04 is the ONE `Install/` slot `update` applies; no
   other `Install/` file is re-applied.
 
-  It then calls `scripts/strip_asdf_zshrc_lines.sh`. The purge step
-  uninstalls `asdf` and `direnv`, and `update` never runs
-  `shell_setup.sh`, so without this call it would remove the binaries
-  and leave their `~/.zshrc` init lines erroring on every shell
-  startup. The script is a no-op once the lines are gone.
+  It then rewrites `~/.zshrc` from both sides:
+  `scripts/strip_asdf_zshrc_lines.sh` removes the asdf/direnv init
+  lines, and `scripts/ensure_mise_zshrc_lines.sh` adds the mise shims
+  `PATH` export and `eval "$(mise activate zsh)"` that replace them.
+  The purge step uninstalls `asdf` and `direnv`, and `update` never
+  runs `shell_setup.sh` — the only other caller of that pair — so
+  without the strip it would leave the old init lines erroring on
+  every shell startup, and without the add it would leave the host
+  with no version manager wired into the interactive shell at all.
+  Both scripts are grep-guarded no-ops once their work is done.
 
   Slot 04's `Install` runs first for the same reason: `brew upgrade`
   upgrades an installed formula but never installs an absent one, so
@@ -151,8 +165,9 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
   precedes remove — and if the `MISE_REACHABLE` probe (the same macro
   `install` gates its inline purge on, so the two destructive paths
   cannot drift) still finds no mise after that install step, `update`
-  skips slot 04 in both removal loops and skips the strip, warns, and
-  exits non-zero, leaving every other removal slot to apply normally.
+  skips slot 04 in both removal loops and skips both `~/.zshrc`
+  rewrites, warns, and exits non-zero, leaving every other removal
+  slot to apply normally.
 
 - `make self-update`
   Pulls the latest `main` into this repo via `scripts/self_update.sh`.
@@ -390,8 +405,8 @@ so swapping the implementation leaves the target names, their callers,
 and the doc lines that reference them alone — the change is bounded to
 the scripts that name the tool directly
 (`scripts/versions_setup.sh`, `scripts/mise_common.sh`, and the
-shell/launchd `PATH` lines in `scripts/shell_setup.sh` and
-`scripts/launchagent_runner.sh`):
+shell/launchd `PATH` lines in `scripts/ensure_mise_zshrc_lines.sh`
+and `scripts/launchagent_runner.sh`):
 
 - `make versions-install` — install the versions the resolved mise
   config declares

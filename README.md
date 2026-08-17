@@ -321,6 +321,15 @@ takes a `--mode={uninstall|purge}` flag (defaults to
 `uninstall` for backward compatibility); the Makefile
 passes the flag explicitly at every call site.
 
+The runner also exports `HOMEBREW_NO_AUTOREMOVE=1`, so a
+removal never cascades: `brew uninstall` normally follows
+up with an automatic `brew autoremove` that drops every
+formula nothing depends on any more, which is how
+uninstalling `asdf` once took Homebrew's `bash` formula
+with it mid-run. Pruning genuinely unneeded dependencies
+stays available as a deliberate, separate
+`brew autoremove`.
+
 See [docs/INSTALL.md](docs/INSTALL.md) for the full
 reference.
 
@@ -672,8 +681,9 @@ bounded to the scripts that name the tool directly:
 `scripts/versions_setup.sh` and `scripts/mise_common.sh`
 drive it, `scripts/diagnose.sh` reports on it,
 `scripts/asdf_to_mise.sh` migrates a repo onto it, and
-`scripts/shell_setup.sh` / `scripts/launchagent_runner.sh`
-put its shims on `PATH`.
+`scripts/ensure_mise_zshrc_lines.sh` (called by
+`scripts/shell_setup.sh` and by `make update`) /
+`scripts/launchagent_runner.sh` put its shims on `PATH`.
 
 ```bash
 # Install mise and its global config (included in make install).
