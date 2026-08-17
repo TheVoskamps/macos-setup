@@ -148,6 +148,30 @@ claude-plugin-path() {
   ' "$db" 2>/dev/null
 }
 
+# Update every marketplace and enabled plugin declared in the global
+# Claude settings.json. A plugin entry in .enabledPlugins is either a
+# boolean or an object with an `enabled` key; the type guard on the
+# object index matters because jq's `or` does not short-circuit the
+# right operand's evaluation errors -- indexing a boolean with
+# .enabled aborts the whole filter (claude-config#44).
+update_claude_plugins() {
+  local settings="${1:-$HOME/.claude/settings.json}"
+  local i
+  local -a marketplaces plugins
+
+  marketplaces=("${(@f)$(jq -r '.extraKnownMarketplaces // {} | keys[]' "$settings")}")
+  for i in "${marketplaces[@]}"; do
+    [[ -n "$i" ]] || continue
+    claude plugin marketplace update "$i"
+  done
+
+  plugins=("${(@f)$(jq -r '.enabledPlugins // {} | to_entries[] | select(.value == true or ((.value | type) == "object" and .value.enabled == true)) | .key' "$settings")}")
+  for i in "${plugins[@]}"; do
+    [[ -n "$i" ]] || continue
+    claude plugin update "$i"
+  done
+}
+
 claude-vm() {
   local root exe
   root=$(claude-plugin-path 'claude-vm@thevoskamps') || {
