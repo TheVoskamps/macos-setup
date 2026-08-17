@@ -138,11 +138,16 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
   result. Slot 04 is the ONE `Install/` slot `update` applies; no
   other `Install/` file is re-applied.
 
-  It then calls `scripts/strip_asdf_zshrc_lines.sh`. The purge step
-  uninstalls `asdf` and `direnv`, and `update` never runs
-  `shell_setup.sh`, so without this call it would remove the binaries
-  and leave their `~/.zshrc` init lines erroring on every shell
-  startup. The script is a no-op once the lines are gone.
+  It then rewrites `~/.zshrc` from both sides:
+  `scripts/strip_asdf_zshrc_lines.sh` removes the asdf/direnv init
+  lines, and `scripts/ensure_mise_zshrc_lines.sh` adds the mise shims
+  `PATH` export and `eval "$(mise activate zsh)"` that replace them.
+  The purge step uninstalls `asdf` and `direnv`, and `update` never
+  runs `shell_setup.sh` — the only other writer of those lines — so
+  without the strip it would leave the old init lines erroring on
+  every shell startup, and without the add it would leave the host
+  with no version manager wired into the interactive shell at all.
+  Both scripts are grep-guarded no-ops once their work is done.
 
   Slot 04's `Install` runs first for the same reason: `brew upgrade`
   upgrades an installed formula but never installs an absent one, so
@@ -151,8 +156,9 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
   precedes remove — and if the `MISE_REACHABLE` probe (the same macro
   `install` gates its inline purge on, so the two destructive paths
   cannot drift) still finds no mise after that install step, `update`
-  skips slot 04 in both removal loops and skips the strip, warns, and
-  exits non-zero, leaving every other removal slot to apply normally.
+  skips slot 04 in both removal loops and skips both `~/.zshrc`
+  rewrites, warns, and exits non-zero, leaving every other removal
+  slot to apply normally.
 
 - `make self-update`
   Pulls the latest `main` into this repo via `scripts/self_update.sh`.

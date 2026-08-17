@@ -191,14 +191,22 @@ Separate pieces of work, each owned by a different mechanism:
 | Install `mise` | slot 04's `Install` + `versions_setup.sh full` |
 | Uninstall `asdf` + `direnv` | slot 04's `RemoveAndPurge` |
 | Strip orphaned `~/.zshrc` lines | `strip_asdf_zshrc_lines.sh` |
+| Add the mise `~/.zshrc` lines | `ensure_mise_zshrc_lines.sh` |
+
+The last two are a pair, and both are their own script for the same
+reason: the cutover reaches a host down either of two paths, and each
+must leave `~/.zshrc` in the same state. Stripping without adding is
+what left a real host with mise installed, asdf and direnv gone, and
+no version manager wired into the interactive shell at all.
 
 **`make install` and `make update` each do all of it.** `make install`
 runs the slot-04 install and, as a deliberate one-slot exception to
 "install does not run the removal loops", the slot-04 RemoveAndPurge
-alongside it; the `03-Install.shell` action strips `~/.zshrc`.
-`make update` applies the slot-04 `Install` tiers itself before it
-reaches the removal loops, then runs those loops and calls the strip
-script directly (it never runs `shell_setup.sh`). The explicit install
+alongside it; the `03-Install.shell` action rewrites `~/.zshrc` from
+both sides. `make update` applies the slot-04 `Install` tiers itself
+before it reaches the removal loops, then runs those loops and calls
+the strip and the add directly, in that order (it never runs
+`shell_setup.sh`). The explicit install
 step is what carries a host that has never run `make install`:
 `brew upgrade` upgrades a formula that is already installed but never
 installs an absent one, so without it `update` would remove asdf and
@@ -210,7 +218,10 @@ anything, through one shared Makefile macro (`MISE_REACHABLE`), and
 hold the removal back when the probe fails — `brew bundle` failed,
 the host never opted into the `version-managers` profile, the binary
 is off `PATH`. `make update` skips slot 04's `Uninstall` and
-`RemoveAndPurge` and skips the `~/.zshrc` strip; `make install` skips
+`RemoveAndPurge` and skips both `~/.zshrc` rewrites — pointing
+`~/.zshrc` at a mise that is not there would error on every shell
+startup, which is exactly what the strip exists to prevent;
+`make install` skips
 its inline slot-04 `RemoveAndPurge`. Both warn and exit non-zero.
 Every other slot still applies; only slot 04 is held back. A host is
 never left with the old version manager gone and no replacement.
@@ -229,7 +240,7 @@ Driving the cutover by hand therefore takes the sequence:
 ```bash
 make versionmanagers                       # install mise
 make 04_RemoveAndPurge_versionmanagers     # uninstall asdf + direnv
-make shell                                 # strip the ~/.zshrc lines
+make shell                                 # rewrite the ~/.zshrc lines
 ```
 
 Removing the binaries touches none of the data they left behind:

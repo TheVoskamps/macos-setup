@@ -246,16 +246,12 @@ fi
 # <<< macos-setup zoxide init <<<
 
 # >>> macos-setup mise init >>>
-# Idempotent mise initialization (appends to ~/.zshrc only if missing)
-_ms_ensure_line() {
-  local line="$1" file="$2"
-  [ -f "$file" ] || touch "$file"
-  if ! grep -Fqx "$line" "$file" 2>/dev/null; then
-    echo "$line" >> "$file"
-    echo "[SHELL-SETUP] appended to $file: $line"
-  fi
-}
-
+# Idempotent mise initialization (appends to ~/.zshrc only if missing).
+#
+# Both halves — remove the orphaned asdf/direnv lines, add the mise ones —
+# live in their own script rather than inline here, because the `update`
+# Makefile target must do exactly the same two things and never runs this
+# script (issue #38).
 ZSHRC_PATH="$HOME/.zshrc"
 
 # 1) Remove the ~/.zshrc lines the asdf -> mise migration orphans.
@@ -274,25 +270,12 @@ ZSHRC_PATH="$ZSHRC_PATH" /bin/bash "$SCRIPT_DIR/strip_asdf_zshrc_lines.sh"
 
 # 2) Ensure the mise init lines.
 #
-#    Both forms are emitted, on purpose:
-#      - `mise activate zsh` is mise's preferred interactive form and is
-#        what makes `cd` into a project switch tool versions (and, with
-#        `[settings] env_file`, load its `.env`).
-#      - the shims dir on PATH covers every non-interactive context that
-#        never sources this file at all.
-#
-#    The shims path is mise's own default install location. The literal
-#    below is written into ~/.zshrc, so it cannot be sourced from
-#    `mise_shims_dir` in scripts/mise_common.sh; that function states the
-#    same path, and scripts/launchagent_runner.sh repeats the literal a
-#    third time to put the directory on PATH for scheduled jobs (launchd
-#    does NOT source ~/.zshrc). Change one, change all three.
-_ms_ensure_line 'export PATH="${XDG_DATA_HOME:-$HOME/.local/share}/mise/shims:$PATH"' "$ZSHRC_PATH"
-if command -v mise >/dev/null 2>&1; then
-  _ms_ensure_line 'eval "$(mise activate zsh)"' "$ZSHRC_PATH"
-else
-  echo "[SHELL-SETUP] NOTE: mise not yet installed; activation line will be added after install."
-fi
+#    Which lines, why both of them, and why the activation line is gated on
+#    mise being reachable all live in
+#    scripts/ensure_mise_zshrc_lines.sh — the same reason as the strip
+#    above: the `update` Makefile target needs this identical work and does
+#    not run this script.
+ZSHRC_PATH="$ZSHRC_PATH" /bin/bash "$SCRIPT_DIR/ensure_mise_zshrc_lines.sh"
 # <<< macos-setup mise init <<<
 
 # >>> macos-setup PATH and claude symlink >>>

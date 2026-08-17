@@ -635,22 +635,31 @@ _remove_and_purge_loop:
 # Homebrew's "Error: <cask>: ..." format. If it changes, unmatched errors safely fall
 # through to the generic error check which sets FAIL=1.
 #
-# `update` also completes the asdf -> mise cutover, all three pieces of it:
-# it applies the slot-04 Install tiers (which is what puts `mise` on a host
-# that has never run `make install` -- `brew upgrade` upgrades an installed
-# formula but never installs an absent one), then the RemoveAndPurge loop
-# uninstalls asdf and direnv, then strip_asdf_zshrc_lines.sh removes the
-# ~/.zshrc init lines that would otherwise error on every shell startup.
-# `update` never runs shell_setup.sh, so without that last call the binaries
-# would go while their broken init lines stayed.
+# `update` also completes the asdf -> mise cutover end to end: it applies the
+# slot-04 Install tiers (which is what puts `mise` on a host that has never
+# run `make install` -- `brew upgrade` upgrades an installed formula but never
+# installs an absent one), then the RemoveAndPurge loop uninstalls asdf and
+# direnv, then it rewrites ~/.zshrc from both sides --
+# strip_asdf_zshrc_lines.sh removes the asdf/direnv init lines that would
+# otherwise error on every shell startup, and ensure_mise_zshrc_lines.sh adds
+# the mise shims PATH export and `mise activate zsh` that replace them.
+#
+# Both ~/.zshrc calls are here because `update` never runs shell_setup.sh, the
+# only other writer of those lines. Without the strip the binaries would go
+# while their broken init lines stayed; without the ensure (issue #38) a host
+# that reaches the cutover purely via `make update` would end it with mise
+# installed, asdf and direnv gone, and NO version manager wired into the
+# interactive shell at all.
 #
 # Order is load-bearing: INSTALL BEFORE REMOVE. The install step also runs
 # ahead of `versions-update`, which needs a mise to drive. If mise is still
 # not reachable after the install step -- brew bundle failed, the profile is
 # absent, the binary is off PATH -- the removal of asdf and direnv is skipped
 # via REMOVE_SKIP_BASENAMES (slot 04 only; every other slot still applies)
-# and so is the ~/.zshrc strip, because removing the old version manager
-# without a working replacement is strictly worse than leaving both in place.
+# and so are BOTH ~/.zshrc rewrites, because removing the old version manager
+# without a working replacement is strictly worse than leaving both in place --
+# and pointing ~/.zshrc at a mise that is not there would error on every shell
+# startup, which is the failure the strip exists to prevent.
 # That path warns and sets FAIL, so the run exits non-zero.
 update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed tool versions, then apply Uninstall and RemoveAndPurge
 	@FAIL=0; \
@@ -697,7 +706,10 @@ update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed too
 	$(MAKE) -s uninstall REMOVE_SKIP_BASENAMES="$$VM_SKIP" || FAIL=1; \
 	echo "==> Applying RemoveAndPurge/ files..."; \
 	$(MAKE) -s remove-and-purge REMOVE_SKIP_BASENAMES="$$VM_SKIP" || FAIL=1; \
-	if [ -z "$$VM_SKIP" ]; then $(BASH_BIN) scripts/strip_asdf_zshrc_lines.sh || FAIL=1; fi; \
+	if [ -z "$$VM_SKIP" ]; then \
+		$(BASH_BIN) scripts/strip_asdf_zshrc_lines.sh || FAIL=1; \
+		$(BASH_BIN) scripts/ensure_mise_zshrc_lines.sh || FAIL=1; \
+	fi; \
 	echo "==> All packages updated."; \
 	exit $$FAIL
 

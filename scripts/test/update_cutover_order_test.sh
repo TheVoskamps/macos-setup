@@ -111,8 +111,17 @@ order_test() {
     "Uninstall loop is handed REMOVE_SKIP_BASENAMES"
   ok_contains "$recipe" '-s remove-and-purge REMOVE_SKIP_BASENAMES=' \
     "RemoveAndPurge loop is handed REMOVE_SKIP_BASENAMES"
-  ok_contains "$recipe" 'if [ -z "$$VM_SKIP" ]; then $(BASH_BIN) scripts/strip_asdf_zshrc_lines.sh' \
-    "the ~/.zshrc strip is guarded on the same skip decision"
+  # The guard opens a block carrying BOTH ~/.zshrc rewrites -- the strip and
+  # the mise-lines add (issue #38) -- so a held-back cutover performs neither.
+  # scripts/test/ensure_mise_zshrc_lines_test.sh pins the containment; here we
+  # pin that the guard is still the same VM_SKIP decision and still precedes
+  # the strip.
+  ok_contains "$recipe" 'if [ -z "$$VM_SKIP" ]; then' \
+    "the ~/.zshrc rewrites are guarded on the same skip decision"
+  ok_before "$recipe" 'if [ -z "$$VM_SKIP" ]; then' 'strip_asdf_zshrc_lines.sh' \
+    "the guard precedes the ~/.zshrc strip"
+  ok_contains "$recipe" '$(BASH_BIN) scripts/strip_asdf_zshrc_lines.sh' \
+    "the strip is invoked through the absolute bash"
 
   # The skip list names slot 04 only.
   ok_contains "$recipe" 'VM_SKIP="$(VM_UNINSTALL) $(VM_PURGE)"' \
