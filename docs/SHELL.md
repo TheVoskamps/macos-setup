@@ -114,9 +114,10 @@ shell startup. The shims `PATH` export is written unconditionally — a
 `PATH` entry naming a directory that does not exist yet is inert, and
 it is correct the moment mise lands.
 
-"On `PATH`" is decided by the same two-step probe the Makefile's
-`MISE_REACHABLE` macro uses: the calling shell's `PATH` first, then a
-login shell's (`/bin/bash -lc`). The login-shell half matters because a
+"On `PATH`" is decided in two steps: the calling shell's `PATH` first,
+then a fallback to `/bin/bash -lc` — which is exactly what the
+Makefile's `MISE_REACHABLE` macro is. The login-shell half matters
+because a
 mise installed moments earlier in the same run lands on a login shell's
 `PATH`, not necessarily on make's — and `MISE_REACHABLE` is what lets
 `make update` remove asdf and direnv. If this script checked only make's

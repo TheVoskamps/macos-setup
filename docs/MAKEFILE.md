@@ -152,7 +152,7 @@ formula must not lose the interpreter its own later steps need; see
   lines, and `scripts/ensure_mise_zshrc_lines.sh` adds the mise shims
   `PATH` export and `eval "$(mise activate zsh)"` that replace them.
   The purge step uninstalls `asdf` and `direnv`, and `update` never
-  runs `shell_setup.sh` — the only other writer of those lines — so
+  runs `shell_setup.sh` — the only other caller of that pair — so
   without the strip it would leave the old init lines erroring on
   every shell startup, and without the add it would leave the host
   with no version manager wired into the interactive shell at all.

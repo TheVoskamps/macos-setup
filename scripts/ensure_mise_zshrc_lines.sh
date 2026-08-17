@@ -68,9 +68,11 @@ _ms_ensure_line() {
 
 _ms_ensure_line 'export PATH="${XDG_DATA_HOME:-$HOME/.local/share}/mise/shims:$PATH"' "$ZSHRC_PATH"
 
-# Mirrors the Makefile's MISE_REACHABLE macro: this shell's PATH first, then a
-# login shell's, so the two gates cannot disagree within one run. MISE is
-# passed through explicitly because it is a shell variable here, not exported.
+# This shell's PATH first, then the login-shell probe the Makefile's
+# MISE_REACHABLE macro is, so the two gates cannot disagree within one run.
+# (The fallback is the whole of MISE_REACHABLE; the fast path is an extra
+# allowance for a mise make can see but a login shell cannot.) MISE is passed
+# through explicitly because it is a shell variable here, not exported.
 _ms_mise_reachable() {
   command -v "$MISE" >/dev/null 2>&1 && return 0
   MISE="$MISE" /bin/bash -lc 'command -v "${MISE:-mise}" >/dev/null 2>&1'

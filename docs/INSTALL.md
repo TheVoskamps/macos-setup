@@ -419,8 +419,13 @@ Homebrew bash mid-run made every later recipe line die with
 casualty that mattered was `make update`'s `~/.zshrc` strip: asdf and
 direnv were removed but their init lines stayed, erroring on every
 shell startup. `/bin/bash` ships with macOS and no Homebrew operation
-can remove it. `scripts/test/absolute_bash_test.sh` fails if a bare
-`bash` invocation is reintroduced, or if the export above is dropped.
+can remove it. The same holds for the scripts that re-invoke bash
+themselves: `shell_setup.sh` and `claude_repo_setup.sh` run their
+helper scripts under `/bin/bash`, and
+`ensure_mise_zshrc_lines.sh` runs its reachability probe under
+`/bin/bash -lc`. `scripts/test/absolute_bash_test.sh` fails if a bare
+`bash` invocation is reintroduced into the Makefile, `shell_setup.sh`,
+or `claude_repo_setup.sh`, or if the export above is dropped.
 
 ## See also
 

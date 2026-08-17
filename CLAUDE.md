@@ -487,12 +487,17 @@ Makefile recipe names bash as `$(BASH_BIN)`, the
 absolute `/bin/bash` that `SHELL` is also set from,
 rather than a PATH-resolved bare `bash` that would
 die with `/bin/bash: /opt/homebrew/bin/bash: No such
-file or directory` once that formula was gone. The
-two scripts that re-invoke bash themselves
-(`shell_setup.sh`, `claude_repo_setup.sh`) name
-`/bin/bash` for the same reason.
+file or directory` once that formula was gone. Every
+script that re-invokes bash itself names `/bin/bash`
+for the same reason: `shell_setup.sh` and
+`claude_repo_setup.sh`, which run helper scripts, and
+`ensure_mise_zshrc_lines.sh`, whose reachability probe
+runs `/bin/bash -lc`.
 `scripts/test/absolute_bash_test.sh` fails if either
-invariant is dropped.
+invariant is dropped — it pins the
+`HOMEBREW_NO_AUTOREMOVE` export and scans the Makefile,
+`shell_setup.sh`, and `claude_repo_setup.sh` for a bare
+`bash`.
 
 A second Homebrew 6.0 quirk is **interactive ask-mode**
 (issue #20): 6.0 made a `Do you want to proceed? [y/n]`
@@ -717,7 +722,12 @@ asdf/direnv init lines this repo once wrote, and
 `scripts/ensure_mise_zshrc_lines.sh` adds
 `export PATH="${XDG_DATA_HOME:-$HOME/.local/share}/mise/shims:$PATH"`
 plus `eval "$(mise activate zsh)"` (the activation line
-only when mise is reachable). `make shell`
+only when mise is reachable — this shell's `PATH`
+first, then a fallback to the `/bin/bash -lc`
+login-shell probe the `MISE_REACHABLE` Makefile macro
+is, so the gate that removes asdf and the gate that
+writes the activation line cannot disagree within one
+run). `make shell`
 (`scripts/shell_setup.sh`) calls both, in that order, and
 so does `make update` — which never runs
 `shell_setup.sh`, so before issue #38 it stripped without

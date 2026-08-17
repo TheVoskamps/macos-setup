@@ -20,8 +20,11 @@
 #
 #   Block 1 (static): every bash invocation in the Makefile names
 #   $(BASH_BIN), which is the absolute /bin/bash — the one bash no Homebrew
-#   operation can remove. Same check for the two scripts that re-invoke bash
-#   directly. The check is self-verifying: it is re-run against a
+#   operation can remove. Same check for scripts/shell_setup.sh and
+#   scripts/claude_repo_setup.sh, which re-invoke bash to run a helper
+#   script. (scripts/ensure_mise_zshrc_lines.sh also re-invokes bash, for its
+#   `/bin/bash -lc` reachability probe, and is not scanned here.)
+#   The check is self-verifying: it is re-run against a
 #   deliberately mutated copy that reintroduces a bare `bash`, and must FIRE
 #   there, so a pattern that silently stops matching cannot pass.
 #
