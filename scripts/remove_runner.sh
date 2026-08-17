@@ -42,6 +42,7 @@
 # Behavior in both modes:
 #   - brew 'foo'                 -> brew uninstall --formula foo (if installed)
 #   - mas 'Name', id: NNNNN      -> sudo mas uninstall NNNNN     (if installed)
+#                                   (via "$SUDO" "$MAS"; see the override note)
 #   - tap '...'                  -> ignored
 #   - blank lines / comments     -> ignored
 #
@@ -57,13 +58,23 @@
 # Log lines are prefixed with the active mode (e.g. `[uninstall]` vs
 # `[purge]`) so combined runs are unambiguous.
 #
-# The brew binary is overridable via the `BREW` env var, exactly as in
-# scripts/install_filter.sh (`BREW="${BREW:-brew}"`), and every shell-out
-# to brew here goes through it — the `brew list` probes as well as the
-# `brew uninstall` calls, because a probe against the REAL brew is what
-# decides whether a real uninstall follows. `make ... BREW=<stub>` reaches
-# this script because GNU make exports command-line variables into every
-# recipe's environment. Do not reintroduce a bare `brew` call:
+# Every external binary this script can DESTROY with is overridable by an
+# env var of the same name, all in the one form install_filter.sh already
+# used for brew (`VAR="${VAR:-default}"`), all defaulting to the binary on
+# PATH:
+#
+#   BREW  the brew binary  (`BREW="${BREW:-brew}"`)
+#   MAS   the mas binary   (`MAS="${MAS:-mas}"`)
+#   SUDO  the sudo used to drive mas (`SUDO="${SUDO:-sudo}"`)
+#
+# EVERY shell-out goes through them — the `brew list` / `mas list` probes
+# as well as the `brew uninstall` / `mas uninstall` calls — because a probe
+# answered by the REAL binary is what decides whether a real uninstall
+# follows. `SUDO` is overridable alongside `MAS` because the mas removal is
+# `sudo mas uninstall`: stubbing only one half still runs the other for
+# real. `make ... BREW=<stub> MAS=<stub> SUDO=<stub>` reaches this script
+# because GNU make exports command-line variables into every recipe's
+# environment. Do not reintroduce a bare `brew`, `mas`, or `sudo` call:
 # scripts/test/remove_runner_brew_override_test.sh fails if you do.
 
 set -uo pipefail
@@ -180,6 +191,14 @@ run() {
 # defaults to whatever `brew` is on PATH.
 BREW="${BREW:-brew}"
 
+# The mas binary, and the sudo that drives it, for every probe and every
+# uninstall — same knob, same reason as BREW. Both halves are overridable
+# because `sudo mas uninstall` needs both to be stubbed before a test is
+# actually safe: stub only MAS and the real sudo still runs (and prompts);
+# stub only SUDO and the real mas is what it runs.
+MAS="${MAS:-mas}"
+SUDO="${SUDO:-sudo}"
+
 is_brew_installed() {
   "$BREW" list --formula "$1" >/dev/null 2>&1
 }
@@ -189,7 +208,7 @@ is_cask_installed() {
 }
 
 is_mas_installed() {
-  command -v mas >/dev/null 2>&1 && mas list 2>/dev/null | awk '{print $1}' | grep -qx "$1"
+  command -v "$MAS" >/dev/null 2>&1 && "$MAS" list 2>/dev/null | awk '{print $1}' | grep -qx "$1"
 }
 
 uninstall_brew() {
@@ -225,18 +244,18 @@ uninstall_cask() {
 
 uninstall_mas() {
   local name="$1" id="$2"
-  if ! command -v mas >/dev/null 2>&1; then
-    log "skip: $name (id $id) — mas CLI not installed"
+  if ! command -v "$MAS" >/dev/null 2>&1; then
+    log "skip: $name (id $id) — mas CLI not found: $MAS"
     return 0
   fi
   if is_mas_installed "$id"; then
     if [[ "$DRY_RUN" -eq 1 ]]; then
-      log "DRY-RUN: sudo mas uninstall $id   # $name"
+      log "DRY-RUN: $SUDO $MAS uninstall $id   # $name"
       return 0
     fi
-    log "RUN: sudo mas uninstall $id   # $name"
-    if ! sudo mas uninstall "$id"; then
-      log "WARNING: mas uninstall failed for $name (id $id) — continuing"
+    log "RUN: $SUDO $MAS uninstall $id   # $name"
+    if ! "$SUDO" "$MAS" uninstall "$id"; then
+      log "WARNING: $SUDO $MAS uninstall failed for $name (id $id) — continuing"
     fi
   else
     log "skip: $name (id $id) not installed"

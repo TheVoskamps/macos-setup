@@ -155,7 +155,7 @@ idempotent across re-runs. The trust is conservative: a tap whose
 only formula/cask was commented out by the `Uninstall/` or
 `RemoveAndPurge/` filter is trusted **only if its own `tap` line
 still emits**. The brew binary used is overridable via the `BREW`
-env var (see "Overriding the brew binary" below); a failed
+env var (see "Overriding the package-manager binaries" below); a failed
 `brew trust` prints a warning but does not abort the filter.
 
 If a package appears in both `Uninstall/` and `RemoveAndPurge/` at
@@ -361,33 +361,41 @@ make security                    # suffix alias
 make 01                          # numeric alias
 ```
 
-### Overriding the brew binary
+### Overriding the package-manager binaries
 
-Both scripts that shell out to Homebrew honor a `BREW` override, using
-the same form (`BREW="${BREW:-brew}"`) and defaulting to whatever
-`brew` is on `PATH`:
+Every binary the install and removal paths shell out to is overridable
+by an env var of the same name, all in one form
+(`VAR="${VAR:-default}"`) and all defaulting to whatever is on `PATH`:
+
+| Var    | Overrides                | Honored by                              |
+| ------ | ------------------------ | --------------------------------------- |
+| `BREW` | the `brew` binary        | `install_filter.sh`, `remove_runner.sh` |
+| `MAS`  | the `mas` binary         | `remove_runner.sh`                      |
+| `SUDO` | the `sudo` driving `mas` | `remove_runner.sh`                      |
 
 - `scripts/install_filter.sh` — the `brew trust --tap` side effect
   described under
   [Third-party taps are auto-trusted](#third-party-taps-are-auto-trusted).
 - `scripts/remove_runner.sh` — **every** shell-out, the
-  `brew list` probes as well as the `brew uninstall` calls. The probe
-  matters as much as the uninstall: a probe answered by the real brew
-  is exactly what decides whether a real removal follows, so an
-  override that covered only the uninstall would not make a test run
-  safe.
+  `brew list` and `mas list` probes as well as the `brew uninstall` /
+  `sudo mas uninstall` calls. The probe matters as much as the
+  uninstall: a probe answered by the real binary is exactly what
+  decides whether a real removal follows, so an override that covered
+  only the uninstall would not make a test run safe.
 
-The Makefile exposes the same knob as the `BREW` make variable, and
-GNU make exports command-line variables into every recipe's
-environment — so `make remove-and-purge BREW=/path/to/stub` reaches
-`remove_runner.sh` too, not just the `$(BREW)` references in the
-recipes. This is what lets the test suite drive the removal loops
-without touching real Homebrew.
+`SUDO` exists because the mas removal is `sudo mas uninstall`, so the
+override has to compose: stub only `MAS` and the real `sudo` still
+runs it, stub only `SUDO` and the real `mas` is what gets run.
+
+The Makefile exposes `BREW` as a make variable, and GNU make exports
+command-line variables into every recipe's environment — so
+`make remove-and-purge BREW=/path/to/stub MAS=/path/to/stub
+SUDO=/path/to/stub` reaches `remove_runner.sh` for all three, not just
+the `$(BREW)` references in the recipes. This is what lets the test
+suite drive the removal loops without touching real Homebrew, the real
+Mac App Store, or real `sudo`.
 `scripts/test/remove_runner_brew_override_test.sh` fails if a bare
-`brew` call is reintroduced into the runner.
-
-`sudo mas uninstall` is **not** covered by this override; a test that
-exercises a `mas` directive without `--dry-run` drives the real `mas`.
+`brew`, `mas`, or `sudo` call is reintroduced into the runner.
 
 ## See also
 

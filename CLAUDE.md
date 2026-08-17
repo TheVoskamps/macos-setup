@@ -453,22 +453,28 @@ skips their packages and exits 0 — issue #172). The
 trust is idempotent and conservative — a tap is trusted
 only if its own `tap` line still emits.
 
-The `BREW` env var overrides the brew binary used, in
-BOTH scripts that shell out to Homebrew:
-`install_filter.sh` (the `brew trust` call) and
-`remove_runner.sh` (every call — the `brew list` probes
-as well as the `brew uninstall`/`--zap` calls, since a
-probe answered by the real brew is what decides whether
-a real removal follows). Both use the same form,
-`BREW="${BREW:-brew}"`, defaulting to whatever `brew` is
-on PATH. The Makefile exposes the same knob as a make
+Every binary these paths shell out to is overridable by
+an env var of the same name, all in the one form
+`VAR="${VAR:-default}"`, all defaulting to whatever is
+on PATH: `BREW` (the brew binary, honored by
+`install_filter.sh`'s `brew trust` call and by
+`remove_runner.sh`), `MAS` (the mas binary) and `SUDO`
+(the sudo that drives it), both honored by
+`remove_runner.sh`. In `remove_runner.sh` that means
+EVERY call — the `brew list` / `mas list` probes as well
+as the `brew uninstall`/`--zap` and `sudo mas uninstall`
+calls, since a probe answered by the real binary is what
+decides whether a real removal follows. `SUDO` is
+overridable alongside `MAS` because the mas removal is
+`sudo mas uninstall`: stubbing one half still runs the
+other for real. The Makefile exposes `BREW` as a make
 variable, and GNU make exports command-line variables
 into every recipe's environment, so
-`make remove-and-purge BREW=<stub>` reaches the runner
-too. `scripts/test/remove_runner_brew_override_test.sh`
-fails if a bare `brew` call is reintroduced into the
-runner. `sudo mas uninstall` is NOT covered by the
-override. See `docs/INSTALL.md`.
+`make remove-and-purge BREW=<stub> MAS=<stub>
+SUDO=<stub>` reaches the runner for all three.
+`scripts/test/remove_runner_brew_override_test.sh`
+fails if a bare `brew`, `mas`, or `sudo` call is
+reintroduced into the runner. See `docs/INSTALL.md`.
 
 A second Homebrew 6.0 quirk is **interactive ask-mode**
 (issue #20): 6.0 made a `Do you want to proceed? [y/n]`
