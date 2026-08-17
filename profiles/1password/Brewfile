@@ -1,0 +1,9 @@
+# Brewfile for the '1password' profile — the 1Password app and its CLI.
+#
+# Split out of the core tier's old security slot: 1Password is a product
+# choice, not something every machine wants. See docs/1password-as-ssh-agent.md
+# for the SSH-agent setup this profile makes possible.
+
+# Casks
+cask '1password'
+cask '1password-cli'

@@ -1,0 +1,5 @@
+# config.toml for the 'aws' profile.
+
+[profile]
+# cdk_setup.sh symlinks the single-winner .cdk.json into place.
+post_install = ["scripts/cdk_setup.sh"]

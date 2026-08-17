@@ -1,7 +1,0 @@
-# 05-Install.tools for the 'claude-code-aliases' profile
-
-# Homebrew formulae
-# jq parses ~/.claude/plugins/installed_plugins.json in the
-# claude-plugin-path helper this profile's aliases.zsh defines, so the
-# profile declares it rather than relying on another profile's install.
-brew 'jq'

@@ -1,0 +1,4 @@
+# Brewfile for the 'teams' profile
+
+# Casks
+cask 'microsoft-teams'

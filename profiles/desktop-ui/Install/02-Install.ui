@@ -1,7 +1,0 @@
-# 02-Install.ui for the 'desktop-ui' profile
-
-# Casks
-cask 'moom'
-cask 'alfred'
-cask 'bartender'
-cask 'hammerspoon'

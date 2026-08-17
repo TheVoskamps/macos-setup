@@ -87,3 +87,33 @@
 # Email address that scheduled LaunchAgent jobs send their output to.
 # When unset, jobs write to a per-job log file instead.
 # mailto = "you@example.com"
+
+# ---------------------------------------------------------------------
+# [profile] — what THIS tier contributes to an install run, beyond its
+# Brewfile.
+#
+# Unlike the sections above, [profile] is NOT resolved across tiers: every
+# tier's section applies on its own, in tier order (core -> each profile in
+# the `profiles` array above -> host). This host tier is the LAST one, so
+# its post_install runs last and its removal arrays outrank every other
+# tier's.
+#
+#   post_install  commands run after this tier's Brewfile, in order. Each
+#                 entry is a path relative to the macos-setup repo root
+#                 plus optional arguments.
+#   uninstall     packages this tier removes (binary only).
+#   purge         packages this tier removes, additionally passing --zap to
+#                 cask uninstalls so the cask's user data goes too.
+#
+# Entries in uninstall / purge are "<kind>:<identifier>" strings:
+#   "brew:<formula>"   "cask:<token>"   "mas:<id>"   "mas:<id>:<Name>"
+#
+# A package listed here is ALSO filtered out of every tier's Brewfile
+# before `brew bundle` sees it — that is how you opt out of one package
+# from a profile you otherwise want. Example: keep the `web` profile but
+# skip its Firefox.
+# ---------------------------------------------------------------------
+# [profile]
+# post_install = []
+# uninstall = ["cask:firefox"]
+# purge = []

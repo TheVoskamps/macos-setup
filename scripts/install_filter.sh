@@ -1,37 +1,36 @@
 #!/usr/bin/env bash
-# scripts/install_filter.sh — pre-process an Install/<NN-Install.suffix> file
-# for `brew bundle`, commenting out any line whose package identifier appears
-# in an in-scope Uninstall or RemoveAndPurge file of the same numbered slot.
+# scripts/install_filter.sh — pre-process one tier's `Brewfile` for
+# `brew bundle`, commenting out any line whose package identifier appears in
+# an in-scope `[profile] uninstall` or `[profile] purge` entry.
 #
-# Usage: scripts/install_filter.sh <path-to-Install-file>
+# Usage: scripts/install_filter.sh <path-to-Brewfile>
 #
-# Tier rule (driven by the path of the Install file). An Install file is
-# filtered against the Uninstall + RemoveAndPurge slots of its OWN tier
-# and every HIGHER-priority tier. The tier order, lowest to highest, is:
+# Tier rule (driven by the path of the Brewfile). A Brewfile is filtered
+# against the removal arrays of its OWN tier and every HIGHER-priority
+# tier. The tier order, lowest to highest, is:
 #
 #   default  <  profile[0]  <  profile[1]  <  ...  <  profile[n]  <  host
 #
-# …where profile[0..n] are the host's profiles in list-file order (see
-# computer-specific/<host>/profiles). At each in-scope tier the filter
-# scans BOTH the matching Uninstall/<slot> and RemoveAndPurge/<slot>
-# file, in that order:
-#   - Install/<file>                                 -> filter against
+# …where profile[0..n] are the host's profiles in the order of the
+# `profiles` array in the host tier's config.toml. At each in-scope tier
+# the filter reads BOTH `[profile] uninstall` and `[profile] purge`, in
+# that order:
+#   - default/Brewfile            -> filter against
 #       default + all profiles + host
-#   - profiles/<name>/Install/<file>                 -> filter against
+#   - profiles/<name>/Brewfile    -> filter against
 #       <name> + every profile listed AFTER <name> + host
-#   - computer-specific/<host>/Install/<file>        -> filter against
-#       host only
+#   - <host-tier>/Brewfile        -> filter against host only
 #
-# Matching slots for `Install/NN-Install.suffix` are
-# `Uninstall/NN-Uninstall.suffix` and
-# `RemoveAndPurge/NN-RemoveAndPurge.suffix`.
+# This is the same scoping the numbered `NN-Install.<slug>` slots had
+# before issue #33; only the key changed, from a slot basename to a tier
+# root, and only the source changed, from a peer file to a config.toml
+# array.
 #
 # Output: prints a temp file path on stdout. The caller is responsible for
 # cleaning the temp file up. The filtered file is identical to the input
-# except that lines matching the in-scope Uninstall identifiers are
-# replaced by:
+# except that lines matching an in-scope removal identifier are replaced by:
 #
-#   # filtered: also listed in <relative/path/to/Uninstall-file>
+#   # filtered: also removed by <tier-label> (<kind>)
 #   # <original line>
 #
 # Lines that don't match are passed through verbatim.
@@ -47,8 +46,8 @@
 # emitted taps here guarantees they are trusted before the caller runs
 # `brew bundle`. `brew trust` on an already-trusted tap is a no-op, so
 # this is idempotent across re-runs. A tap whose only formula/cask was
-# commented out by the Uninstall/RemoveAndPurge filter is trusted ONLY
-# if its own `tap` line still emits — the conservative behavior.
+# commented out by the removal filter is trusted ONLY if its own `tap` line
+# still emits — the conservative behavior.
 
 set -uo pipefail
 
@@ -59,9 +58,9 @@ source "$SCRIPT_DIR/config_common.sh"
 
 usage() {
   cat >&2 <<EOF
-Usage: $(basename "$0") <path-to-Install-file>
+Usage: $(basename "$0") <path-to-Brewfile>
 
-Print path to a temp file containing the filtered Install file.
+Print path to a temp file containing the filtered Brewfile.
 EOF
   exit 64
 }
@@ -70,39 +69,25 @@ if [[ $# -ne 1 ]]; then
   usage
 fi
 
-INSTALL_FILE="$1"
+BREWFILE="$1"
 
-if [[ ! -f "$INSTALL_FILE" ]]; then
-  echo "[install-filter] File not found: $INSTALL_FILE" >&2
+if [[ ! -f "$BREWFILE" ]]; then
+  echo "[install-filter] File not found: $BREWFILE" >&2
   exit 2
 fi
 
-# --- Determine tier and matching slot basename ---
-# We expect the path to end with .../Install/<basename>.
-INSTALL_BASENAME="$(basename "$INSTALL_FILE")"
-case "$INSTALL_BASENAME" in
-  *-Install.*) ;;
-  *)
-    echo "[install-filter] Not an Install/ entry: $INSTALL_FILE" >&2
-    exit 2
-    ;;
-esac
+if [[ "$(basename "$BREWFILE")" != "Brewfile" ]]; then
+  echo "[install-filter] Not a tier Brewfile: $BREWFILE" >&2
+  exit 2
+fi
 
-# Convert "NN-Install.suffix" -> "NN-Uninstall.suffix" and
-# "NN-RemoveAndPurge.suffix" so we can scan both peer dirs.
-UNINSTALL_SLOT="${INSTALL_BASENAME/-Install./-Uninstall.}"
-PURGE_SLOT="${INSTALL_BASENAME/-Install./-RemoveAndPurge.}"
+# The tier root is the Brewfile's parent directory, normalized to absolute
+# so the classification below works for a relative caller path.
+TIER_ROOT="$(cd "$(dirname "$BREWFILE")" && pwd)"
 
-# Resolve the absolute path to a path relative to the repo root, so we can
-# classify the tier robustly even if the caller used a relative path.
-INSTALL_FILE_ABS="$(cd "$(dirname "$INSTALL_FILE")" && pwd)/$INSTALL_BASENAME"
-INSTALL_REL="${INSTALL_FILE_ABS#"$REPO_ROOT"/}"
-
-# The host tier lives OUTSIDE the repo now (see host_tier_dir). Resolve
-# its absolute path so an external host-tier Install file is classified
-# as the host tier even though its path does not start with
-# `computer-specific/`. A relative-path host_tier_dir (e.g. a test
-# override) is normalized to absolute too.
+# The host tier lives OUTSIDE the repo (see host_tier_dir). Normalize a
+# relative host_tier_dir (e.g. a test override) to absolute too, so the
+# comparison against TIER_ROOT is like-for-like.
 HOST_DIR="$(host_tier_dir)"
 HOST_DIR_ABS="$HOST_DIR"
 if [[ "$HOST_DIR_ABS" != /* ]] && [[ -d "$HOST_DIR_ABS" ]]; then
@@ -124,79 +109,51 @@ for _p in ${PROFILES[@]+"${PROFILES[@]}"}; do
   fi
 done
 
-candidates=()  # ordered list of in-scope Uninstall + RemoveAndPurge file paths
+# --- Build the in-scope tier list ---------------------------------------
+# This tier and every higher-priority tier, in least-to-most-specific
+# order. `record()` writes every source it sees and `lookup()` returns the
+# LAST match, so the marker names the most-specific tier that removes the
+# package — and, within one tier, `purge` over `uninstall`, the
+# operationally more impactful action. Both filter the line out either way;
+# only the marker text differs.
+scope=()   # tier roots, least specific first
 
-# Helper: append both the Uninstall/ and RemoveAndPurge/ files for a
-# given tier root (e.g. "$REPO_ROOT", "$REPO_ROOT/profiles/<p>",
-# "$REPO_ROOT/computer-specific/<host>"). Both are conditionally added;
-# missing files are skipped later in the loop.
-#
-# Precedence note: Uninstall is appended FIRST and RemoveAndPurge SECOND
-# at every tier. `record()` writes every source it sees and `lookup()`
-# returns the LAST match, so when a package is listed in both
-# Uninstall/<slot> and RemoveAndPurge/<slot> at the same tier, the
-# filter marker comment names the RemoveAndPurge file — the
-# operationally more impactful action. Both still cause the line to be
-# filtered out of the Install file; only the marker text differs. If
-# this precedence ever needs to change, swap the order below or fold
-# both sources into the marker in `lookup()`.
-add_tier() {
-  local tier_root="$1"
-  candidates+=("$tier_root/Uninstall/$UNINSTALL_SLOT")
-  candidates+=("$tier_root/RemoveAndPurge/$PURGE_SLOT")
-}
-
-# Build the in-scope tier list: this tier and every higher-priority
-# tier, in least-to-most-specific order (so add_tier records least
-# specific first; lookup()'s last-match-wins then names the most
-# specific source — see the precedence note above and in lookup()).
-#
-# The host tier (highest priority) lives at the external $HOST_DIR now,
-# not under computer-specific/. An Install file inside $HOST_DIR is the
-# host tier; everything else is classified by its repo-relative path.
-if [[ "$INSTALL_FILE_ABS" == "$HOST_DIR_ABS/Install/"* ]]; then
-  # Host tier: filter against host only (both dirs).
-  add_tier "$HOST_DIR"
+if [[ "$TIER_ROOT" == "$HOST_DIR_ABS" ]]; then
+  scope+=("$HOST_DIR")
+elif [[ "$TIER_ROOT" == "$REPO_ROOT/default" ]]; then
+  scope+=("$REPO_ROOT/default")
+  for p in ${PROFILES[@]+"${PROFILES[@]}"}; do
+    scope+=("$REPO_ROOT/profiles/$p")
+  done
+  scope+=("$HOST_DIR")
+elif [[ "$TIER_ROOT" == "$REPO_ROOT/profiles/"* ]]; then
+  # Profile tier: scope = this profile + every profile listed AFTER it in
+  # the host's list + host. A profile not in the host's list (or a
+  # zero-profile host) scopes to just that profile + host.
+  profile_in_path="${TIER_ROOT#"$REPO_ROOT"/profiles/}"
+  profile_in_path="${profile_in_path%%/*}"
+  scope+=("$REPO_ROOT/profiles/$profile_in_path")
+  seen=0
+  for p in ${PROFILES[@]+"${PROFILES[@]}"}; do
+    if [[ "$seen" -eq 1 ]]; then
+      scope+=("$REPO_ROOT/profiles/$p")
+    elif [[ "$p" == "$profile_in_path" ]]; then
+      seen=1
+    fi
+  done
+  scope+=("$HOST_DIR")
 else
-  case "$INSTALL_REL" in
-    Install/*)
-      # Default tier: scope = default + all profiles (list order) + host.
-      add_tier "$REPO_ROOT"
-      for p in ${PROFILES[@]+"${PROFILES[@]}"}; do
-        add_tier "$REPO_ROOT/profiles/$p"
-      done
-      add_tier "$HOST_DIR"
-      ;;
-    profiles/*/Install/*)
-      # Profile tier: scope = this profile + every profile listed AFTER
-      # it in the host's list + host. A profile not in the host's list
-      # (or a zero-profile host) scopes to just that profile + host.
-      profile_in_path="${INSTALL_REL#profiles/}"
-      profile_in_path="${profile_in_path%%/*}"
-      add_tier "$REPO_ROOT/profiles/$profile_in_path"
-      seen=0
-      for p in ${PROFILES[@]+"${PROFILES[@]}"}; do
-        if [[ "$seen" -eq 1 ]]; then
-          add_tier "$REPO_ROOT/profiles/$p"
-        elif [[ "$p" == "$profile_in_path" ]]; then
-          seen=1
-        fi
-      done
-      add_tier "$HOST_DIR"
-      ;;
-    *)
-      echo "[install-filter] Unrecognized Install path: $INSTALL_REL" >&2
-      exit 2
-      ;;
-  esac
+  echo "[install-filter] Unrecognized Brewfile tier: $BREWFILE" >&2
+  exit 2
 fi
 
-# --- Build the identifier sets from in-scope Uninstall + RemoveAndPurge files ---
-# We track: brew formulae, casks, and mas IDs separately. For each
-# identifier, we also remember which Uninstall/ or RemoveAndPurge/ file
-# mentioned it, so we can include that path in the filter marker.
+# --- Build the identifier sets from the in-scope removal arrays ---------
+# brew formulae, casks, and mas IDs are tracked separately. For each
+# identifier we also remember which tier + which array named it, so the
+# filter marker can say where the removal came from.
 
-# Use temp files instead of associative arrays for portability/simplicity.
+# Temp files instead of associative arrays, for portability (this must run
+# under /bin/bash, i.e. bash 3.2).
 TMP_DIR="$(mktemp -d 2>/dev/null || mktemp -d -t install-filter)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -208,56 +165,37 @@ MAS_MAP="$TMP_DIR/mas_map.tsv"
 : > "$MAS_MAP"
 
 record() {
-  local map="$1" key="$2" path="$3"
+  local map="$1" key="$2" source="$3"
   # Append every source for each identifier; `lookup` returns the last
   # match, which is the most-specific tier in our enumeration order.
-  printf '%s\t%s\n' "$key" "$path" >> "$map"
+  printf '%s\t%s\n' "$key" "$source" >> "$map"
 }
 
-for un_file in "${candidates[@]}"; do
-  [[ -f "$un_file" ]] || continue
-  # Marker path: repo-relative for in-repo tiers; for the external host
-  # tier, show it host-relative as `<host-dir>/...` so the marker is
-  # still readable.
-  un_rel="${un_file#"$REPO_ROOT"/}"
-  if [[ "$un_rel" == "$un_file" ]] && [[ "$un_file" == "$HOST_DIR"/* ]]; then
-    un_rel="<host-dir>/${un_file#"$HOST_DIR"/}"
-  fi
-  while IFS= read -r raw || [[ -n "$raw" ]]; do
-    line="${raw%%#*}"
-    line="$(echo "$line" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
-    [[ -z "$line" ]] && continue
-    if [[ "$line" =~ ^tap[[:space:]]+ ]]; then
-      continue
-    fi
-    if [[ "$line" =~ ^brew[[:space:]]+[\"\']([^\"\']+)[\"\'] ]]; then
-      record "$BREW_MAP" "${BASH_REMATCH[1]}" "$un_rel"
-      continue
-    fi
-    if [[ "$line" =~ ^cask[[:space:]]+[\"\']([^\"\']+)[\"\'] ]]; then
-      record "$CASK_MAP" "${BASH_REMATCH[1]}" "$un_rel"
-      continue
-    fi
-    if [[ "$line" =~ ^mas[[:space:]]+[\"\'][^\"\']+[\"\'][[:space:]]*,[[:space:]]*id[:=][[:space:]]*([0-9]+) ]]; then
-      record "$MAS_MAP" "${BASH_REMATCH[1]}" "$un_rel"
-      continue
-    fi
-    # Malformed entries in Uninstall/ or RemoveAndPurge/ files are an
-    # error; we surface them rather than silently skipping, so the smart
-    # filter is trustworthy.
-    echo "[install-filter] ERROR: $un_rel: malformed or unsupported directive: $line" >&2
-    exit 2
-  done < "$un_file"
+for tier in "${scope[@]}"; do
+  label="$(tier_label "$REPO_ROOT" "$tier")"
+  for kind in uninstall purge; do
+    while IFS= read -r entry; do
+      [[ -n "$entry" ]] || continue
+      parsed="$(parse_removal_entry "$entry")" || {
+        echo "[install-filter] ERROR: $label config.toml [profile] $kind: $entry" >&2
+        exit 2
+      }
+      IFS=$'\t' read -r e_kind e_id _e_label <<< "$parsed"
+      case "$e_kind" in
+        brew) record "$BREW_MAP" "$e_id" "$label ($kind)" ;;
+        cask) record "$CASK_MAP" "$e_id" "$label ($kind)" ;;
+        mas)  record "$MAS_MAP"  "$e_id" "$label ($kind)" ;;
+      esac
+    done < <(read_removals "$tier" "$kind")
+  done
 done
 
 lookup() {
   local map="$1" key="$2"
-  # Last entry wins. Within a single tier, Uninstall is recorded before
-  # RemoveAndPurge (see add_tier), so a package listed in both at the
-  # same tier resolves to the RemoveAndPurge file. Across tiers, the
+  # Last entry wins. Within a single tier, uninstall is recorded before
+  # purge, so a package in both resolves to purge. Across tiers, the
   # most-specific tier wins (host > later profiles > earlier profiles >
-  # default) because add_tier() is called in least-to-most-specific
-  # order above.
+  # core) because the scope list is built least-to-most-specific above.
   awk -F'\t' -v k="$key" '$1 == k { p = $2 } END { if (p) print p }' "$map"
 }
 
@@ -290,7 +228,7 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
 
   if [[ -n "$marker" ]]; then
     {
-      echo "# filtered: also listed in $marker"
+      echo "# filtered: also removed by $marker"
       echo "# $raw"
     } >> "$OUT"
   else
@@ -304,6 +242,6 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
     fi
     printf '%s\n' "$raw" >> "$OUT"
   fi
-done < "$INSTALL_FILE"
+done < "$BREWFILE"
 
 echo "$OUT"

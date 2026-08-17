@@ -1,29 +1,30 @@
 # macOS Setup
 
 A comprehensive, structured macOS development environment
-setup using Homebrew bundles in `Install/` (formerly
-`Brewfiles`), parallel `Uninstall/` and `RemoveAndPurge/`
-frameworks, dynamic Makefile targets, and automated
-configuration management.
+setup built from **profiles**: each contributes a Homebrew
+`Brewfile` plus a `[profile]` section in its `config.toml`
+declaring its post-install actions and the packages it
+removes. A host composes the roles it wants by listing the
+profiles it opts into.
 
 ## What This Repository Contains
 
-- **Categorized Install files**: 19+ numbered files in
-  `Install/` for different tool categories (core,
-  security, development, AI, etc.)
-- **Parallel Uninstall files**: every `Install/` slot
-  has an `Uninstall/` slot used by `make uninstall`
-  and by a smart filter on `make install`. Removes the
-  binary; leaves user data on disk
-- **Parallel RemoveAndPurge files**: every `Install/`
-  slot also has a `RemoveAndPurge/` slot used by
-  `make remove-and-purge`. Same idea as `Uninstall/`,
-  but for casks the runner uses
-  `brew uninstall --cask --zap` so user data is also
-  removed
-- **Dynamic Makefile**: Auto-generates targets from
-  `Install/`, `Uninstall/`, and `RemoveAndPurge/`
-  filenames with special post-install handling
+- **Tiers, not numbered slots**: the core tier
+  (`default/`), then each profile the host opts into
+  (`profiles/<name>/`, in list order), then the external
+  host tier. Each contributes one unnumbered `Brewfile`
+- **~45 fine-grained profiles**: single-responsibility
+  package sets (`dev-core`, `aws`, `web`, `databases`,
+  `desktop-ui`, …). `make profiles` lists them
+- **Declarative removals**: each tier's
+  `[profile] uninstall` / `[profile] purge` arrays drive
+  `make uninstall` / `make remove-and-purge` AND a smart
+  filter on `make install`. `uninstall` removes the binary
+  and leaves user data; `purge` adds `--zap` on casks so
+  the cask's user data goes too
+- **Declarative post-install hooks**: a tier's
+  `post_install` array names the scripts to run after its
+  Brewfile, so a new profile needs no Makefile edit
 - **Configuration Management**: Automated setup for
   VS Code, Claude, Hammerspoon, AWS CDK using layered
   resolution (default < the host's profiles in list
@@ -69,7 +70,7 @@ bash ./bootstrap.sh
 
 > This repo is public, so the bootstrap clone needs no
 > credentials. 1Password is no longer installed by the
-> bootstrap itself (it still comes in via `make security`),
+> bootstrap itself (it still comes in via the `1password` profile),
 > and the 1Password SSH-agent setup the bootstrap used to walk
 > you through now lives in
 > [docs/1password-as-ssh-agent.md](docs/1password-as-ssh-agent.md)
@@ -83,8 +84,8 @@ cd macos-setup
 make install
 ```
 
-This applies all `Install/` files in order and configures
-everything automatically.
+This applies every tier for this host, in order, and
+configures everything automatically.
 
 > **Run `make install` in a fresh shell.** `bootstrap.sh`
 > installs `dasel` (a hard dependency of every `config.toml`
@@ -102,32 +103,32 @@ everything automatically.
 ### Essential Commands
 
 ```bash
-# Install everything (applies all Install/ files,
-# filtered against any in-scope Uninstall/ and
-# RemoveAndPurge/ entries)
+# Install everything: every tier this host opts into, in
+# order, each Brewfile filtered against any in-scope
+# uninstall/purge entries
 make install
 
 # Update everything: Homebrew/packages/tool versions,
-# then apply Uninstall and RemoveAndPurge
+# then apply every tier's uninstall and purge arrays
 make update
 
 # Check for outdated packages
 make outdated
 
-# Install specific categories
-make core             # Essential system tools
-make security         # Security tools and VPN
-make development      # Development tools + VS Code
-make ai               # AI tools + Claude/Cursor
-make aws              # AWS tools + CDK config
+# See what profiles exist (* marks this host's, in order)
+make profiles
 
-# Verify installations and check for
-# same-tier Install/Uninstall+RemoveAndPurge
-# collisions
+# Apply specific tiers
+make core                        # the core tier only
+make profile dev-core            # one profile
+make profile dev-core aws web    # several, in the order given
+
+# Verify installations and check for same-tier
+# Brewfile/uninstall+purge collisions
 make verify
 
-# Resolve same-tier collisions by commenting
-# out the offending Install line (writes .bak)
+# Resolve same-tier collisions by commenting out the
+# offending Brewfile line (writes .bak)
 make sanitize
 
 # System diagnostics
@@ -178,22 +179,33 @@ It refuses (does nothing, exits non-zero) when:
 
 Out of scope: `make self-update` only updates the
 working tree. Use `make update` to upgrade Homebrew,
-mise-managed tool versions, MAS apps, and apply
-`Uninstall/` + `RemoveAndPurge/`.
+mise-managed tool versions, MAS apps, and apply every
+tier's `uninstall` + `purge` arrays.
 
-### Category Overview
+### Tier Overview
 
-The setup is organized into numbered `Install/` files:
+The setup is organized into tiers, applied lowest priority
+to highest:
 
-- **00-core**: Essential system utilities
-- **01-security**: Security tools, VPNs, 1Password
-- **02-ui**: UI tools with Finder, Hammerspoon
-- **03-shell**: Shell tools with automated zsh setup
-- **04-versionmanagers**: mise with full bootstrap
-- **05-08**: Tools, messaging, browsers, Proton tools
-- **09-development**: Development tools + VS Code extensions
-- **10-14**: Backups, AWS, componentization, data, databases
-- **15-19**: Ripping, SD cards, AI, MS Office, viewers
+- **The core tier** (`default/Brewfile`): macos-setup's own
+  runtime dependencies (`dasel`, `mas`, `git`, `msmtp`), the
+  shell environment (zsh + plugins, iTerm2, fzf/bat/ripgrep
+  and friends), universal CLI utilities, and Chrome. Its
+  `post_install` sets the computer names, runs the zsh
+  setup, and generates `~/.msmtprc`. Deliberately lean: a
+  package belongs here only if macos-setup depends on it or
+  it is genuinely universal.
+- **Each profile the host opts into** (`profiles/<name>/`),
+  in the order of the `profiles` array in the host tier's
+  `config.toml`. Roughly 45 of them, each
+  single-responsibility: `dev-core`, `dev-python`, `dev-go`,
+  `aws`, `gcp`, `databases`, `containers`, `web`,
+  `desktop-ui`, `version-managers`, `visual-studio-code`,
+  `claude`, `1password`, `yubikey`, `plex`, … Run
+  `make profiles` for the full list.
+- **The external host tier**, on local disk outside the
+  repo. Highest priority: its Brewfile applies last and its
+  removal arrays outrank every other tier's.
 
 ### Automatic Configuration Setup
 
@@ -233,9 +245,8 @@ its consolidated `config.toml` in the external host tier,
 
 ### Uninstalling and purging packages
 
-Every `Install/NN-Install.<suffix>` slot has two
-parallel removal slots: `Uninstall/NN-Uninstall.<suffix>`
-and `RemoveAndPurge/NN-RemoveAndPurge.<suffix>`.
+Each tier's `config.toml` can carry two removal arrays
+under `[profile]`: `uninstall` and `purge`.
 
 Pick the right one for your goal:
 
@@ -251,35 +262,40 @@ Pick the right one for your goal:
   unsupported casks, or apps you want completely gone
   from the machine).
 
-For formulae (`brew '...'`) and Mac App Store entries
-(`mas '...'`) the two trees behave identically — the
-`--zap` distinction only applies to casks
-(`cask '...'`).
+For formulae and Mac App Store entries the two behave
+identically — the `--zap` distinction only applies to
+casks.
 
-Add a package to the matching file at the default,
-profile, or host tier and:
+Entries are `"<kind>:<identifier>"` strings:
+`"brew:<formula>"`, `"cask:<token>"`, `"mas:<id>"`, or
+`"mas:<id>:<Name>"` (the name is only a log label). A
+malformed entry is a hard error, never a silently ignored
+removal.
 
-- `make uninstall` removes everything in `Uninstall/`
+Add a package to the array at the core, profile, or host
+tier and:
+
+```toml
+[profile]
+uninstall = ["cask:firefox"]
+purge = ["cask:qblocker", "mas:1365531024:1Blocker"]
+```
+
+- `make uninstall` applies every tier's `uninstall` array
   (skipping anything not currently installed).
   `make uninstall-dry-run` prints actions without
   executing.
-- `make remove-and-purge` removes everything in
-  `RemoveAndPurge/`, passing `--zap` to cask
-  uninstalls. `make remove-and-purge-dry-run` prints
-  actions without executing.
-- `make install` (and the per-`Install/` targets)
-  filters packages listed in *either* tree out of the
-  matching Install file before `brew bundle` consumes
-  it. The temp file fed to `brew bundle` shows each
-  filtered line as one of:
+- `make remove-and-purge` applies every tier's `purge`
+  array, passing `--zap` to cask uninstalls.
+  `make remove-and-purge-dry-run` prints actions without
+  executing.
+- `make install` (and `make core` / `make profile`)
+  filters packages listed in *either* array out of the
+  Brewfile before `brew bundle` consumes it. The temp file
+  fed to `brew bundle` shows each filtered line as:
 
   ```text
-  # filtered: also listed in Uninstall/07-Uninstall.browsers
-  # cask 'some-cask'
-  ```
-
-  ```text
-  # filtered: also listed in RemoveAndPurge/07-RemoveAndPurge.browsers
+  # filtered: also removed by profile web (purge)
   # cask 'some-cask'
   ```
 
@@ -293,33 +309,34 @@ profile, or host tier and:
   taps whose `tap` line is actually installed (not
   filtered out).
 
-The "in-scope" set of removal files used by the filter
-depends on which Install tier is being applied: an
-Install file is filtered against its own tier and every
+The "in-scope" set of removal arrays used by the filter
+depends on which tier's Brewfile is being applied: a
+Brewfile is filtered against its own tier and every
 higher-priority tier. The tier order, lowest to highest,
-is default < the host's profiles in list order < host.
-Both peer trees (`Uninstall/` and `RemoveAndPurge/`) are
-scanned at each in-scope tier:
+is core < the host's profiles in list order < host. Both
+arrays are read at each in-scope tier:
 
-| Install tier              | Filter against                                  |
+| Brewfile tier             | Filter against                                  |
 | ------------------------- | ----------------------------------------------- |
-| Default (`Install/`)      | default + all profiles + host                   |
+| Core (`default/`)         | core + all profiles + host                      |
 | Profile `profiles/{name}` | `{name}` + every profile listed after it + host |
 | Host                      | host only                                       |
 
-Per-slot targets are auto-generated for both trees:
+That is what makes "I opted into `web` but I don't want
+its Firefox" expressible: put `uninstall = ["cask:firefox"]`
+in your host tier's `config.toml`, keep the `web` profile,
+and Firefox is commented out of `web`'s Brewfile before
+`brew bundle` ever sees it.
 
 ```bash
-make 07_Uninstall_browsers
-make 07_RemoveAndPurge_browsers
 make uninstall-dry-run
 make remove-and-purge-dry-run
 ```
 
-Both trees share `scripts/remove_runner.sh`. The runner
+Both modes share `scripts/remove_runner.sh`. The runner
 takes a `--mode={uninstall|purge}` flag (defaults to
-`uninstall` for backward compatibility); the Makefile
-passes the flag explicitly at every call site.
+`uninstall`); the Makefile passes the flag explicitly at
+every call site.
 
 The runner also exports `HOMEBREW_NO_AUTOREMOVE=1`, so a
 removal never cascades: `brew uninstall` normally follows
@@ -335,44 +352,44 @@ reference.
 
 `make update` runs `make uninstall` and
 `make remove-and-purge` *after* the upgrade chain
-(Homebrew, casks, MAS, the slot-04 version-manager
-install, `make versions-update`, then
+(Homebrew, casks, MAS, the `version-managers` tier,
+`make versions-update`, then
 `make versions-cleanup` to prune unused tool versions),
 so even if `brew upgrade`
 resurrects something via dependency resolution the
 removal step takes it out before the run completes.
-Applying the slot-04 `Install` before the removal loops
-is what keeps the asdf -> mise cutover safe on a host
+Applying the `version-managers` tier before the removal
+loops is what keeps the asdf -> mise cutover safe on a host
 that never ran `make install` — see
 [docs/VERSION_MANAGEMENT.md](docs/VERSION_MANAGEMENT.md).
 
 ### Detecting and fixing collisions
 
-`make verify` runs the per-Install verification and then
-a **same-tier collision check**: any package listed in
-BOTH `<tier>/Install/NN-Install.suffix` AND that same
-tier's `Uninstall/NN-Uninstall.suffix` (or
-`RemoveAndPurge/NN-RemoveAndPurge.suffix`) is reported,
-and `make verify` exits non-zero. Cross-tier collisions
-are intentional ("opt out at a more-specific tier") and
-are not flagged.
+`make verify` runs the per-tier Brewfile verification and
+then a **same-tier collision check**: any package listed in
+BOTH `<tier>/Brewfile` AND that same tier's
+`[profile] uninstall` or `[profile] purge` array is
+reported, and `make verify` exits non-zero. Cross-tier
+collisions are intentional ("opt out at a more-specific
+tier") and are not flagged. The check scans every profile
+directory on disk, not just the ones this host opts into.
 
 Sample report:
 
 ```text
-WARN: same-tier collision in 07-browsers
-  Install/07-Install.browsers:8       cask 'some-cask'
-  RemoveAndPurge/07-RemoveAndPurge.browsers:5  cask 'some-cask'
-  fix: make sanitize    (will remove the Install line)
+WARN: same-tier collision in profile web
+  profiles/web/Brewfile:6       cask 'some-cask'
+  config.toml [profile] purge   "cask:some-cask"
+  fix: make sanitize    (will comment out the Brewfile line)
 ```
 
-`make sanitize` resolves each collision by commenting
-out the `Install/` line (the `Uninstall/` or
-`RemoveAndPurge/` peer wins per the conflict rule in
-[docs/INSTALL.md](docs/INSTALL.md)) with a marker:
+`make sanitize` resolves each collision by commenting out
+the `Brewfile` line (the removal array wins per the
+conflict rule in [docs/INSTALL.md](docs/INSTALL.md)) with a
+marker:
 
 ```text
-# sanitized 2026-04-29: also listed in RemoveAndPurge/07-RemoveAndPurge.browsers
+# sanitized 2026-04-29: also in this tier's [profile] purge array
 # cask 'some-cask'
 ```
 
@@ -448,7 +465,7 @@ Generated plists embed no repo-specific absolute paths.
 The single entry point is
 `$HOME/.zsh-shared/launchagent_runner` (a symlink chain
 into the current checkout), so moving or renaming the
-repo only requires re-running `make shell` to repoint
+repo only requires re-running `make shell_setup` to repoint
 `~/.zsh-shared`; no `make schedule-*` re-run is needed.
 
 **Setup:**
@@ -471,8 +488,10 @@ smtp_user = "you@example.com"
 security add-generic-password -s msmtp \
   -a you@example.com -w 'YOUR_SMTP_PASSWORD'
 
-# 3. Install msmtp and generate ~/.msmtprc from config.toml
-make messaging
+# 3. Install msmtp and generate ~/.msmtprc from config.toml.
+#    msmtp is a core-tier package and msmtp_setup.sh is a core-tier
+#    post_install action, so applying the core tier does both.
+make core
 
 # 4. Set [cron] mailto in config.toml with your recipient address
 
@@ -483,8 +502,9 @@ make email-test
 make schedule-daily    # or make schedule-weekly
 ```
 
-`make messaging` generates `~/.msmtprc` (mode 0600) from
-your resolved `[mailer]` values. The relay password is
+The core tier's `msmtp_setup.sh` post-install action
+generates `~/.msmtprc` (mode 0600) from your resolved
+`[mailer]` values. The relay password is
 never written to `config.toml` or `~/.msmtprc`; msmtp
 reads it from your login Keychain at send time via
 `passwordeval`. The generated `passwordeval` line, the
@@ -527,9 +547,10 @@ tier lives OUTSIDE the repo at
 overwrites your edits. The per-host profile list lives in
 the `profiles` array of that external host tier's
 `config.toml` (lowest priority first).
-`Install/`, `Uninstall/`, and `RemoveAndPurge/` are
-**additive** (all tiers applied; `Install/` filtered
-against in-scope `Uninstall/` + `RemoveAndPurge/`).
+Each tier's `Brewfile` and `[profile]` section are
+**additive** (all tiers applied, in tier order; each
+Brewfile filtered against the in-scope `uninstall` +
+`purge` arrays).
 `aliases.zsh` is **aggregated** (every tier concatenated
 in `default -> profiles(order) -> host` order). The scalar
 config knobs (`[claude]`, `[mailer]`, `[cron]`) live in a
@@ -557,34 +578,36 @@ profiles/
 ├── dev-core/                   # A fine-grained, single-
 │   │                           # responsibility profile (a host
 │   │                           # opts into N of these, in order)
-│   ├── Install/                # Profile Install files
-│   │   ├── 05-Install.tools
-│   │   ├── 09-Install.development
-│   │   └── ...
-│   ├── Uninstall/              # Profile Uninstall files (lazy)
-│   ├── RemoveAndPurge/         # Profile RemoveAndPurge files (lazy)
+│   ├── Brewfile                # This profile's packages. Unnumbered
+│   │                           # and unprefixed: the profile IS the
+│   │                           # category
 │   ├── aliases.zsh             # Optional: aliases for the tool this
 │   │                           # profile adopts (aggregate tier; git
 │   │                           # shortcuts + gbc/gbd/gsr live here)
-│   └── config.toml             # Optional per-profile [claude]/[mailer]/
-│                               # [cron] overrides (single-winner per
-│                               # section; overrides default)
-├── claude-code-aliases/        # A "no-software" profile: only an
-│   └── aliases.zsh             # aliases.zsh (the cr + cr-repo Claude wrappers),
-│                               # no Install/ — opting in just adds
-│                               # its aliases to the aggregate
+│   └── config.toml             # Optional. [profile] post_install /
+│                               # uninstall / purge (per-tier), plus any
+│                               # [claude]/[mailer]/[cron] overrides
+│                               # (single-winner per section)
+├── claude-code-aliases/        # A "no-software" profile: mostly an
+│   ├── aliases.zsh             # aliases.zsh (the cr + cr-repo Claude
+│   └── Brewfile                # wrappers) plus the jq those need
 ├── aws/                        # …40 more single-purpose profiles
 └── …                           #   (databases, web, plex, yubikey, …)
 
-default/                            # Global base (lowest tier), in repo root
+default/                            # The CORE tier (lowest), in repo root
+├── Brewfile                    # Core packages: macos-setup's own
+│                               # dependencies + the universal set
 ├── aliases.zsh
-├── config.toml                 # Default scalar config: [claude]
+├── config.toml                 # Core scalar config: [claude]
 │                               # (branch/hostname), [mailer], [cron],
 │                               # and the profiles array. [mailer] ships
 │                               # with active shared relay defaults (the
 │                               # default tier resolves at runtime);
 │                               # [claude], [cron], and profiles stay
-│                               # commented out as in-place docs.
+│                               # commented out as in-place docs. Also
+│                               # carries the core tier's [profile]
+│                               # section (post_install / uninstall /
+│                               # purge).
 └── .hammerspoon/
     ├── init.lua
     ├── monitors.json
@@ -626,9 +649,7 @@ ${XDG_CONFIG_HOME:-~/.config}/macos-setup/   # override: MACOS_SETUP_HOST_DIR
 │   ├── monitors.json
 │   └── workspaces.json
 ├── aliases.zsh
-├── Install/                    # Machine Install files
-├── Uninstall/                  # Machine Uninstall files (lazy)
-└── RemoveAndPurge/             # Machine RemoveAndPurge files (lazy)
+└── Brewfile                    # Machine-only packages (optional)
 ```
 
 ### Profile Selection
@@ -690,7 +711,7 @@ drive it, `scripts/diagnose.sh` reports on it,
 # This is the INSTALL piece of the asdf -> mise cutover only; it does
 # not uninstall asdf/direnv or clean ~/.zshrc. `make install` and
 # `make update` do the whole cutover. See docs/VERSION_MANAGEMENT.md.
-make versionmanagers
+make profile version-managers
 
 # Install the versions the resolved config declares
 make versions-install
@@ -1075,8 +1096,8 @@ make claude-plugins-install
 make claude-plugins-update
 ```
 
-`make ai` and `make install` (via the
-`17-Install.ai` post-install action) call
+`make install` and `make profile claude` (via the
+`claude` / `claude-latest` profiles' `post_install`) call
 `claude-install` automatically. `make update` runs
 `claude-update` as part of its overall update sweep,
 and `make outdated` runs `claude-outdated` alongside
@@ -1097,7 +1118,7 @@ clone/migration finishes, `claude-install` runs
 `~/.claude/plugins.sh` is missing (an older claude-config
 checkout predating the plugins refactor), or if
 `plugins.sh` exits non-zero, the sync prints a warning and
-is skipped/ignored rather than aborting `make ai` /
+is skipped/ignored rather than aborting
 `make install` / `make update`. The standalone
 `make claude-plugins-install` / `make claude-plugins-update`
 targets drive the same code path directly and surface a
@@ -1198,25 +1219,21 @@ this directory for repo-scoped Claude state
 ### Individual Install Targets
 
 ```bash
-# By number
-make 00               # Core tools
-make 09               # Development tools
-make 17               # AI tools
+# The core tier
+make core
 
-# By name
-make core             # Same as make 00
-make development      # Same as make 09
-make ai               # Same as make 17
+# One or more profiles, in the order given
+make profile dev-core
+make profile dev-core visual-studio-code aws
 
-# Per-Install canonical form
-make 00_Install_core
-make 09_Install_development
+# See what is available (* marks this host's, in order)
+make profiles
 
-# Per-Uninstall canonical form
-make 07_Uninstall_browsers
-
-# Per-RemoveAndPurge canonical form (--zap on casks)
-make 07_RemoveAndPurge_browsers
+# Removals: every tier's uninstall / purge array
+make uninstall-dry-run
+make uninstall
+make remove-and-purge-dry-run
+make remove-and-purge          # --zap on casks
 ```
 
 ## Alternative Bootstrap Methods
@@ -1238,7 +1255,8 @@ alternative setup methods including:
   exactly major version 3 (v2 and v4+ are rejected); a non-v3
   dasel hard-aborts `make`/config reads loudly
 - **1Password** — not required to bootstrap (the repo is public
-  and clones over HTTPS), but installed by `make security`. Set
+  and clones over HTTPS), but installed by the `1password`
+  profile. Set
   it up as your SSH agent when you need SSH auth — see
   [docs/1password-as-ssh-agent.md](docs/1password-as-ssh-agent.md)
 
@@ -1249,21 +1267,22 @@ alternative setup methods including:
 - [Changelog](docs/CHANGELOG.md)
 - [Version Management](docs/VERSION_MANAGEMENT.md)
 - [Makefile Usage](docs/MAKEFILE.md)
-- [Install / Uninstall / RemoveAndPurge Index](docs/INSTALL.md)
+- [The install model: tiers, Brewfiles, removals](docs/INSTALL.md)
 - [Documentation Index](docs/INDEX.md)
 
 ## Key Features
 
-### Dynamic Makefile System
+### Profile-driven Makefile
 
-- Auto-generates targets from `Install/`, `Uninstall/`,
-  and `RemoveAndPurge/` filenames
-- Supports numeric aliases (`make 00`, `make 09`) and
-  named aliases (`make core`, `make development`)
-- Special post-install handling for UI, shell,
-  development, AWS, and AI categories
-- Layered `Install/`, `Uninstall/`, and
-  `RemoveAndPurge/` support across all tiers: default,
+- Needs no per-profile knowledge: `make profile
+  brand-new` works the moment `profiles/brand-new/` exists
+- `make profile <name> [<name>...]` applies profiles in
+  the order given, validating every name before applying
+  any, and is failure-tolerant with an end-of-run summary
+- Post-install actions are declared in each tier's
+  `[profile] post_install`, not in the Makefile
+- Layered `Brewfile` and `[profile]` support across all
+  tiers: default,
   each of the host's profiles in list order, and the
   external host tier (on local disk, outside the repo)
 - Shared removal runner (`scripts/remove_runner.sh`)

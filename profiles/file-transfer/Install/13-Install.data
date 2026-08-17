@@ -1,5 +1,0 @@
-# 13-Install.data for the 'file-transfer' profile
-
-# Casks
-cask 'transmit'
-cask 'the-unarchiver'

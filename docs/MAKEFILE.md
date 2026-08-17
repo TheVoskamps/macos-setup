@@ -1,8 +1,17 @@
 # Makefile Usage
 
-This repository uses a dynamic `Makefile` to orchestrate applying
-`Install/` files (formerly `Brewfiles`) and the parallel `Uninstall/`
-and `RemoveAndPurge/` frameworks, plus related setup tasks.
+This repository uses a `Makefile` to orchestrate applying each tier's
+`Brewfile` and `[profile]` section, plus related setup tasks. The tiers
+are the core tier (`default/`), each profile the host opts into
+(`profiles/<name>/`, in the order of the `profiles` array in the host
+tier's `config.toml`), and the external host tier. See
+[the install model](INSTALL.md).
+
+The Makefile has **no per-profile knowledge at all**. It does not
+enumerate profiles, and post-install hooks are declared in each profile's
+own `config.toml` rather than in a `case` statement here, so
+`make profile brand-new` works the moment `profiles/brand-new/` exists —
+no Makefile edit.
 
 Every recipe runs under `BASH_BIN`, the absolute `/bin/bash`, which is
 also what `SHELL` is set from, and every helper script a recipe invokes
@@ -14,44 +23,48 @@ formula must not lose the interpreter its own later steps need; see
 ## Common Targets
 
 - `make install`
-  Applies all `Install/` files in numeric order (00 → 19), at every
-  configured tier (default, then each of the host's profiles in list
-  order, then host). The host tier lives OUTSIDE the repo at
+  Applies every tier for this host, in order: the core tier, then each
+  of the host's profiles in list order, then the host tier. The host
+  tier lives OUTSIDE the repo at
   `${XDG_CONFIG_HOME:-~/.config}/macos-setup/` (seeded from
   `computer-specific/_template/` if absent); the host's profiles are
   read from the `profiles` array in its `config.toml` (lowest priority
-  first). Each file is run through the smart filter
-  (`scripts/install_filter.sh`) before `brew bundle` consumes it, so
-  any package listed in an in-scope `Uninstall/` or `RemoveAndPurge/`
-  slot is commented out for that run. This is the recommended way to
-  set up a new machine.
+  first). Each tier's `Brewfile` is run through the smart filter
+  (`scripts/install_filter.sh`) before `brew bundle` consumes it, so any
+  package listed in an in-scope `uninstall` or `purge` array is
+  commented out for that run. Then that tier's `post_install` commands
+  run, in declared order. This is the recommended way to set up a new
+  machine.
+
+  All three apply paths — `install`, `core`, and `profile` — route
+  through `scripts/apply_tier.sh`, so "what applying a tier means" lives
+  in exactly one place and they cannot drift.
 
   `install` does **not** run the removal loops in general — the smart
   filter is what keeps a removal-listed package from being installed.
-  The one exception is slot 04's `RemoveAndPurge`, applied inline by
-  the `04-Install.versionmanagers` post-install action in this batch
-  loop only (the per-slot `make versionmanagers` stays install-only),
-  because the asdf → mise cutover is hard by construction: asdf and mise both
+  The one exception is the `version-managers` tier's `purge` array,
+  applied inline right after that tier in this batch loop only
+  (`make profile version-managers` stays install-only), because the
+  asdf → mise cutover is hard by construction: asdf and mise both
   provide shims for the same tools, so leaving asdf installed
   alongside mise is the failure mode the cutover exists to prevent.
   That inline purge is gated on the `MISE_REACHABLE` Makefile macro —
   the same probe `update` uses, evaluated immediately before the
-  removal rather than left to the surrounding `set -e`. If mise is not
-  reachable at that moment the purge is skipped entirely, the run
-  warns, and `make install` exits non-zero, so a host is never left
-  with asdf gone and no mise.
+  removal. If mise is not reachable at that moment the purge is skipped
+  entirely, the run warns, and `make install` exits non-zero, so a host
+  is never left with asdf gone and no mise.
   See [Version Management](VERSION_MANAGEMENT.md).
 
-  Up-front `dasel` gate: this target (and `update`, `verify`,
-  `outdated`) depends on the `.PHONY: require-dasel` prerequisite,
-  which runs `scripts/require_dasel_on_path.sh` BEFORE any host-tier
-  seeding or config read. `dasel` is invoked by bare name by every
-  `config.toml` read; if it is not reachable on `PATH` (the common
+  Up-front `dasel` gate: this target (and `core`, `profile`, `update`,
+  `verify`, `outdated`) depends on the `.PHONY: require-dasel`
+  prerequisite, which runs `scripts/require_dasel_on_path.sh` BEFORE any
+  host-tier seeding or config read. `dasel` is invoked by bare name by
+  every `config.toml` read; if it is not reachable on `PATH` (the common
   case of running `make install` in the same shell you ran
   `./bootstrap.sh` in — Homebrew's bin isn't on `PATH` until a new
   login shell), the gate aborts with `Error: dasel not in PATH.` and
   a new-shell remediation instead of failing late and cryptically
-  partway into `00-Install.core`. It is a reachability check only and
+  partway into the first tier. It is a reachability check only and
   does not auto-install or self-heal `PATH`; the exactly-v3 version
   assertion remains the job of `require_dasel_v3` at the first read.
 
@@ -63,47 +76,87 @@ formula must not lose the interpreter its own later steps need; see
   that self-guard together make `Error: dasel not in PATH.` the sole
   output on a no-dasel run.
 
-  Failure-tolerant: a `brew bundle` failure on one slot no longer
-  aborts the run. The loop attempts every slot, accumulates the slots
-  whose `brew bundle` returned non-zero, and at the end prints a
-  summary listing each failed slot. It exits non-zero if any slot
-  failed (otherwise it exits 0 with `All Install files applied.`). This
-  lets a single failing cask be left for later without blocking every
-  later slot — fix the listed slots and re-run `make install`. A
-  slot-04 `RemoveAndPurge` that returned non-zero lands in that same
-  summary; one that was *held back* by the `MISE_REACHABLE` guard is
-  tracked separately and prints its own
-  `==> Skipped the asdf/direnv removal ...` line after the summary.
-  Either one suppresses `All Install files applied.` and makes the run
+  Failure-tolerant: a `brew bundle` failure, or a failing `post_install`
+  command, on one tier no longer aborts the run. The loop attempts every
+  tier, accumulates the tiers that returned non-zero, and at the end
+  prints a summary listing each. It exits non-zero if any tier failed
+  (otherwise it exits 0 with `All tiers applied.`). This lets a single
+  failing cask be left for later without blocking every later tier — fix
+  the listed tiers and re-run `make install`. A version-managers purge
+  that returned non-zero lands in that same summary; one that was *held
+  back* by the `MISE_REACHABLE` guard is tracked separately and prints
+  its own `==> Skipped the asdf/direnv removal ...` line after the
+  summary. Either one suppresses `All tiers applied.` and makes the run
   exit non-zero.
 
-  Quiet by default: the tier walk probes every profile and the host
-  tier for each Install slot, but only contributing tiers print output
-  (the `==> Found ... Install` and `==> Applying ...` lines). The
-  per-tier "not found" lines (`==> No profile Install found at ...`,
-  `==> No computer-specific Install found at ...`) are suppressed in a
-  normal run, so a host that opts into many profiles is not buried under
-  hundreds of noise lines. Set `VERBOSE=1` (e.g. `VERBOSE=1 make
-  install`) to restore those per-tier "not found" lines when debugging
-  "why didn't my profile's Install apply?". Any non-empty `VERBOSE`
-  value enables them; unset/empty keeps the run quiet. This gating
-  applies identically to `make install` and to every per-slot install
-  target (`make ui`, `make core`, `make 16`, etc.).
+  Quiet by default: most tiers carry no `Brewfile` and no `post_install`
+  entries, so those negative-case lines (`==> No Brewfile found at ...`,
+  `==> No post_install entries for ...`) are suppressed in a normal run
+  and a host that opts into many profiles is not buried under noise. Set
+  `VERBOSE=1` to restore them when debugging "why didn't my profile
+  apply?". Any non-empty `VERBOSE` value enables them. The gate lives in
+  `scripts/apply_tier.sh`, so it applies identically to `make install`,
+  `make core`, and `make profile`.
+
+- `make core`
+  Applies just the core tier: `default/Brewfile` through the filter, then
+  the `post_install` commands in `default/config.toml` (computer names,
+  shell setup, the `~/.msmtprc` generator).
+
+- `make profile <name> [<name>...]`
+  Applies just the named profiles, in the order given — not sorted, not
+  in the host's configured order.
+
+  ```bash
+  make profile web
+  make profile web aws databases
+  ```
+
+  Validation runs **before** the apply loop, so a typo anywhere in the
+  list aborts with exit 2 and applies nothing:
+
+  ```console
+  $ make profile web nonexistent
+  make: unknown profile(s): nonexistent
+  known profiles: aws dev-core web ...
+  exit=2
+
+  $ make profile
+  usage: make profile <name> [<name>...]
+  exit=2
+  ```
+
+  The apply loop is failure-tolerant with an end-of-run summary, matching
+  `make install`: a mid-list failure does not stop the later profiles,
+  and the run exits non-zero naming what failed. (A bare `for` loop would
+  return only the last iteration's status, silently swallowing a mid-list
+  failure — worse than the per-slot behavior this replaced.)
+
+  `make profile --name <foo>` is **not** achievable: make consumes
+  `--`-prefixed arguments as its own options before the Makefile sees
+  them (`make: unrecognized option '--name'`). Two accepted rough edges
+  follow from the `$(eval)` trick that makes the positional form work,
+  both on already-failing paths: `make profile install` emits a
+  `warning: overriding commands for target 'install'` before validation
+  rejects `install` and exits 2 (plain `make install` is unaffected), and
+  `make install profile web` fires the usage error after `install` runs
+  because `profile` is not the first goal.
+
+- `make profiles`
+  Lists every profile in the repo, marking the ones this host opts into
+  and printing the tier order the host actually applies.
 
 - `make uninstall`
-  Applies all `Uninstall/` files in numeric order across the default
-  tier, each of the host's profiles in list order, then host. Skips
-  entries that aren't installed. Removes the binary; leaves user data
-  on disk.
+  Walks every tier for this host, in tier order, applying each tier's
+  `[profile] uninstall` array. Skips entries that aren't installed.
+  Removes the binary; leaves user data on disk.
 
-  Quiet by default about empty slots: nearly every numbered slot file
-  is just a comment header with no package to remove, so a slot+tier
-  whose file has zero active `brew`/`cask`/`mas` directives prints
-  nothing — neither the `==> Applying ... Uninstall: <file>` banner
-  nor the runner's `[uninstall] Processing` / `Done:` lines. A slot
-  with at least one active directive prints fully, including
-  `skip: <pkg> not installed` lines. Set `VERBOSE=1` to restore all
-  lines for every slot, including empty ones, when debugging.
+  Quiet by default about tiers that remove nothing: a tier whose array
+  for the active mode is empty or absent prints nothing — neither the
+  `==> Applying Uninstall: <tier>` banner nor the runner's
+  `[uninstall] Processing` / `Done:` lines. A tier with at least one
+  entry prints fully, including `skip: <pkg> not installed` lines. Set
+  `VERBOSE=1` to restore all lines for every tier when debugging.
 
   Both removal loops run through `scripts/remove_runner.sh`, which
   honors `BREW`, `MAS`, and `SUDO` overrides at **every** shell-out —
@@ -119,33 +172,30 @@ formula must not lose the interpreter its own later steps need; see
 
 - `make uninstall-dry-run`
   Same as `make uninstall` but only prints what would happen. Safe to
-  run on a fresh checkout; with empty `Uninstall/` seed files it
+  run on a fresh checkout; with no populated `uninstall` arrays it
   reports zero actions.
 
 - `make remove-and-purge`
-  Applies all `RemoveAndPurge/` files in numeric order across all
-  tiers. Same shape as `make uninstall`, but for casks the runner
-  uses `brew uninstall --cask --zap`, which also removes the cask's
-  declared user data (preferences, caches, login items). The same
-  empty-slot quiet-by-default gating described under `make uninstall`
-  applies (override with `VERBOSE=1`).
+  Walks the same tiers applying each tier's `[profile] purge` array.
+  Same shape as `make uninstall`, but for casks the runner uses
+  `brew uninstall --cask --zap`, which also removes the cask's declared
+  user data (preferences, caches, login items). The same
+  quiet-by-default gating described under `make uninstall` applies
+  (override with `VERBOSE=1`).
 
 - `make remove-and-purge-dry-run`
   Same as `make remove-and-purge` but only prints what would happen.
-  Safe to run on a fresh checkout; with empty `RemoveAndPurge/` seed
-  files it reports zero actions.
 
 - `make update`
   Runs `brew update`, upgrades all formulae and casks, upgrades MAS
-  apps, applies the slot-04 (`versionmanagers`) `Install` tiers,
-  updates and prunes mise-managed tool versions, then applies
-  `make uninstall` and
+  apps, applies the `version-managers` tier, updates and prunes
+  mise-managed tool versions, then applies `make uninstall` and
   `make remove-and-purge`. Uninstall and purge run *after* the
   upgrade chain so "uninstall wins over install" is the end state:
   even if `brew upgrade` resurrects something via dependency
   resolution, the uninstall step removes it before the user sees the
-  result. Slot 04 is the ONE `Install/` slot `update` applies; no
-  other `Install/` file is re-applied.
+  result. `version-managers` is the ONE tier `update` applies; no
+  other tier's `Brewfile` is re-applied.
 
   It then rewrites `~/.zshrc` from both sides:
   `scripts/strip_asdf_zshrc_lines.sh` removes the asdf/direnv init
@@ -158,16 +208,16 @@ formula must not lose the interpreter its own later steps need; see
   with no version manager wired into the interactive shell at all.
   Both scripts are grep-guarded no-ops once their work is done.
 
-  Slot 04's `Install` runs first for the same reason: `brew upgrade`
-  upgrades an installed formula but never installs an absent one, so
-  on a host that never ran `make install` the purge would take asdf
-  and direnv out with no mise to replace them. Install strictly
+  The `version-managers` tier is applied first for the same reason:
+  `brew upgrade` upgrades an installed formula but never installs an
+  absent one, so on a host that never ran `make install` the purge would
+  take asdf and direnv out with no mise to replace them. Install strictly
   precedes remove — and if the `MISE_REACHABLE` probe (the same macro
   `install` gates its inline purge on, so the two destructive paths
-  cannot drift) still finds no mise after that install step, `update`
-  skips slot 04 in both removal loops and skips both `~/.zshrc`
-  rewrites, warns, and exits non-zero, leaving every other removal
-  slot to apply normally.
+  cannot drift) still finds no mise after that step, `update` skips that
+  tier in both removal loops (via `REMOVE_SKIP_TIERS`) and skips both
+  `~/.zshrc` rewrites, warns, and exits non-zero, leaving every other
+  tier to apply normally.
 
 - `make self-update`
   Pulls the latest `main` into this repo via `scripts/self_update.sh`.
@@ -195,23 +245,21 @@ formula must not lose the interpreter its own later steps need; see
   to upgrade Homebrew/managed tool versions/installed software.
 
 - `make verify`
-  Runs `scripts/verify.sh` (per-Install-file verification) and then
+  Runs `scripts/verify.sh` (per-tier Brewfile verification) and then
   `scripts/collision_check.sh` to detect **same-tier collisions**: a
-  package listed in BOTH `<tier>/Install/NN-Install.suffix` AND
-  `<tier>/Uninstall/NN-Uninstall.suffix` (or
-  `<tier>/RemoveAndPurge/NN-RemoveAndPurge.suffix`) at the same tier.
-  Same-tier collisions are bugs (`make update` would just undo the
-  install); cross-tier collisions are intentional ("opt out at a
-  more-specific tier") and are not reported. Exits non-zero if any
-  Install entries are missing OR any same-tier collisions are found.
+  package listed in BOTH `<tier>/Brewfile` AND that same tier's
+  `[profile] uninstall` or `[profile] purge` array. Same-tier collisions
+  are bugs (`make update` would just undo the install); cross-tier
+  collisions are intentional ("opt out at a more-specific tier") and are
+  not reported. Exits non-zero if any Brewfile entries are missing OR any
+  same-tier collisions are found.
 
 - `make sanitize`
   Resolves the same-tier collisions reported by `make verify` by
-  commenting out the offending lines in the `Install/` files (the
-  `Uninstall/` or `RemoveAndPurge/` peer wins per the conflict rule
-  in `docs/INSTALL.md`). Writes a `.bak` next to each edited file
-  and prints a summary. Review the diff (e.g. `git diff`), commit,
-  and remove the `.bak` files when satisfied.
+  commenting out the offending lines in the `Brewfile` (the removal array
+  wins per the conflict rule in `docs/INSTALL.md`). Writes a `.bak` next
+  to each edited file and prints a summary. Review the diff (e.g.
+  `git diff`), commit, and remove the `.bak` files when satisfied.
 
 - `make claude-install`
   Clones the global Claude config repo
@@ -234,8 +282,9 @@ formula must not lose the interpreter its own later steps need; see
   another repo, etc.), it is moved aside to
   `~/.claude.orig.<timestamp>/`, fresh-cloned, and the captured
   contents are overlaid back on top (local wins, broken symlinks
-  skipped with a warning). Called automatically by `make ai` and the
-  `make install` per-target dispatcher for `17-Install.ai`.
+  skipped with a warning). Reached automatically by `make install` and
+  `make profile claude` via the `claude` / `claude-latest` profiles'
+  `post_install`.
 
   After the clone/migration completes, it syncs Claude plugins via
   `~/.claude/plugins.sh --install` (see `make claude-plugins-install`
@@ -271,131 +320,47 @@ formula must not lose the interpreter its own later steps need; see
   registered marketplaces and installed plugins. Run inline (non-fatally)
   by `make claude-update`.
 
+- `make shell_setup`
+  Runs `scripts/shell_setup.sh` standalone. Also reached as the core
+  tier's second `post_install` action.
+
 - `make help`
-  Lists all available targets, including dynamically generated ones.
+  Lists all documented targets plus every profile in the repo.
 
-## Per-Install Targets
+## Post-install actions
 
-Each `Install/NN-Install.<suffix>` has its own make target, named after
-its filename. For example:
+A tier declares what to run after its `Brewfile` in the `post_install`
+array of its own `config.toml`:
 
-```bash
-make 01_Install_security
-make 03_Install_shell
-make 04_Install_versionmanagers
+```toml
+[profile]
+post_install = ["scripts/vscode_extensions.sh code", "scripts/vscode_setup.sh"]
 ```
 
-Both the canonical underscore form (`01_Install_security`) and the
-dotted basename (`01-Install.security`) work. There are also short
-suffix and numeric aliases:
+Each entry is a path relative to the repo root plus optional arguments.
+This is where the old Makefile `case` table went. Where each hook lives
+now:
 
-```bash
-make security        # same as 01_Install_security
-make 01              # same as 01_Install_security
-```
+| Action | Tier |
+| --- | --- |
+| `core_setup.sh` (computer names, brew env) | core (`default/`) |
+| `shell_setup.sh` | core (`default/`) |
+| `msmtp_setup.sh` (generates `~/.msmtprc`) | core (`default/`) |
+| `hammerspoon_setup.sh` | `desktop-ui` |
+| `versions_setup.sh full` | `version-managers` |
+| `vscode_extensions.sh code` + `vscode_setup.sh` | `visual-studio-code` |
+| `vscode_extensions.sh cursor` | `cursor` |
+| `cdk_setup.sh` | `aws` |
+| `claude_disable_autoupdater.sh`, `claude_repo_setup.sh` | `claude`(-latest) |
 
-These let you apply only a subset of the environment.
+Each hook moved to the tier that installs the software it configures, so
+a host that does not opt into `desktop-ui` no longer runs the Hammerspoon
+setup (which was previously unconditional, because the empty
+`02-Install.ui` slot existed at the default tier).
 
-Each per-Install target is failure-tolerant across all three tiers,
-the same way `make install` is: it applies the slot at the default
-tier, then each of the host's profiles in list order, then the host
-tier, attempting every tier even if an earlier one's `brew bundle`
-fails. Failed tiers are accumulated and reported in an end-of-run
-summary, and the target exits non-zero if any tier failed (otherwise
-it exits 0 with no summary). A failing cask in one tier therefore
-never silently skips the other tiers of the same slot. The slot's
-post-install setup action (e.g. Hammerspoon for `ui`, mise for
-`versionmanagers`) runs only when the brew-bundle tiers all succeed,
-unchanged from before. Per-slot targets honour `VERBOSE=1` the same
-way `make install` does — the per-tier "not found" lines are quiet by
-default and restored with `VERBOSE=1` (see `make install` above).
-
-## Per-Uninstall Targets
-
-Symmetrically, each `Uninstall/NN-Uninstall.<suffix>` has its own
-target. These targets execute real uninstall operations; rehearse
-with `DRY_RUN=1` first to confirm what will happen:
-
-```bash
-make 01_Uninstall_security DRY_RUN=1   # rehearsal: prints actions, no changes
-make 01_Uninstall_security             # real run
-make 07_Uninstall_browsers DRY_RUN=1   # rehearsal
-make 07_Uninstall_browsers             # real run
-```
-
-Each per-Uninstall target walks the default → profiles (list order) →
-host tiers and runs `scripts/remove_runner.sh --mode=uninstall`
-against whichever tiers contain the matching slot. Setting `DRY_RUN=1`
-on the command line forwards `--dry-run` to the runner. A slot+tier
-whose file has no active `brew`/`cask`/`mas` directive prints nothing
-by default (see the empty-slot gating under `make uninstall` above);
-`VERBOSE=1` restores its banner and `Processing`/`Done` lines.
-
-## Per-RemoveAndPurge Targets
-
-Each `RemoveAndPurge/NN-RemoveAndPurge.<suffix>` likewise has its
-own target. **These targets are destructive: they pass `--zap` to
-cask uninstalls, which also removes the cask's declared user data
-(preferences, caches, support files, login items). ALWAYS rehearse
-with `DRY_RUN=1` first** to confirm what will happen:
-
-```bash
-make 07_RemoveAndPurge_browsers DRY_RUN=1   # rehearsal: prints actions, no changes
-make 07_RemoveAndPurge_browsers             # real run; --zap on casks
-```
-
-Each per-RemoveAndPurge target walks default → profiles (list order)
-→ host and
-runs `scripts/remove_runner.sh --mode=purge` against whichever tiers
-contain the matching slot. The `--mode=purge` flag adds `--zap` to
-cask uninstalls so the cask's declared user data is also removed.
-Setting `DRY_RUN=1` on the command line forwards `--dry-run` to the
-runner; this is the supported safe-rehearsal pattern for per-file
-RemoveAndPurge targets. A slot+tier whose file has no active
-`brew`/`cask`/`mas` directive prints nothing by default (see the
-empty-slot gating under `make uninstall` above); `VERBOSE=1` restores
-its banner and `Processing`/`Done` lines.
-
-The runner is shared with the per-Uninstall targets. It accepts
-`--mode={uninstall|purge}` (default `uninstall` for backward
-compatibility); the Makefile passes the flag explicitly at every
-call site so no caller relies on the default.
-
-## Special Cases
-
-These per-Install targets also run a follow-up setup script:
-
-- `make 02_Install_ui`
-  Applies UI tools and then sets up Hammerspoon configuration.
-
-- `make 03_Install_shell`
-  Applies shell tools and then runs `scripts/shell_setup.sh`.
-
-- `make 04_Install_versionmanagers`
-  Applies version managers and then runs `scripts/versions_setup.sh
-  full`: ensures the global mise config exists (importing
-  `~/.tool-versions` when the host has one), ensures
-  `[settings] env_file = ".env"` in it, then installs the tool
-  versions the resolved config declares.
-
-- `make 06_Install_messaging`
-  Applies messaging tools and then generates `~/.msmtprc` from the
-  resolved `config.toml` `[mailer]` values.
-
-- `make 09_Install_development`
-  Applies dev tools, installs VS Code extensions, and symlinks VS Code
-  config.
-
-- `make 11_Install_aws`
-  Applies AWS tools and runs CDK setup.
-
-- `make 17_Install_ai`
-  Applies AI tools, installs Cursor extensions, disables Claude
-  auto-updates (`scripts/claude_disable_autoupdater.sh`), and runs
-  `scripts/claude_repo_setup.sh install` to clone or update
-  `~/.claude/` from the global Claude config repo and sync Claude
-  plugins via `~/.claude/plugins.sh --install` (same as
-  `make claude-install`).
+A missing, non-executable, or failing `post_install` command is reported
+and tracked, never fatal — the run continues to the next command and the
+next tier, and the end-of-run summary names the tier.
 
 ## Version management
 
@@ -445,3 +410,17 @@ repo and host is over.
 
 See [Version Management](VERSION_MANAGEMENT.md) for the full runbook,
 the multi-version-line pre-flight, and the manual cleanup checklist.
+
+## Shell completion
+
+`m` is the zsh wrapper that runs `make` in this repo from any cwd (see
+[SHELL.md](SHELL.md)). Its completer, `_m`, is registered by
+`shared/zsh/macos_setup.zsh`:
+
+- `m <TAB>` offers the `##`-documented Makefile targets plus `profile`.
+- `m profile <TAB>` offers the profile directory names, with the ones
+  already on the command line filtered out.
+
+It resolves the repo the same way `m()` does (via `_macos_setup_repo`), so
+it works from any directory, and it reads profile candidates straight from
+the directory glob — no `dasel` call per keystroke.

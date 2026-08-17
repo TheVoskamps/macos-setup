@@ -1,0 +1,30 @@
+# config.toml for the 'version-managers' profile.
+#
+# The profile keeps its implementation-neutral name: `version-managers` is
+# the role, mise is the current implementation.
+
+[profile]
+# versions_setup.sh `full` ensures the global mise config (importing
+# ~/.tool-versions when present) plus `[settings] env_file = ".env"`, then
+# installs the declared tool versions.
+post_install = ["scripts/versions_setup.sh full"]
+
+uninstall = []
+
+# The asdf -> mise cutover is HARD, not staged: the same profile that
+# installs mise removes asdf and direnv, because asdf and mise both provide
+# shims for the same tools and running them side by side is the classic
+# failure mode.
+#
+# Only the BINARIES go. `~/.asdf/`, `~/.tool-versions`,
+# `~/.config/direnv/lib/use_asdf.sh` and every repo's `.envrc` /
+# `.tool-versions` all survive; `make asdf-to-mise` warns about each rather
+# than deleting it.
+#
+# `make install` and `make update` both gate this removal on the
+# MISE_REACHABLE probe, evaluated immediately after the install half: if
+# mise is not reachable at that moment the removal is held back, the run
+# warns and exits non-zero, and every other tier's removals still apply.
+# Removing a host's only version manager is strictly worse than leaving both
+# installed. See docs/VERSION_MANAGEMENT.md.
+purge = ["brew:asdf", "brew:direnv"]

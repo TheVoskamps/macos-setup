@@ -1,0 +1,6 @@
+# config.toml for the 'cursor' profile.
+
+[profile]
+# The same extension list VS Code gets, installed into Cursor. The script
+# skips extensions Cursor's registry does not carry and always exits 0.
+post_install = ["scripts/vscode_extensions.sh cursor"]

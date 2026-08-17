@@ -1,0 +1,5 @@
+# Brewfile for the 'claude-latest' profile
+
+# Casks
+cask 'claude'
+cask 'claude-code@latest'

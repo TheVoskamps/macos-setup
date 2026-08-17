@@ -1,0 +1,6 @@
+# Brewfile for the 'dev-python' profile
+
+# Homebrew formulae
+brew 'uv'
+brew 'ruff'
+brew 'basedpyright'

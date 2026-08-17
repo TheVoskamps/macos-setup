@@ -1,0 +1,7 @@
+# Brewfile for the 'media-playback' profile
+
+# Casks
+cask 'vlc'
+
+# Mac App Store (mas)
+mas 'Amazon Kindle (7.42.1)', id: 302584613

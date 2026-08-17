@@ -1,0 +1,8 @@
+# config.toml for the 'desktop-ui' profile.
+
+[profile]
+# hammerspoon_setup.sh symlinks init.lua, monitors.json, workspaces.json and
+# the modules/ directory into ~/.hammerspoon/, configures the Ctrl+1-9 desktop
+# shortcuts, and reloads a running Hammerspoon. It lives here rather than in
+# the core tier because Hammerspoon itself is a cask this profile installs.
+post_install = ["scripts/hammerspoon_setup.sh"]

@@ -7,7 +7,7 @@
 #   - claude CLI wrappers (cr)   -> profiles/claude-code-aliases/aliases.zsh
 # A machine that does no development never inherits the git alias soup.
 
-# Bootstrap helpers (bat/fzf install in the default tier's 03-Install.shell)
+# Bootstrap helpers (bat/fzf are installed by the core tier's Brewfile)
 alias fsf='fzf'
 alias cat='bat --paging=never'
 # alias grep='rg'
@@ -30,7 +30,7 @@ alias mv='mv -i'
 alias ll='ls -la'
 
 # Smart cd and fzf helpers (fzf/zoxide/fd/bat install in the default
-# tier's 03-Install.shell)
+# tier's Brewfile)
 alias cdz='z'     # jump to directories using zoxide
 alias cdi='zi'    # interactive cd using zoxide + fzf
 alias cdf='cd "$(fd -td -H . | fzf)"'   # cd into a subdir interactively

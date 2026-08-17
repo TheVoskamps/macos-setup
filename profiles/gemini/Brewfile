@@ -1,0 +1,4 @@
+# Brewfile for the 'gemini' profile
+
+# Casks
+cask 'google-gemini'

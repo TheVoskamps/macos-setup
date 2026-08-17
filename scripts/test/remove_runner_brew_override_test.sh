@@ -243,11 +243,15 @@ STUB
 }
 
 override_test() {
-  local dir slot stub log out rc
+  local dir tier stub log out rc
   dir="$(mktemp -d)"
   mkdir -p "$dir/bin"
-  slot="$dir/00-Uninstall.sentinel"
-  printf "# header\nbrew 'sentinel-formula'\ncask 'sentinel-cask'\n" > "$slot"
+  # The removal list is a TIER's config.toml [profile] arrays (issue #33).
+  # Both modes list the same two packages so each mode has work to do.
+  tier="$dir/tier"
+  mkdir -p "$tier"
+  printf '[profile]\nuninstall = ["brew:sentinel-formula", "cask:sentinel-cask"]\npurge = ["brew:sentinel-formula", "cask:sentinel-cask"]\n' \
+    > "$tier/config.toml"
 
   stub="$dir/stub-brew"         # what BREW points at
   log="$dir/brew-calls.log"
@@ -257,7 +261,7 @@ override_test() {
   for mode in uninstall purge; do
     : > "$log"
     out="$(PATH="$dir/bin:$PATH" BREW="$stub" CALL_LOG="$log" \
-      bash "$RUNNER" "$slot" "--mode=$mode" 2>&1)"; rc=$?
+      bash "$RUNNER" "$tier" "--mode=$mode" 2>&1)"; rc=$?
     ok "$rc" "BREW override, --mode=$mode: runner exits 0"
 
     local calls; calls="$(cat "$log")"
@@ -294,17 +298,18 @@ default_test() {
   # With BREW unset the runner must still resolve bare `brew` from PATH:
   # the override is opt-in, and the default behavior is unchanged. Here a
   # TRIPWIRE line is the PASS condition, not the failure condition.
-  local dir slot log rc out
+  local dir tier log rc out
   dir="$(mktemp -d)"
   mkdir -p "$dir/bin"
-  slot="$dir/00-Uninstall.sentinel"
-  printf "# header\nbrew 'sentinel-formula'\n" > "$slot"
+  tier="$dir/tier"
+  mkdir -p "$tier"
+  printf '[profile]\nuninstall = ["brew:sentinel-formula"]\n' > "$tier/config.toml"
   log="$dir/brew-calls.log"
   : > "$log"
   write_tripwire_brew "$dir/bin/brew"
 
   out="$(PATH="$dir/bin:$PATH" CALL_LOG="$log" \
-    env -u BREW bash "$RUNNER" "$slot" --mode=uninstall 2>&1)"; rc=$?
+    env -u BREW bash "$RUNNER" "$tier" --mode=uninstall 2>&1)"; rc=$?
   ok "$rc" "BREW unset: runner exits 0"
   ok_contains "$(cat "$log")" "TRIPWIRE list --formula sentinel-formula" \
     "BREW unset: the runner falls back to bare \`brew\` on PATH"
@@ -319,11 +324,15 @@ default_test() {
 # ---------------------------------------------------------------------
 
 mas_override_test() {
-  local dir slot mas_stub sudo_stub log out rc calls
+  local dir tier mas_stub sudo_stub log out rc calls
   dir="$(mktemp -d)"
   mkdir -p "$dir/bin"
-  slot="$dir/00-Uninstall.sentinel"
-  printf "# header\nmas 'Sentinel App', id: %s\n" "$MAS_SENTINEL_ID" > "$slot"
+  tier="$dir/tier"
+  mkdir -p "$tier"
+  # "mas:<id>:<Name>" carries the label the log lines use; the id is what
+  # `mas uninstall` is actually handed.
+  printf '[profile]\nuninstall = ["mas:%s:Sentinel App"]\npurge = ["mas:%s:Sentinel App"]\n' \
+    "$MAS_SENTINEL_ID" "$MAS_SENTINEL_ID" > "$tier/config.toml"
 
   mas_stub="$dir/stub-mas"       # what MAS points at
   sudo_stub="$dir/stub-sudo"     # what SUDO points at
@@ -336,7 +345,7 @@ mas_override_test() {
   for mode in uninstall purge; do
     : > "$log"
     out="$(PATH="$dir/bin:$PATH" MAS="$mas_stub" SUDO="$sudo_stub" \
-      CALL_LOG="$log" bash "$RUNNER" "$slot" "--mode=$mode" 2>&1)"; rc=$?
+      CALL_LOG="$log" bash "$RUNNER" "$tier" "--mode=$mode" 2>&1)"; rc=$?
     ok "$rc" "MAS/SUDO override, --mode=$mode: runner exits 0"
 
     calls="$(cat "$log")"
@@ -363,7 +372,7 @@ mas_override_test() {
   # the overridden ones in the line it prints instead.
   : > "$log"
   out="$(PATH="$dir/bin:$PATH" MAS="$mas_stub" SUDO="$sudo_stub" \
-    CALL_LOG="$log" bash "$RUNNER" "$slot" --mode=purge --dry-run 2>&1)"; rc=$?
+    CALL_LOG="$log" bash "$RUNNER" "$tier" --mode=purge --dry-run 2>&1)"; rc=$?
   ok "$rc" "MAS/SUDO override, --dry-run: runner exits 0"
   ok_absent "$(cat "$log")" "uninstall" \
     "MAS/SUDO override, --dry-run: no uninstall is executed"
@@ -374,7 +383,7 @@ mas_override_test() {
   # probed, and must NOT quietly fall through to the `mas` on PATH.
   : > "$log"
   out="$(PATH="$dir/bin:$PATH" MAS="$dir/no-such-mas" SUDO="$sudo_stub" \
-    CALL_LOG="$log" bash "$RUNNER" "$slot" --mode=uninstall 2>&1)"; rc=$?
+    CALL_LOG="$log" bash "$RUNNER" "$tier" --mode=uninstall 2>&1)"; rc=$?
   ok "$rc" "MAS pointed at a missing binary: runner exits 0"
   ok_contains "$out" "mas CLI not found: $dir/no-such-mas" \
     "MAS pointed at a missing binary: the skip line names the probed path"
@@ -389,18 +398,20 @@ mas_default_test() {
   # PATH: the override is opt-in, and the default behavior is unchanged.
   # Here a TRIPWIRE-MAS line is the PASS condition. The PATH `mas` stub
   # reports nothing installed, so sudo is never reached at all.
-  local dir slot log rc out calls
+  local dir tier log rc out calls
   dir="$(mktemp -d)"
   mkdir -p "$dir/bin"
-  slot="$dir/00-Uninstall.sentinel"
-  printf "# header\nmas 'Sentinel App', id: %s\n" "$MAS_SENTINEL_ID" > "$slot"
+  tier="$dir/tier"
+  mkdir -p "$tier"
+  printf '[profile]\nuninstall = ["mas:%s:Sentinel App"]\n' \
+    "$MAS_SENTINEL_ID" > "$tier/config.toml"
   log="$dir/calls.log"
   : > "$log"
   write_tripwire_mas "$dir/bin/mas"
   write_tripwire_sudo "$dir/bin/sudo"
 
   out="$(PATH="$dir/bin:$PATH" CALL_LOG="$log" \
-    env -u MAS -u SUDO bash "$RUNNER" "$slot" --mode=uninstall 2>&1)"; rc=$?
+    env -u MAS -u SUDO bash "$RUNNER" "$tier" --mode=uninstall 2>&1)"; rc=$?
   ok "$rc" "MAS/SUDO unset: runner exits 0"
   calls="$(cat "$log")"
   ok_contains "$calls" "TRIPWIRE-MAS list" \
@@ -420,18 +431,20 @@ makefile_test() {
   local root host_dir stub mas_stub sudo_stub log out rc calls
   root="$(mktemp -d)"
   host_dir="$(mktemp -d)"
-  mkdir -p "$root/scripts" "$root/Install" "$root/Uninstall" \
-           "$root/RemoveAndPurge" "$root/bin"
+  mkdir -p "$root/scripts" "$root/default" "$root/profiles/sentinel" "$root/bin"
   cp "$REPO_ROOT/Makefile" "$root/Makefile"
   cp "$REPO_ROOT/scripts/remove_runner.sh" \
      "$REPO_ROOT/scripts/config_common.sh" \
+     "$REPO_ROOT/scripts/apply_tier.sh" \
      "$REPO_ROOT/scripts/list_profiles.sh" \
      "$REPO_ROOT/scripts/host_tier_dir.sh" \
      "$REPO_ROOT/scripts/seed_host_tier.sh" \
      "$REPO_ROOT/scripts/install_filter.sh" \
      "$root/scripts/"
-  printf "# header\ncask 'sentinel-cask'\nmas 'Sentinel App', id: %s\n" \
-    "$MAS_SENTINEL_ID" > "$root/RemoveAndPurge/00-RemoveAndPurge.sentinel"
+  printf '[profile]\npurge = ["cask:sentinel-cask", "mas:%s:Sentinel App"]\n' \
+    "$MAS_SENTINEL_ID" > "$root/profiles/sentinel/config.toml"
+  # The host must opt into the profile for the purge loop to walk that tier.
+  printf 'profiles = ["sentinel"]\n' > "$host_dir/config.toml"
 
   stub="$root/scripts/stub-brew"
   mas_stub="$root/scripts/stub-mas"

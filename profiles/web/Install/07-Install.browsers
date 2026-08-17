@@ -1,5 +1,0 @@
-# 07-Install.browsers for the 'web' profile
-# (chrome is in the basic/default install; this profile adds extra browsers)
-
-# Casks
-cask 'firefox'

@@ -13,7 +13,7 @@
 #
 # More than one caller, because the cutover reaches a host down either of
 # the paths below and each must leave ~/.zshrc clean:
-#   - scripts/shell_setup.sh (the `03-Install.shell` post-install action),
+#   - scripts/shell_setup.sh (a core-tier `post_install` action),
 #     i.e. `make install` and `make shell`.
 #   - the `update` Makefile target, which uninstalls asdf and direnv via the
 #     RemoveAndPurge loop but never runs shell_setup.sh.

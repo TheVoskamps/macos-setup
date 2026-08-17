@@ -1,30 +1,26 @@
 #!/usr/bin/env bash
 
-# Tests for the install-loop failure accumulation (issue #163).
+# Tests for the install-loop failure accumulation (issue #163, carried
+# across the profiles cutover in issue #33).
 #
 # Before #163, `make install` aborted the whole run on the first
-# `brew bundle` failure (the `[ $rc -eq 0 ] || exit $rc` guard), so a
-# single failing cask left every later slot unapplied. The fix makes
-# the loop attempt EVERY slot, collect per-slot `brew bundle` failures,
-# print a summary at the end, and exit non-zero iff any slot failed.
+# `brew bundle` failure, so a single failing cask left every later unit
+# unapplied. The fix makes the loop attempt EVERY unit, collect the
+# failures, print a summary at the end, and exit non-zero iff any failed.
+# Issue #33 changed the unit from a numbered Install slot to a TIER (the
+# core tier, then each profile the host opts into, then the host tier);
+# the accumulation contract is unchanged and is what this file pins.
 #
-# These tests stand up a synthetic repo containing the real Makefile
-# and the handful of scripts the `install` target invokes, point the
-# external host tier at an EMPTY (but present) temp dir so seeding and
-# profile resolution no-op, and drive `make install` with a stub `brew`
-# that fails for exactly one slot. They assert:
-#   - every slot's `brew bundle` is attempted even though an earlier
-#     slot failed (no early abort)
-#   - the run exits non-zero when a slot failed
-#   - the end-of-run summary names the failed slot
+# These tests stand up a synthetic repo containing the real Makefile and
+# the scripts the `install` target invokes, point the external host tier
+# at a temp dir whose config.toml selects two profiles, and drive
+# `make install` with a stub `brew` that fails for exactly one tier. They
+# assert:
+#   - every tier's `brew bundle` is attempted even though an earlier tier
+#     failed (no early abort)
+#   - the run exits non-zero when a tier failed
+#   - the end-of-run summary names the failed tier
 #   - a clean run (stub never fails) exits 0 with the success message
-#
-# The host tier lives OUTSIDE the repo (see host_tier_dir in
-# config_common.sh). Pointing MACOS_SETUP_HOST_DIR at a pre-existing
-# empty temp dir makes seed_host_tier.sh a no-op (dir present) and
-# get_profiles return nothing (no `profiles` file), so the loop
-# exercises only the default tier — exactly the path that carried the
-# old abort guard.
 
 set -uo pipefail
 
@@ -55,31 +51,41 @@ ok_rc() {
   fi
 }
 
-# Build a synthetic repo with the real Makefile + the scripts the
-# install target touches, plus three default-tier Install slots whose
-# basenames match NONE of the install loop's `case` post-install
-# actions (so the case falls through harmlessly).
+# Build a synthetic repo with the real Makefile + the scripts the install
+# target touches, plus three tiers that each carry a Brewfile: the core
+# tier and two profiles. None declares a post_install action, so no real
+# setup script runs.
 make_repo() {
   local root; root="$(mktemp -d)"
-  mkdir -p "$root/scripts" "$root/Install" "$root/Uninstall" "$root/RemoveAndPurge"
+  mkdir -p "$root/scripts" "$root/default" \
+           "$root/profiles/beta" "$root/profiles/gamma"
   cp "$REPO_ROOT/Makefile" "$root/Makefile"
   cp "$REPO_ROOT/scripts/config_common.sh" \
+     "$REPO_ROOT/scripts/apply_tier.sh" \
      "$REPO_ROOT/scripts/install_filter.sh" \
+     "$REPO_ROOT/scripts/remove_runner.sh" \
      "$REPO_ROOT/scripts/list_profiles.sh" \
+     "$REPO_ROOT/scripts/host_tier_dir.sh" \
      "$REPO_ROOT/scripts/seed_host_tier.sh" \
      "$REPO_ROOT/scripts/require_dasel_on_path.sh" \
      "$root/scripts/"
-  # Three slots, sorted: alpha, beta, gamma. The stub brew keys off
-  # the bundle file's content to decide which slot to fail.
-  printf 'brew "pkg_alpha"\n' > "$root/Install/90-Install.alpha"
-  printf 'brew "pkg_beta"\n'  > "$root/Install/91-Install.beta"
-  printf 'brew "pkg_gamma"\n' > "$root/Install/92-Install.gamma"
+  printf 'brew "pkg_alpha"\n' > "$root/default/Brewfile"
+  printf 'brew "pkg_beta"\n'  > "$root/profiles/beta/Brewfile"
+  printf 'brew "pkg_gamma"\n' > "$root/profiles/gamma/Brewfile"
   echo "$root"
+}
+
+# The external host tier: present (so seeding no-ops) and selecting both
+# profiles in order, with no Brewfile of its own.
+make_host_dir() {
+  local host_dir; host_dir="$(mktemp -d)"
+  printf 'profiles = ["beta", "gamma"]\n' > "$host_dir/config.toml"
+  echo "$host_dir"
 }
 
 # A stub `brew` that:
 #   - logs every `bundle --file=<f>` invocation's resolved package line
-#     to $BREW_LOG (so the test can assert which slots were attempted)
+#     to $BREW_LOG (so the test can assert which tiers were attempted)
 #   - exits 1 when the bundle file mentions the package named in
 #     $FAIL_PKG, else exits 0
 # Written into the synthetic repo and passed to make via BREW=.
@@ -106,14 +112,17 @@ STUB
   chmod +x "$path"
 }
 
+FAIL_HEADER="The following tiers failed"
+SUCCESS_MSG="All tiers applied."
+
 # ---------------------------------------------------------------------
-# Block 1: one slot fails -> loop continues, run exits non-zero, summary
-# names the failed slot, every slot was attempted.
+# Block 1: one tier fails -> loop continues, run exits non-zero, summary
+# names the failed tier, every tier was attempted.
 # ---------------------------------------------------------------------
 one_failure_test() {
   local root host_dir brew_stub brew_log out rc
   root="$(make_repo)"
-  host_dir="$(mktemp -d)"      # present but empty -> seeding/profiles no-op
+  host_dir="$(make_host_dir)"
   brew_stub="$root/scripts/stub_brew.sh"
   write_stub_brew "$brew_stub"
   brew_log="$(mktemp)"
@@ -123,27 +132,27 @@ one_failure_test() {
     make install BREW="$brew_stub" 2>&1)"; rc=$?
 
   ok_rc "$rc" nonzero "one failure: run exits non-zero"
-  ok_contains "$out" "Install/91-Install.beta" "one failure: summary names the failed slot"
-  ok_contains "$out" "The following Install slots failed" "one failure: prints a failure summary header"
+  ok_contains "$out" "profiles/beta" "one failure: summary names the failed tier"
+  ok_contains "$out" "$FAIL_HEADER" "one failure: prints a failure summary header"
 
-  # Every slot must have been attempted (no early abort): the stub logged
+  # Every tier must have been attempted (no early abort): the stub logged
   # bundle:pkg_alpha, bundle:pkg_beta, bundle:pkg_gamma.
   local logged
   logged="$(paste -sd, - < "$brew_log")"
   ok "$logged" "bundle:pkg_alpha,bundle:pkg_beta,bundle:pkg_gamma" \
-    "one failure: every slot attempted despite the middle slot failing"
+    "one failure: every tier attempted despite the middle tier failing"
 
   rm -rf "$root" "$host_dir" "$brew_log"
 }
 
 # ---------------------------------------------------------------------
-# Block 2: the LAST slot's failure is still reported (proves the
+# Block 2: the LAST tier's failure is still reported (proves the
 # accumulator survives to the end and the success message is suppressed).
 # ---------------------------------------------------------------------
 last_failure_test() {
   local root host_dir brew_stub brew_log out rc
   root="$(make_repo)"
-  host_dir="$(mktemp -d)"
+  host_dir="$(make_host_dir)"
   brew_stub="$root/scripts/stub_brew.sh"
   write_stub_brew "$brew_stub"
   brew_log="$(mktemp)"
@@ -152,24 +161,24 @@ last_failure_test() {
     MACOS_SETUP_HOST_DIR="$host_dir" BREW_LOG="$brew_log" FAIL_PKG="pkg_gamma" \
     make install BREW="$brew_stub" 2>&1)"; rc=$?
 
-  ok_rc "$rc" nonzero "last-slot failure: run exits non-zero"
-  ok_contains "$out" "Install/92-Install.gamma" "last-slot failure: summary names the last slot"
-  if grep -qF "All Install files applied." <<<"$out"; then
-    echo "FAIL: last-slot failure: success message must be suppressed"; ((fail++))
+  ok_rc "$rc" nonzero "last-tier failure: run exits non-zero"
+  ok_contains "$out" "profiles/gamma" "last-tier failure: summary names the last tier"
+  if grep -qF "$SUCCESS_MSG" <<<"$out"; then
+    echo "FAIL: last-tier failure: success message must be suppressed"; ((fail++))
   else
-    echo "PASS: last-slot failure: success message suppressed"; ((pass++))
+    echo "PASS: last-tier failure: success message suppressed"; ((pass++))
   fi
 
   rm -rf "$root" "$host_dir" "$brew_log"
 }
 
 # ---------------------------------------------------------------------
-# Block 3: no slot fails -> exit 0, success message, no summary.
+# Block 3: no tier fails -> exit 0, success message, no summary.
 # ---------------------------------------------------------------------
 clean_run_test() {
   local root host_dir brew_stub brew_log out rc
   root="$(make_repo)"
-  host_dir="$(mktemp -d)"
+  host_dir="$(make_host_dir)"
   brew_stub="$root/scripts/stub_brew.sh"
   write_stub_brew "$brew_stub"
   brew_log="$(mktemp)"
@@ -179,8 +188,8 @@ clean_run_test() {
     make install BREW="$brew_stub" 2>&1)"; rc=$?
 
   ok_rc "$rc" 0 "clean run: exits 0"
-  ok_contains "$out" "All Install files applied." "clean run: prints success message"
-  if grep -qF "The following Install slots failed" <<<"$out"; then
+  ok_contains "$out" "$SUCCESS_MSG" "clean run: prints success message"
+  if grep -qF "$FAIL_HEADER" <<<"$out"; then
     echo "FAIL: clean run: must not print a failure summary"; ((fail++))
   else
     echo "PASS: clean run: no failure summary"; ((pass++))
@@ -189,12 +198,82 @@ clean_run_test() {
   rm -rf "$root" "$host_dir" "$brew_log"
 }
 
-echo "=== one-failure (middle slot) test ==="
+# ---------------------------------------------------------------------
+# Block 4: a FAILING post_install action is tracked the same way a
+# failing brew bundle is — reported, not fatal, and it does not stop the
+# later tiers. This is what makes the whole run failure-tolerant rather
+# than just its brew half.
+# ---------------------------------------------------------------------
+post_install_failure_test() {
+  local root host_dir brew_stub brew_log out rc
+  root="$(make_repo)"
+  host_dir="$(make_host_dir)"
+  brew_stub="$root/scripts/stub_brew.sh"
+  write_stub_brew "$brew_stub"
+  brew_log="$(mktemp)"
+
+  cat > "$root/scripts/boom.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "boom: deliberate post_install failure" >&2
+exit 1
+EOF
+  chmod +x "$root/scripts/boom.sh"
+  printf '[profile]\npost_install = ["scripts/boom.sh"]\n' \
+    > "$root/profiles/beta/config.toml"
+
+  out="$(cd "$root" && \
+    MACOS_SETUP_HOST_DIR="$host_dir" BREW_LOG="$brew_log" \
+    make install BREW="$brew_stub" 2>&1)"; rc=$?
+
+  ok_rc "$rc" nonzero "post_install failure: run exits non-zero"
+  ok_contains "$out" "profiles/beta" "post_install failure: summary names the tier"
+  local logged
+  logged="$(paste -sd, - < "$brew_log")"
+  ok "$logged" "bundle:pkg_alpha,bundle:pkg_beta,bundle:pkg_gamma" \
+    "post_install failure: later tiers still applied"
+
+  rm -rf "$root" "$host_dir" "$brew_log"
+}
+
+# ---------------------------------------------------------------------
+# Block 5: a post_install entry naming a script that does not exist is
+# reported and tracked, not silently skipped. A hook that never runs
+# because of a typo is exactly the failure this reports.
+# ---------------------------------------------------------------------
+missing_post_install_test() {
+  local root host_dir brew_stub brew_log out rc
+  root="$(make_repo)"
+  host_dir="$(make_host_dir)"
+  brew_stub="$root/scripts/stub_brew.sh"
+  write_stub_brew "$brew_stub"
+  brew_log="$(mktemp)"
+
+  printf '[profile]\npost_install = ["scripts/no_such_script.sh"]\n' \
+    > "$root/profiles/gamma/config.toml"
+
+  out="$(cd "$root" && \
+    MACOS_SETUP_HOST_DIR="$host_dir" BREW_LOG="$brew_log" \
+    make install BREW="$brew_stub" 2>&1)"; rc=$?
+
+  ok_rc "$rc" nonzero "missing post_install script: run exits non-zero"
+  ok_contains "$out" "not found or not executable" \
+    "missing post_install script: says the script is missing"
+  ok_contains "$out" "scripts/no_such_script.sh" \
+    "missing post_install script: names the script"
+
+  rm -rf "$root" "$host_dir" "$brew_log"
+}
+
+echo "=== one-failure (middle tier) test ==="
 one_failure_test
-echo "=== last-slot failure test ==="
+echo "=== last-tier failure test ==="
 last_failure_test
 echo "=== clean-run test ==="
 clean_run_test
+echo "=== post_install failure test ==="
+post_install_failure_test
+echo "=== missing post_install script test ==="
+missing_post_install_test
 
 echo
 echo "---"

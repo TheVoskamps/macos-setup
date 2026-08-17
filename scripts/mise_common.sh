@@ -2,7 +2,7 @@
 # mise_common.sh — shared mise helpers.
 #
 # Sourced (never executed) by `scripts/versions_setup.sh` (the
-# `04-Install.versionmanagers` post-install action and the `versions-*`
+# `version-managers` profile's `post_install` action and the `versions-*`
 # Makefile targets) and by `scripts/asdf_to_mise.sh` (the one-shot
 # `make asdf-to-mise` migration). Both need to bring the global mise
 # config up to the state this repo expects, so that logic lives here once

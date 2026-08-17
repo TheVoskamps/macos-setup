@@ -305,6 +305,6 @@ if [ -x "$CLAUDE_HOMEBREW" ]; then
     echo "[SHELL-SETUP] Created claude symlink: $CLAUDE_SYMLINK -> $CLAUDE_HOMEBREW"
   fi
 else
-  echo "[SHELL-SETUP] NOTE: claude not found at $CLAUDE_HOMEBREW; install via Install/17-Install.ai first"
+  echo "[SHELL-SETUP] NOTE: claude not found at $CLAUDE_HOMEBREW; run 'make profile claude' first"
 fi
 # <<< macos-setup PATH and claude symlink <<<

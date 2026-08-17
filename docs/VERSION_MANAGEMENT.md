@@ -10,10 +10,10 @@ name: `version-managers` is the role, not the implementation.
 
 ## Quick Start
 
-1. Install Homebrew bundles (including `mise`): `make versionmanagers`.
-   This installs only — it does not uninstall `asdf`/`direnv` or touch
-   `~/.zshrc`. See "The host-side cutover is hard, not staged" below
-   for the full by-hand sequence, or just run `make install`.
+1. Install `mise`: `make profile version-managers`. This installs
+   only — it does not uninstall `asdf`/`direnv` or touch `~/.zshrc`.
+   See "The host-side cutover is hard, not staged" below for the full
+   by-hand sequence, or just run `make install`.
 2. Install the versions the resolved config declares:
    `make versions-install`.
 3. Add a tool to the current project: `mise use <tool>@latest`
@@ -27,7 +27,7 @@ change is bounded to the places that name the tool directly:
 init lines in `scripts/ensure_mise_zshrc_lines.sh`, the shims `PATH`
 export in
 `scripts/launchagent_runner.sh`, `scripts/diagnose.sh`, and the
-`version-managers` profile's `Install/04-Install.versionmanagers`.
+`version-managers` profile's `Brewfile`.
 
 | Target | What it does |
 | --- | --- |
@@ -177,11 +177,10 @@ finishes, and the converter reports them as condition (b) below.
 
 ## The host-side cutover is hard, not staged
 
-The `version-managers` profile installs `mise` in its
-`Install/04-Install.versionmanagers` and removes `asdf` and `direnv`
-in its `RemoveAndPurge/04-RemoveAndPurge.versionmanagers`, in the same
-change. Running asdf and mise side by side is the classic failure mode
-— both provide shims for the same tools.
+The `version-managers` profile installs `mise` in its `Brewfile` and
+removes `asdf` and `direnv` in the `[profile] purge` array of its
+`config.toml`, in the same change. Running asdf and mise side by side
+is the classic failure mode — both provide shims for the same tools.
 
 ### What the cutover consists of
 
@@ -189,8 +188,9 @@ Separate pieces of work, each owned by a different mechanism:
 
 | Piece | Owner |
 | --- | --- |
-| Install `mise` | slot 04's `Install` + `versions_setup.sh full` |
-| Uninstall `asdf` + `direnv` | slot 04's `RemoveAndPurge` |
+| Install `mise` | the profile's `Brewfile` |
+| Ensure the global mise config | its `post_install`: `versions_setup.sh full` |
+| Uninstall `asdf` + `direnv` | its `[profile] purge` array |
 | Strip orphaned `~/.zshrc` lines | `strip_asdf_zshrc_lines.sh` |
 | Add the mise `~/.zshrc` lines | `ensure_mise_zshrc_lines.sh` |
 
@@ -201,13 +201,13 @@ what left a real host with mise installed, asdf and direnv gone, and
 no version manager wired into the interactive shell at all.
 
 **`make install` and `make update` each do all of it.** `make install`
-runs the slot-04 install and, as a deliberate one-slot exception to
-"install does not run the removal loops", the slot-04 RemoveAndPurge
-alongside it; the `03-Install.shell` action rewrites `~/.zshrc` from
-both sides. `make update` applies the slot-04 `Install` tiers itself
-before it reaches the removal loops, then runs those loops and calls
-the strip and the add directly, in that order (it never runs
-`shell_setup.sh`). The explicit install
+applies the `version-managers` tier and, as a deliberate one-tier
+exception to "install does not run the removal loops", that tier's
+`purge` array inline right after it; the core tier's `shell_setup.sh`
+action rewrites `~/.zshrc` from both sides. `make update` applies the
+`version-managers` tier itself before it reaches the removal loops,
+then runs those loops and calls the strip and the add directly, in that
+order (it never runs `shell_setup.sh`). The explicit install
 step is what carries a host that has never run `make install`:
 `brew upgrade` upgrades a formula that is already installed but never
 installs an absent one, so without it `update` would remove asdf and
@@ -218,14 +218,14 @@ Both paths probe for a reachable mise immediately before they remove
 anything, through one shared Makefile macro (`MISE_REACHABLE`), and
 hold the removal back when the probe fails — `brew bundle` failed,
 the host never opted into the `version-managers` profile, the binary
-is off `PATH`. `make update` skips slot 04's `Uninstall` and
-`RemoveAndPurge` and skips both `~/.zshrc` rewrites — pointing
+is off `PATH`. `make update` skips the `version-managers` tier in both
+removal loops and skips both `~/.zshrc` rewrites — pointing
 `~/.zshrc` at a mise that is not there would error on every shell
 startup, which is exactly what the strip exists to prevent;
-`make install` skips
-its inline slot-04 `RemoveAndPurge`. Both warn and exit non-zero.
-Every other slot still applies; only slot 04 is held back. A host is
-never left with the old version manager gone and no replacement.
+`make install` skips its inline `version-managers` purge. Both warn
+and exit non-zero. Every other tier still applies; only
+`version-managers` is held back. A host is never left with the old
+version manager gone and no replacement.
 
 The guard is written out at each destructive call rather than
 inferred from the surrounding `set -e`, and
@@ -234,15 +234,20 @@ losing a host's only version manager is the failure this whole
 section exists to prevent, so it does not rest on a side effect of
 some other file's error handling.
 
-**`make versionmanagers` does only the install piece.** It is a
-per-slot target, and per-slot targets install; they do not remove.
-Driving the cutover by hand therefore takes the sequence:
+**`make profile version-managers` does only the install piece.**
+Per-profile application installs; it does not remove. Driving the
+cutover by hand therefore takes the sequence:
 
 ```bash
-make versionmanagers                       # install mise
-make 04_RemoveAndPurge_versionmanagers     # uninstall asdf + direnv
-make shell                                 # rewrite the ~/.zshrc lines
+make profile version-managers   # install mise + its post_install
+make remove-and-purge           # uninstall asdf + direnv
+make shell_setup                # rewrite the ~/.zshrc lines
 ```
+
+`make remove-and-purge` walks every tier, so on a host whose only
+populated `purge` array is the `version-managers` one this removes
+exactly asdf and direnv. Rehearse with `make remove-and-purge-dry-run`
+first if other tiers have entries.
 
 Removing the binaries touches none of the data they left behind:
 `~/.asdf/`, `~/.tool-versions`, `~/.config/direnv/lib/use_asdf.sh`,

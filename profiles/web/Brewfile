@@ -1,0 +1,11 @@
+# Brewfile for the 'web' profile
+# (chrome is in the core tier; this profile adds extra browsers and
+# browser add-ons)
+
+# Casks
+cask 'firefox'
+
+# Mac App Store (mas)
+# Content blocker for Safari. Moved here from the core tier's old security
+# slot: it is a browser add-on, so it belongs with the browsers.
+mas '1Blocker (6.2)', id: 1365531024

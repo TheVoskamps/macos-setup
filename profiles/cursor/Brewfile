@@ -1,0 +1,9 @@
+# Brewfile for the 'cursor' profile — the Cursor editor.
+#
+# Split out of the core tier's old AI slot, which carried `cask 'cursor'`
+# commented out while unconditionally running the Cursor extension install
+# for every host. Both now live in this one profile: opt in and you get the
+# editor plus its extensions; leave it out and neither runs.
+
+# Casks
+cask 'cursor'

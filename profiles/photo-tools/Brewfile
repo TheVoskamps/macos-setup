@@ -1,0 +1,4 @@
+# Brewfile for the 'photo-tools' profile
+
+# Casks
+cask 'photosweeper-x'

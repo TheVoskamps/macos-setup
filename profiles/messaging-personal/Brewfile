@@ -1,0 +1,8 @@
+# Brewfile for the 'messaging-personal' profile
+
+# Casks
+cask 'slack'
+cask 'telegram'
+cask 'signal'
+cask 'whatsapp'
+cask 'discord'

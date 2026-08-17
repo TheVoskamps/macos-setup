@@ -6,11 +6,10 @@
 #
 #   default  <  profile[0]  <  profile[1]  <  ...  <  profile[n]  <  host
 #
-# A host opts into N ordered profiles by listing them, one per line, in
-# the EXTERNAL host tier's `profiles` file (lowest priority first; the
-# last-listed profile sits just under the host tier). Blank lines and
-# `#`-comment lines are ignored. A host with no `profiles` file (or an
-# empty one) collapses to the two-tier `default < host` model.
+# A host opts into N ordered profiles by listing them in the `profiles`
+# array of the EXTERNAL host tier's `config.toml` (lowest priority first;
+# the last-listed profile sits just under the host tier). A host with no
+# `profiles` array collapses to the two-tier `default < host` model.
 #
 # The host tier lives OUTSIDE the repo, at the path returned by
 # `host_tier_dir` (default `${XDG_CONFIG_HOME:-$HOME/.config}/macos-setup`,
@@ -27,11 +26,11 @@
 # --- Central file-kind table -------------------------------------------
 #
 # Relative paths that AGGREGATE (concatenate / union across all tiers).
-# Everything not listed here is single-winner. The Install / Uninstall /
-# RemoveAndPurge trees also aggregate, but they are driven by the
-# Makefile and install_filter.sh tier walk rather than by these
+# Everything not listed here is single-winner. Each tier's `Brewfile` and
+# its `[profile]` section of config.toml also aggregate, but they are
+# driven by the Makefile / install_filter.sh tier walk rather than by these
 # resolver functions, so they are documented here but not enumerated as
-# resolver paths.
+# resolver paths. See "Tier enumeration" below.
 AGGREGATE_FILES=(
     "aliases.zsh"
 )
@@ -44,9 +43,11 @@ AGGREGATE_FILES=(
 # `config/claude`, and `cron/mailto` are now consolidated into a single
 # `config.toml` per tier (issue #156). The `[mailer]`, `[claude]`, and
 # `[cron]` sections of `config.toml` are single-winner; the `profiles`
-# array is the one aggregate key (see resolve_config_toml_section and
-# get_profiles below). `config.toml` itself is single-winner per
-# section, so it is not in AGGREGATE_FILES.
+# array is the one aggregate key (see resolve_config_value and
+# get_profiles below); and the `[profile]` section is PER-TIER — never
+# resolved across tiers at all (see read_post_install / read_removals).
+# `config.toml` itself is single-winner per section, so it is not in
+# AGGREGATE_FILES.
 SINGLE_WINNER_FILES=(
     ".vscode/settings.json"
     ".hammerspoon/init.lua"
@@ -79,7 +80,7 @@ get_hostname() {
 # per-machine config into tracked files). It now lives on local disk,
 # OUTSIDE the repo, carrying config.toml (the consolidated profiles
 # array + [claude]/[mailer]/[cron] sections), aliases.zsh,
-# .hammerspoon/*, .vscode/settings.json, Install/*, and .cdk.json.
+# .hammerspoon/*, .vscode/settings.json, Brewfile, and .cdk.json.
 # Backup/sync of this directory is the user's responsibility.
 #
 # The base path is routed through ONE function so it is overridable
@@ -400,6 +401,140 @@ read_toml_array() {
         dequote_scalar "$el"
         printf '\n'
     done
+}
+
+# --- Tier enumeration ---------------------------------------------------
+#
+# A TIER ROOT is the directory that holds one tier's `Brewfile`,
+# `config.toml`, `aliases.zsh`, and friends. There are exactly three
+# shapes, and they are the same three the resolvers above walk:
+#
+#   $repo_root/default            the CORE tier (lowest priority)
+#   $repo_root/profiles/<name>    one per profile the host opted into,
+#                                 in the host's list order
+#   $(host_tier_dir)              the external host tier (highest)
+#
+# The numbered `Install/NN-Install.<slug>` convention these replaced is
+# gone: a tier contributes ONE unnumbered Brewfile, and the profile IS the
+# category (issue #33).
+
+# Emit every tier root for this host, one per line, in APPLY order
+# (lowest priority first: core -> profiles in list order -> host).
+# Args: repo_root
+tier_roots() {
+    local repo_root="$1"
+    echo "$repo_root/default"
+    local p
+    while IFS= read -r p; do
+        [[ -n "$p" ]] && echo "$repo_root/profiles/$p"
+    done < <(get_profiles "$repo_root")
+    host_tier_dir
+}
+
+# Human-readable label for a tier root, for banners and error messages.
+#
+# The tier root is normalized to an absolute path FIRST. Callers legitimately
+# pass relative roots — the Makefile's tier list is `default profiles/<name>
+# … $(HOST_DIR)`, mixing both — and comparing a relative `default` against
+# an absolute `$repo_root/default` matches nothing, which silently mislabels
+# every in-repo tier as the host tier.
+#
+# A tier that matches none of the three shapes falls back to its own path
+# rather than a guessed label, so a caller passing something unexpected sees
+# what it passed.
+# Args: repo_root, tier_root
+tier_label() {
+    local repo_root="$1" tier_root="$2"
+    local abs="$tier_root"
+    if [[ "$abs" != /* ]] && [[ -d "$abs" ]]; then
+        abs="$(cd "$abs" && pwd)"
+    fi
+
+    local host_abs
+    host_abs="$(host_tier_dir)"
+    if [[ "$host_abs" != /* ]] && [[ -d "$host_abs" ]]; then
+        host_abs="$(cd "$host_abs" && pwd)"
+    fi
+
+    case "$abs" in
+        "$repo_root/default")    echo "core" ;;
+        "$repo_root/profiles/"*) echo "profile ${abs#"$repo_root"/profiles/}" ;;
+        "$host_abs")             echo "host" ;;
+        *)                       echo "$tier_root" ;;
+    esac
+}
+
+# --- [profile] section reads --------------------------------------------
+#
+# `[profile]` is the one config.toml section that is NOT resolved across
+# tiers. [claude]/[mailer]/[cron] answer "what is the value for this host",
+# so the highest tier with a value wins (resolve_config_value). [profile]
+# answers "what does THIS tier contribute", so every tier's section applies
+# on its own, in tier order. Reading it is therefore a plain per-file read,
+# never a precedence walk.
+
+# Emit this tier's post-install commands, one per line, in declared order.
+# Each is a repo-root-relative script path plus optional arguments.
+# Args: tier_root
+read_post_install() {
+    read_toml_array "$(config_toml_path "$1")" "profile.post_install"
+}
+
+# Emit this tier's removal entries for one kind, one per line, in declared
+# order. Args: tier_root, kind (uninstall|purge).
+read_removals() {
+    local tier_root="$1" kind="$2"
+    case "$kind" in
+        uninstall|purge) ;;
+        *) echo "read_removals: unknown kind '$kind' (want uninstall|purge)" >&2; return 2 ;;
+    esac
+    read_toml_array "$(config_toml_path "$tier_root")" "profile.$kind"
+}
+
+# Parse one removal entry into "<kind>\t<identifier>\t<label>".
+#
+#   brew:<formula>    -> brew  <formula>  <formula>
+#   cask:<token>      -> cask  <token>    <token>
+#   mas:<id>          -> mas   <id>       <id>
+#   mas:<id>:<Name>   -> mas   <id>       <Name>
+#
+# `identifier` is what the package is addressed by (and what the install
+# filter matches a Brewfile line against); `label` is only ever used in log
+# lines. Returns 2 and prints a diagnostic on a malformed entry — a silently
+# ignored removal is exactly the failure this parse exists to prevent.
+# Args: entry
+parse_removal_entry() {
+    local entry="$1"
+    local kind="${entry%%:*}"
+    local rest="${entry#*:}"
+
+    if [[ "$entry" != *:* || -z "$rest" ]]; then
+        echo "malformed removal entry (want '<kind>:<identifier>'): $entry" >&2
+        return 2
+    fi
+
+    case "$kind" in
+        brew|cask)
+            if [[ "$rest" == *:* ]]; then
+                echo "malformed removal entry ('$kind' takes no label): $entry" >&2
+                return 2
+            fi
+            printf '%s\t%s\t%s\n' "$kind" "$rest" "$rest"
+            ;;
+        mas)
+            local id="${rest%%:*}" label
+            if [[ "$rest" == *:* ]]; then label="${rest#*:}"; else label="$id"; fi
+            if [[ ! "$id" =~ ^[0-9]+$ ]]; then
+                echo "malformed removal entry (mas id must be numeric): $entry" >&2
+                return 2
+            fi
+            printf '%s\t%s\t%s\n' "mas" "$id" "$label"
+            ;;
+        *)
+            echo "malformed removal entry (unknown kind '$kind', want brew|cask|mas): $entry" >&2
+            return 2
+            ;;
+    esac
 }
 
 # Read newline-separated names on stdin and emit them deduplicated,

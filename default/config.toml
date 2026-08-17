@@ -80,3 +80,45 @@ keychain_service = "msmtp"
 # Email address that scheduled LaunchAgent jobs send their output to.
 # When unset, jobs write to a per-job log file instead.
 # mailto = "you@example.com"
+
+# [profile] — what this TIER contributes to an install run, beyond its
+# Brewfile. Unlike [claude]/[mailer]/[cron], this section is NOT resolved
+# across tiers: every tier's [profile] applies on its own, in tier order
+# (core -> each opted-in profile, in list order -> host). See
+# docs/INSTALL.md.
+#
+#   post_install  commands run after this tier's Brewfile is applied, in
+#                 order. Each entry is a path relative to the repo root
+#                 plus optional arguments. A missing or non-executable
+#                 script is reported and skipped, not fatal.
+#   uninstall     packages this tier removes (binary only; user data on
+#                 disk survives).
+#   purge         packages this tier removes, additionally passing --zap
+#                 to cask uninstalls so the cask's declared user data goes
+#                 too. Identical to `uninstall` for formulae and MAS items.
+#
+# Entries in `uninstall` / `purge` are "<kind>:<identifier>" strings:
+#   "brew:<formula>"      e.g. "brew:asdf"
+#   "cask:<token>"        e.g. "cask:qblocker"
+#   "mas:<id>"            e.g. "mas:1365531024"
+#   "mas:<id>:<Name>"     same, with a label for the log line
+#
+# A package listed here is ALSO filtered out of this tier's Brewfile and
+# every lower tier's Brewfile before `brew bundle` sees it — that is the
+# "I opted into `web` but I don't want its Chrome" case. See
+# scripts/install_filter.sh.
+[profile]
+# The core tier's own post-install actions:
+#   core_setup.sh   computer/host names + the HOMEBREW_NO_* ~/.zshrc exports
+#   shell_setup.sh  zsh, Oh My Zsh, ~/.zsh-shared, the aggregated
+#                   ~/.aliases.zsh, and the mise ~/.zshrc line pair
+#   msmtp_setup.sh  generates ~/.msmtprc from the resolved [mailer] values
+post_install = [
+  "scripts/core_setup.sh",
+  "scripts/shell_setup.sh",
+  "scripts/msmtp_setup.sh",
+]
+uninstall = []
+# qblocker is superseded by 1Blocker (the `web` profile). Purge rather than
+# uninstall so its preferences go with it.
+purge = ["cask:qblocker"]

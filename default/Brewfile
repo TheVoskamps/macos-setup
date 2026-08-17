@@ -1,0 +1,72 @@
+# default/Brewfile — the CORE tier.
+#
+# This is the lowest tier: it applies to every machine, before any profile.
+# It is deliberately lean. A package belongs here only if macos-setup itself
+# depends on it, or if it is genuinely universal (a shell, a browser, the
+# handful of CLI utilities every machine wants). Anything that is a product
+# choice or a role belongs in a profile — see `make profiles`.
+#
+# The tier's own post-install actions (computer names, shell setup, the
+# ~/.msmtprc generator) are declared in `default/config.toml` under
+# `[profile] post_install`, not here.
+
+# Taps
+# Core taps only; Homebrew manages homebrew/core and homebrew/cask itself,
+# and homebrew/bundle was deprecated. No taps by design.
+
+# Homebrew formulae
+
+# --- macos-setup's own runtime dependencies -----------------------------
+# dasel queries every config.toml in the repo (scripts/config_common.sh).
+# It must be EXACTLY major version 3; bootstrap.sh installs and verifies it
+# before `make` can run at all, and it is re-asserted here so `brew bundle`
+# keeps it present and upgraded on every run.
+brew 'dasel'
+# mas drives Mac App Store installs and removals (scripts/remove_runner.sh,
+# and `mas '...'` directives in any tier's Brewfile).
+brew 'mas'
+# git is what bootstrap.sh clones this repo with, and what self_update.sh
+# pulls with.
+brew 'git'
+# msmtp is macos-setup's own outbound mail transport, not a user-facing
+# messaging app: scripts/send_mail.sh, resolve_mailto.sh, resolve_from.sh and
+# every `make schedule-*` / `make email-test` target fail without it. See the
+# `[mailer]` section of config.toml.
+brew 'msmtp'
+
+# --- Shell environment --------------------------------------------------
+# oh-my-zsh is installed by the post-install step; these are the
+# tools/themes/plugins it builds on.
+brew 'zsh'
+brew 'zsh-autosuggestions'
+brew 'zsh-syntax-highlighting'
+brew 'zsh-completions'
+brew 'powerlevel10k'
+brew 'tmux'
+brew 'bat'
+brew 'fzf'
+brew 'fd'
+brew 'tree'
+brew 'ripgrep'
+brew 'xz'
+brew 'zoxide'
+brew 'asciinema'
+
+# --- Universal CLI utilities --------------------------------------------
+brew 'git-filter-repo'
+brew 'wget'
+brew 'curl'
+brew 'jq'
+brew 'yq'
+brew 'htop'
+brew 'watch'
+brew 'openssl@3'
+brew 'gnupg'
+
+# Casks
+cask 'iterm2'
+# Chrome is part of the basic install on every machine. Other browsers live
+# in the `web` profile.
+cask 'google-chrome'
+
+# Mac App Store (mas)

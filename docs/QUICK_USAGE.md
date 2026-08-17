@@ -1,12 +1,13 @@
 # Quick Usage
 
-## Install by Category
+## Install
 
 ```bash
-make core
-make security
-make dev
-make desktop
+make install                    # every tier this host opts into, in order
+make core                       # the core tier only
+make profiles                   # what profiles exist; * marks this host's
+make profile web                # one profile
+make profile dev-core aws       # several, in the order given
 ```
 
 ## Update Everything

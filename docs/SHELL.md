@@ -33,7 +33,7 @@ stay consistent across machines. The layers are:
     `$HOME/.zsh-shared/launchagent_runner` as `ProgramArguments[0]`
     so the runner is reachable through the same symlink chain
     `m()` already uses, with no repo path baked into the plist.
-- During `make shell`, `scripts/shell_setup.sh` will:
+- During `make shell_setup`, `scripts/shell_setup.sh` will:
   - symlink `shared/zsh/` to `~/.zsh-shared`
   - ensure `~/.zshrc` contains a single line that sources every snippet:
 
@@ -77,11 +77,11 @@ jobs and `m()` always agree on the repo root.
     variant that requires an existing repo with an `origin` remote and
     errors otherwise). A profile may carry an `aliases.zsh` and nothing
     else (a "no-software" profile such as `claude-code-aliases`, which
-    has no `Install/` files) — opting into it just contributes its
+    has no `Brewfile`) — opting into it just contributes its
     aliases to the aggregate.
   - **host tier** — only genuinely host-specific entries (e.g. an
     `icloud` shortcut to a machine's iCloud Drive path).
-- During setup (`make shell`), `scripts/shell_setup.sh` will:
+- During setup (`make shell_setup`), `scripts/shell_setup.sh` will:
   - generate `~/.aliases.zsh` as a real file (a concatenation of all
     contributing tiers, not a symlink, since multiple sources combine)
   - ensure your `~/.zshrc` contains: `source ~/.aliases.zsh`
@@ -129,7 +129,7 @@ failure issue #38 exists to fix.
 Like the strip below, the script has more than one caller, and for the
 same reason:
 
-- `make shell` / `make install`, via `scripts/shell_setup.sh`.
+- `make shell_setup` / `make install`, via `scripts/shell_setup.sh`.
 - `make update`, which calls it directly — it installs mise and
   uninstalls asdf and direnv but never runs `shell_setup.sh`, so
   without the direct call a host that goes through the cutover purely
@@ -178,7 +178,7 @@ re-run.
 It has more than one caller, because the cutover reaches a host down
 either of the paths below, and each must leave `~/.zshrc` clean:
 
-- `make shell` / `make install`, via `scripts/shell_setup.sh`.
+- `make shell_setup` / `make install`, via `scripts/shell_setup.sh`.
 - `make update`, which calls the script directly — it uninstalls asdf
   and direnv through the `RemoveAndPurge` loop but never runs
   `shell_setup.sh`, so without the direct call it would remove the
