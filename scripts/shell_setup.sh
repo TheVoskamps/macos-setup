@@ -265,7 +265,12 @@ ZSHRC_PATH="$HOME/.zshrc"
 #    needs the same strip and does not run this script: it uninstalls asdf
 #    and direnv via the RemoveAndPurge loop, which would otherwise leave a
 #    broken `direnv hook` line erroring on every shell startup.
-ZSHRC_PATH="$ZSHRC_PATH" bash "$SCRIPT_DIR/strip_asdf_zshrc_lines.sh"
+#
+#    Absolute /bin/bash, not a PATH-resolved bare `bash` (issue #37): the
+#    same `make install` run that reaches this script also uninstalls asdf
+#    and direnv, and a `brew uninstall` that cascades into Homebrew's bash
+#    formula would otherwise break this call on a PATH that prefers it.
+ZSHRC_PATH="$ZSHRC_PATH" /bin/bash "$SCRIPT_DIR/strip_asdf_zshrc_lines.sh"
 
 # 2) Ensure the mise init lines.
 #

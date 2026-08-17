@@ -476,6 +476,24 @@ SUDO=<stub>` reaches the runner for all three.
 fails if a bare `brew`, `mas`, or `sudo` call is
 reintroduced into the runner. See `docs/INSTALL.md`.
 
+Two further invariants stop a removal run from
+breaking its own later steps (issue #37).
+`remove_runner.sh` exports `HOMEBREW_NO_AUTOREMOVE=1`,
+so `brew uninstall`'s automatic `brew autoremove`
+never cascades into a shared dependency — that
+cascade is how uninstalling `asdf` once removed
+Homebrew's `bash` formula mid-run. And every
+Makefile recipe names bash as `$(BASH_BIN)`, the
+absolute `/bin/bash` that `SHELL` is also set from,
+rather than a PATH-resolved bare `bash` that would
+die with `/bin/bash: /opt/homebrew/bin/bash: No such
+file or directory` once that formula was gone. The
+two scripts that re-invoke bash themselves
+(`shell_setup.sh`, `claude_repo_setup.sh`) name
+`/bin/bash` for the same reason.
+`scripts/test/absolute_bash_test.sh` fails if either
+invariant is dropped.
+
 A second Homebrew 6.0 quirk is **interactive ask-mode**
 (issue #20): 6.0 made a `Do you want to proceed? [y/n]`
 prompt the default for `install`/`upgrade`/`reinstall`

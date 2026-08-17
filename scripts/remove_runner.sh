@@ -199,6 +199,18 @@ BREW="${BREW:-brew}"
 MAS="${MAS:-mas}"
 SUDO="${SUDO:-sudo}"
 
+# Stop `brew uninstall` from cascading into shared dependencies (issue #37).
+# By default `brew uninstall` follows up with an automatic `brew autoremove`,
+# which removes every formula nothing declares a dependency on any more. That
+# is how uninstalling asdf took Homebrew's `bash` formula with it mid-run, and
+# a run that deletes the interpreter its own later steps need cannot finish.
+# This runner is the ONE place both removal trees (Uninstall/ and
+# RemoveAndPurge/) actually call brew, so exporting it here covers `make
+# uninstall`, `make remove-and-purge`, `make update`'s two loops, and the
+# slot-04 purge `make install` applies inline. Removing genuinely unneeded
+# dependencies stays available as a deliberate, separate `brew autoremove`.
+export HOMEBREW_NO_AUTOREMOVE=1
+
 is_brew_installed() {
   "$BREW" list --formula "$1" >/dev/null 2>&1
 }

@@ -111,7 +111,7 @@ order_test() {
     "Uninstall loop is handed REMOVE_SKIP_BASENAMES"
   ok_contains "$recipe" '-s remove-and-purge REMOVE_SKIP_BASENAMES=' \
     "RemoveAndPurge loop is handed REMOVE_SKIP_BASENAMES"
-  ok_contains "$recipe" 'if [ -z "$$VM_SKIP" ]; then bash scripts/strip_asdf_zshrc_lines.sh' \
+  ok_contains "$recipe" 'if [ -z "$$VM_SKIP" ]; then $(BASH_BIN) scripts/strip_asdf_zshrc_lines.sh' \
     "the ~/.zshrc strip is guarded on the same skip decision"
 
   # The skip list names slot 04 only.
