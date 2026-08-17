@@ -2,16 +2,17 @@
 # strip_asdf_zshrc_lines.sh — remove the ~/.zshrc init lines that the
 # asdf+direnv -> mise migration orphans.
 #
-# Three forms, all written by earlier runs of scripts/shell_setup.sh and all
-# inert or broken once asdf and direnv are uninstalled:
+# The forms below were all written by earlier runs of
+# scripts/shell_setup.sh, and all are inert or broken once asdf and direnv
+# are uninstalled:
 #   a. `. /opt/homebrew/opt/asdf/libexec/asdf.sh` — already dead before the
 #      migration (asdf 0.16+ is a single Go binary with no libexec/asdf.sh
 #      to source), and it errors on every shell startup.
 #   b. the asdf shims PATH export.
 #   c. the direnv hook.
 #
-# Two callers, because the cutover reaches a host down either of two paths
-# and each must leave ~/.zshrc clean:
+# More than one caller, because the cutover reaches a host down either of
+# the paths below and each must leave ~/.zshrc clean:
 #   - scripts/shell_setup.sh (the `03-Install.shell` post-install action),
 #     i.e. `make install` and `make shell`.
 #   - the `update` Makefile target, which uninstalls asdf and direnv via the

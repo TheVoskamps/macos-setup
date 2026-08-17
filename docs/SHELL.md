@@ -127,7 +127,7 @@ reason (the same pattern it uses for `HOMEBREW_NO_ASK`).
 
 The `version-managers` profile moved from asdf + direnv to mise. The
 strip lives in `scripts/strip_asdf_zshrc_lines.sh` and removes the
-`~/.zshrc` lines that change orphaned:
+`~/.zshrc` lines that the change orphaned:
 
 - `. /opt/homebrew/opt/asdf/libexec/asdf.sh` — already dead before
   the migration (asdf 0.16+ is a single Go binary with no
@@ -142,7 +142,7 @@ fires, so a host that has already migrated is a clean no-op on
 re-run.
 
 It has more than one caller, because the cutover reaches a host down
-either of two paths and each must leave `~/.zshrc` clean:
+either of the paths below, and each must leave `~/.zshrc` clean:
 
 - `make shell` / `make install`, via `scripts/shell_setup.sh`.
 - `make update`, which calls the script directly — it uninstalls asdf

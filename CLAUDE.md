@@ -558,7 +558,11 @@ its default + every profile (in order) + host tier via
 the single-shell `APPLY_INSTALL_TIERS` helper. Both
 accumulate the slots whose `brew bundle` returned
 non-zero, print an end-of-run summary listing each
-failed slot, and exit non-zero if any failed. (The
+failed slot, and exit non-zero if any failed. In the
+`install` batch loop that same accumulator also takes a
+non-zero exit from the slot-04 `RemoveAndPurge` applied
+inline, so such a failure lands in the summary too, even
+though the summary's wording names `brew bundle`. (The
 per-slot helper is a single shell precisely so an
 earlier tier's failure cannot make `make` skip the
 later tiers — three separate recipe lines would abort
