@@ -1,4 +1,4 @@
-# 04-Install.versionmanagers: Version managers and environment tooling (asdf, direnv, etc.)
+# 04-Install.versionmanagers: Version managers and environment tooling (mise, etc.)
 # Lean default: version managers live in the `version-managers` profile.
 
 # Taps

@@ -9,7 +9,7 @@
 #   - 00-Install.core            : sets up computer names and /etc/hostname
 #   - 02-Install.ui              : sets up Hammerspoon configuration and modules
 #   - 03-Install.shell           : sets up shell and computer-specific aliases
-#   - 04-Install.versionmanagers : sets up asdf plugins and updates to latest
+#   - 04-Install.versionmanagers : sets up mise and installs pinned tool versions
 #   - 06-Install.messaging       : sets up msmtp configuration
 #   - 09-Install.development     : sets up VSCode extensions and configuration
 
@@ -83,16 +83,46 @@ VERBOSE_NOTE = if [ -n "$${VERBOSE:-}" ]; then echo
 # `*-dry-run` targets and do not consult DRY_RUN.
 DRY_RUN_FLAG := $(if $(DRY_RUN),--dry-run,)
 
-# --- asdf bootstrap helpers (auto-included in targets) ---
-ASDF_SH := $(shell $(BREW) --prefix asdf 2>/dev/null)/libexec/asdf.sh
-define WITH_ASDF
-	@set -euo pipefail; \
-	if ! command -v asdf >/dev/null 2>&1; then \
-	  if [ -f "$(ASDF_SH)" ]; then . "$(ASDF_SH)"; else \
-	    echo "asdf not found and $(ASDF_SH) missing. Run the Install targets first."; exit 1; fi; \
-	fi; \
-	: # asdf now available
-endef
+# Space-separated list of removal-slot BASENAMES the batch removal loops
+# (`_uninstall_loop` / `_remove_and_purge_loop`) must skip at EVERY tier.
+# Empty by default, so `make uninstall` / `make remove-and-purge` are
+# unchanged. `update` sets it — as a command-line variable on its sub-make,
+# which make propagates down through the internal loop targets — for exactly
+# one case: the version-manager slot, when the mise install that must precede
+# the asdf/direnv removal did not leave a usable mise behind. Skipping only
+# the named slot keeps every unrelated removal in that run applying normally.
+REMOVE_SKIP_BASENAMES ?=
+
+# --- Version manager ---
+# The `versions-*` targets are implementation-neutral by design: the tool
+# they drive lives behind scripts/versions_setup.sh, so swapping it again
+# leaves the public interface — target names, aliases, doc lines — alone.
+# The swap is bounded, not one-file: the tool is also named directly in
+# scripts/mise_common.sh, scripts/shell_setup.sh (the ~/.zshrc init lines),
+# scripts/launchagent_runner.sh (the shims PATH) and scripts/diagnose.sh.
+# Both the version-manager script and the migration script guard on
+# `command -v mise` themselves, so nothing here needs to bootstrap mise.
+VERSIONS_SETUP := scripts/versions_setup.sh
+
+# The mise-reachability probe that gates the DESTRUCTIVE half of the
+# asdf -> mise cutover. Removing the old version manager on a host where
+# the replacement is not in place leaves that host with NO version
+# manager at all, which is strictly worse than leaving both installed --
+# so every code path that removes asdf/direnv must run this probe
+# immediately before it removes anything, and hold the removal back when
+# the probe fails. Both such paths use it: `install` (which applies slot
+# 04's RemoveAndPurge inline) and `update` (which drives the batch
+# removal loops via REMOVE_SKIP_BASENAMES).
+#
+# It is a macro, not two hand-written `command -v` calls, so the two
+# paths cannot drift and neither can lose the guard silently.
+#
+# `bash -lc` because a mise installed moments earlier in the same run
+# lands on a login shell's PATH, not necessarily on make's. `$${MISE:-mise}`
+# honors the same override scripts/mise_common.sh reads, which is also
+# what lets scripts/test/install_cutover_guard_test.sh point it at an
+# absent binary.
+MISE_REACHABLE = bash -lc 'command -v "$${MISE:-mise}" >/dev/null 2>&1'
 
 # Helpers
 CANON      = $(subst -,_,$(subst .,_,$(1)))
@@ -235,6 +265,10 @@ CORE_INSTALL  := 00-Install.core
 UI_INSTALL    := 02-Install.ui
 SHELL_INSTALL := 03-Install.shell
 VM_INSTALL    := 04-Install.versionmanagers
+# The removal-tree slots that carry the asdf/direnv side of the cutover.
+# `update` names them when it has to skip them (see REMOVE_SKIP_BASENAMES).
+VM_UNINSTALL  := 04-Uninstall.versionmanagers
+VM_PURGE      := 04-RemoveAndPurge.versionmanagers
 DEV_INSTALL   := 09-Install.development
 MSG_INSTALL   := 06-Install.messaging
 AWS_INSTALL   := 11-Install.aws
@@ -391,12 +425,39 @@ require-dasel:
 	@bash scripts/require_dasel_on_path.sh
 
 # --- Batch targets ---
+#
+# `install` does NOT run the removal loops in general -- the smart filter is
+# what keeps a removal-listed package from being installed. The ONE
+# exception is slot 04's RemoveAndPurge, applied inline in the
+# `04-Install.versionmanagers` post-install action below. The asdf -> mise
+# cutover is hard by construction (asdf and mise both provide shims for the
+# same tools, so a host carrying both is the classic failure mode), and
+# `make install` is the entry point a host reaches after `git pull`. Without
+# the inline purge, `make install` would install mise and leave asdf and
+# direnv installed alongside it. Per-slot `make versionmanagers` deliberately
+# does NOT do this -- see docs/VERSION_MANAGEMENT.md for the three-command
+# sequence a per-slot driver runs by hand.
+#
+# That inline purge is gated on $(MISE_REACHABLE), evaluated immediately
+# before it and after the slot-04 install step, exactly as `update` gates its
+# removal loops: if mise is not reachable at that moment the purge is skipped
+# entirely, the run warns, and it exits non-zero. The guard is explicit on
+# purpose. In practice `set -e` (this recipe is one .ONESHELL shell) would
+# already abort the run before the purge lines, because versions_setup.sh
+# runs `require_mise || exit 1` at the top of the script. But that protection
+# is incidental -- it lives in another file, for every mode rather than for
+# this call site, and a refactor that moves the purge or reorders
+# require_mise reopens the hazard with no test failing. Removing a host's
+# only version manager is not a hazard to leave resting on an accident, so
+# the guard is stated here and pinned by
+# scripts/test/install_cutover_guard_test.sh.
 .PHONY: install uninstall uninstall-dry-run remove-and-purge remove-and-purge-dry-run update help
 install: require-dasel ## Apply all Install files in numeric order (filtered against in-scope Uninstall files); seeds the external host tier if absent
 	@set -euo pipefail
 	@$(MAKE) -s seed-host-tier
 	@if [ -z "$(ORDERED_INSTALL_FILES)" ]; then echo "No Install files found in $(INSTALL_DIR)/"; exit 0; fi
 	@failed=""; \
+	vm_purge_skipped=""; \
 	for f in $(ORDERED_INSTALL_FILES); do \
 		echo "==> Applying $$f (filtered)"; \
 		tmp="$$($(INSTALL_FILTER) "$$f")"; \
@@ -431,8 +492,29 @@ install: require-dasel ## Apply all Install files in numeric order (filtered aga
 			03-Install.shell) \
 				if [ -x "scripts/shell_setup.sh" ]; then scripts/shell_setup.sh; else echo "[shell] scripts/shell_setup.sh not found or not executable"; fi ;; \
 			04-Install.versionmanagers) \
-				if [ -x "scripts/asdf_setup.sh" ]; then scripts/asdf_setup.sh full; else echo "[versionmanagers] scripts/asdf_setup.sh not found or not executable"; fi; \
-				if [ -x "scripts/asdf_setup.sh" ]; then scripts/asdf_setup.sh update-latest; else echo "[versionmanagers] scripts/asdf_setup.sh not found or not executable"; fi ;; \
+				if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) full; else echo "[versionmanagers] $(VERSIONS_SETUP) not found or not executable"; fi; \
+				vmp="$(VM_PURGE)"; \
+				if $(MISE_REACHABLE); then \
+					if [ -f "$(PURGE_DIR)/$$vmp" ]; then \
+						bash $(REMOVE_RUNNER) "$(PURGE_DIR)/$$vmp" --mode=purge --banner="==> Applying global RemoveAndPurge: $(PURGE_DIR)/$$vmp" || failed="$$failed $(PURGE_DIR)/$$vmp"; \
+					fi; \
+					for prof in $(PROFILES); do \
+						vpf="profiles/$$prof/$(PURGE_DIR)/$$vmp"; \
+						if [ -f "$$vpf" ]; then \
+							bash $(REMOVE_RUNNER) "$$vpf" --mode=purge --banner="==> Applying profile RemoveAndPurge: $$vpf" || failed="$$failed $$vpf"; \
+						fi; \
+					done; \
+					if [ -f "$(COMPUTER_PURGE_DIR)/$$vmp" ]; then \
+						bash $(REMOVE_RUNNER) "$(COMPUTER_PURGE_DIR)/$$vmp" --mode=purge --banner="==> Applying computer-specific RemoveAndPurge: $(COMPUTER_PURGE_DIR)/$$vmp" || failed="$$failed $(COMPUTER_PURGE_DIR)/$$vmp"; \
+					fi; \
+				else \
+					vm_purge_skipped="$$vmp"; \
+					echo "WARNING: mise is not reachable after the slot-04 install step." >&2; \
+					echo "         Skipping the asdf/direnv removal ($$vmp), so this host is not" >&2; \
+					echo "         left with no version manager at all." >&2; \
+					echo "         Every other Install slot still applies. Fix the mise install" >&2; \
+					echo "         and re-run 'make install'." >&2; \
+				fi ;; \
 			06-Install.messaging) \
 				if [ -x "scripts/msmtp_setup.sh" ]; then scripts/msmtp_setup.sh; else echo "[messaging] scripts/msmtp_setup.sh not found or not executable"; fi ;; \
 			09-Install.development) \
@@ -447,13 +529,20 @@ install: require-dasel ## Apply all Install files in numeric order (filtered aga
 				if [ -x "scripts/claude_repo_setup.sh" ]; then scripts/claude_repo_setup.sh install; else echo "[ai] scripts/claude_repo_setup.sh not found or not executable"; fi ;; \
 			esac; \
 		done; \
+	rc=0; \
 	if [ -n "$$failed" ]; then \
 		echo "==> The following Install slots failed (brew bundle returned non-zero):"; \
 		for s in $$failed; do echo "  - $$s"; done; \
 		echo "All other Install files were applied. Re-run 'make install' after resolving the above."; \
-		exit 1; \
+		rc=1; \
 	fi; \
-	echo "All Install files applied."
+	if [ -n "$$vm_purge_skipped" ]; then \
+		echo "==> Skipped the asdf/direnv removal ($$vm_purge_skipped): mise was not reachable."; \
+		echo "Fix the mise install and re-run 'make install' to complete the cutover."; \
+		rc=1; \
+	fi; \
+	if [ $$rc -eq 0 ]; then echo "All Install files applied."; fi; \
+	exit $$rc
 
 # uninstall: walk every Uninstall file in numeric order across all tiers.
 # Skips entries already absent. Uses --dry-run? See `make uninstall-dry-run`.
@@ -473,6 +562,7 @@ _uninstall_loop:
 	for u in $(ORDERED_UNINSTALL_FILES); do \
 		any=1; \
 		ubase="$$(basename "$$u")"; \
+		case " $(REMOVE_SKIP_BASENAMES) " in *" $$ubase "*) continue;; esac; \
 		if [ -f "$$u" ]; then \
 			bash $(REMOVE_RUNNER) "$$u" --mode=uninstall --banner="==> Applying global Uninstall: $$u" $(UNINSTALL_DRY_RUN); \
 		fi; \
@@ -508,6 +598,7 @@ _remove_and_purge_loop:
 	for u in $(ORDERED_PURGE_FILES); do \
 		any=1; \
 		ubase="$$(basename "$$u")"; \
+		case " $(REMOVE_SKIP_BASENAMES) " in *" $$ubase "*) continue;; esac; \
 		if [ -f "$$u" ]; then \
 			bash $(REMOVE_RUNNER) "$$u" --mode=purge --banner="==> Applying global RemoveAndPurge: $$u" $(PURGE_DRY_RUN); \
 		fi; \
@@ -527,7 +618,25 @@ _remove_and_purge_loop:
 # Note: the sed pattern extracting cask names from "already an App" errors depends on
 # Homebrew's "Error: <cask>: ..." format. If it changes, unmatched errors safely fall
 # through to the generic error check which sets FAIL=1.
-update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/asdf, then apply Uninstall and RemoveAndPurge
+#
+# `update` also completes the asdf -> mise cutover, all three pieces of it:
+# it applies the slot-04 Install tiers (which is what puts `mise` on a host
+# that has never run `make install` -- `brew upgrade` upgrades an installed
+# formula but never installs an absent one), then the RemoveAndPurge loop
+# uninstalls asdf and direnv, then strip_asdf_zshrc_lines.sh removes the
+# ~/.zshrc init lines that would otherwise error on every shell startup.
+# `update` never runs shell_setup.sh, so without that last call the binaries
+# would go while their broken init lines stayed.
+#
+# Order is load-bearing: INSTALL BEFORE REMOVE. The install step also runs
+# ahead of `versions-update`, which needs a mise to drive. If mise is still
+# not reachable after the install step -- brew bundle failed, the profile is
+# absent, the binary is off PATH -- the removal of asdf and direnv is skipped
+# via REMOVE_SKIP_BASENAMES (slot 04 only; every other slot still applies)
+# and so is the ~/.zshrc strip, because removing the old version manager
+# without a working replacement is strictly worse than leaving both in place.
+# That path warns and sets FAIL, so the run exits non-zero.
+update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed tool versions, then apply Uninstall and RemoveAndPurge
 	@FAIL=0; \
 	echo "==> Updating Homebrew..."; \
 	$(BREW) update || FAIL=1; \
@@ -550,16 +659,29 @@ update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/asdf, then 
 	fi; \
 	echo "==> Upgrading Mac App Store apps..."; \
 	if command -v mas >/dev/null 2>&1; then mas upgrade || FAIL=1; fi; \
-	echo "==> Updating asdf-managed tools..."; \
-	$(MAKE) -s asdf-update || FAIL=1; \
-	echo "==> Pruning old asdf-managed versions..."; \
-	$(MAKE) -s asdf-cleanup || FAIL=1; \
+	echo "==> Installing version managers ($(INSTALL_DIR)/$(VM_INSTALL))..."; \
+	$(MAKE) -s $(call CANON,$(VM_INSTALL)) || FAIL=1; \
+	if $(MISE_REACHABLE); then \
+		VM_SKIP=""; \
+	else \
+		VM_SKIP="$(VM_UNINSTALL) $(VM_PURGE)"; \
+		echo "WARNING: mise is not reachable after the install step." >&2; \
+		echo "         Skipping the asdf/direnv removal ($(VM_PURGE)) and the ~/.zshrc strip," >&2; \
+		echo "         so this host is not left with no version manager at all." >&2; \
+		echo "         Every other removal slot still applies. Fix the mise install and re-run 'make update'." >&2; \
+		FAIL=1; \
+	fi; \
+	echo "==> Updating mise-managed tools..."; \
+	$(MAKE) -s versions-update || FAIL=1; \
+	echo "==> Pruning unused mise-managed versions..."; \
+	$(MAKE) -s versions-cleanup || FAIL=1; \
 	echo "==> Updating ~/.claude/ from the global Claude config repo..."; \
 	if [ -x "scripts/claude_repo_setup.sh" ]; then bash scripts/claude_repo_setup.sh update || FAIL=1; else echo "scripts/claude_repo_setup.sh not found or not executable"; fi; \
 	echo "==> Applying Uninstall/ files..."; \
-	$(MAKE) -s uninstall || FAIL=1; \
+	$(MAKE) -s uninstall REMOVE_SKIP_BASENAMES="$$VM_SKIP" || FAIL=1; \
 	echo "==> Applying RemoveAndPurge/ files..."; \
-	$(MAKE) -s remove-and-purge || FAIL=1; \
+	$(MAKE) -s remove-and-purge REMOVE_SKIP_BASENAMES="$$VM_SKIP" || FAIL=1; \
+	if [ -z "$$VM_SKIP" ]; then bash scripts/strip_asdf_zshrc_lines.sh || FAIL=1; fi; \
 	echo "==> All packages updated."; \
 	exit $$FAIL
 
@@ -588,110 +710,43 @@ help: ## Show help for available targets (documented + auto-detected Install/Uni
 	@echo "  Numeric aliases (e.g., '00', '01', '02'...): Run individual Install files by sequence number"
 	@echo "  Suffix aliases (e.g., 'core', 'ui', 'shell'...): Run individual Install files by category name"
 
-asdf-plugins-init: ## Add asdf plugins idempotently
-	@bash -lc 'if [ -x "scripts/asdf_setup.sh" ]; then scripts/asdf_setup.sh plugins-init; else echo "scripts/asdf_setup.sh not found"; fi'
-asdf-import-nodejs-keys: ## Import Node.js release keys (if required by plugin)
-	# Some asdf nodejs plugins require importing Node.js release team keys (safe to run even if not needed)
-	$(WITH_ASDF)
-		@bash -lc 'test -f "$HOME/.asdf/plugins/nodejs/bin/import-release-team-keyring" && "$HOME/.asdf/plugins/nodejs/bin/import-release-team-keyring" || true'
-asdf-pin-latest: ## Pin exact latest versions into .tool-versions
-	@bash -lc 'if [ -x "scripts/asdf_setup.sh" ]; then scripts/asdf_setup.sh pin-latest; else echo "scripts/asdf_setup.sh not found"; fi'
-asdf-install: ## Install versions from .tool-versions
-	@bash -lc 'if [ -x "scripts/asdf_setup.sh" ]; then scripts/asdf_setup.sh install; else echo "scripts/asdf_setup.sh not found"; fi'
-asdf-node: ## Ensure Node.js plugin/pin and install
-	# Install Node.js per .tool-versions (or latest if missing)
-	$(WITH_ASDF)
-		@asdf where nodejs >/dev/null 2>&1 || asdf plugin add nodejs || true
-		@if ! grep -q "^nodejs " .tool-versions 2>/dev/null; then \
-		  v=$$(asdf latest nodejs); echo "nodejs $$v" >> .tool-versions; \
-		fi
-		@$(MAKE) asdf-import-nodejs-keys
-		@asdf install nodejs
-asdf-python: ## Ensure Python plugin/pin and install
-	# Install Python per .tool-versions (or latest if missing)
-	$(WITH_ASDF)
-		@asdf where python >/dev/null 2>&1 || asdf plugin add python || true
-		@if ! grep -q "^python " .tool-versions 2>/dev/null; then \
-		  v=$$(asdf latest python); echo "python $$v" >> .tool-versions; \
-		fi
-		@asdf install python
-asdf-pnpm: ## Ensure pnpm plugin/pin and install
-	# Install pnpm per .tool-versions (or latest if missing)
-	$(WITH_ASDF)
-		@asdf where pnpm >/dev/null 2>&1 || asdf plugin add pnpm || true
-		@if ! grep -q "^pnpm " .tool-versions 2>/dev/null; then \
-		  v=$$(asdf latest pnpm); echo "pnpm $$v" >> .tool-versions; \
-		fi
-		@asdf install pnpm
+# --- Version management targets ---
+# Named `versions-*`, not after the tool that implements them: the previous
+# `asdf-*` names baked the implementation into the public interface, so
+# swapping the implementation forced every caller, alias, and doc line to
+# change. `tools-*` is ruled out because `make tools` already exists as the
+# alias for the 05-Install.tools slot.
+.PHONY: versions-install versions-update versions-outdated versions-cleanup versions-cleanup-dry-run asdf-to-mise
 
-asdf-awscli: ## Ensure awscli plugin/pin and install
-	# Install awscli per .tool-versions (or latest if missing)
-	$(WITH_ASDF)
-		@asdf where awscli >/dev/null 2>&1 || asdf plugin add awscli https://github.com/MetricMike/asdf-awscli.git || true
-		@if ! grep -q "^awscli " .tool-versions 2>/dev/null; then \
-		  v=$$(asdf latest awscli); echo "awscli $$v" >> .tool-versions; \
-		fi
-		@asdf install awscli
+versions-install: ## Install the tool versions the resolved mise config declares
+	@bash -lc 'if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) install; else echo "$(VERSIONS_SETUP) not found"; fi'
 
-asdf-terraform: ## Ensure terraform plugin/pin and install
-	# Install terraform per .tool-versions (or latest if missing)
-	$(WITH_ASDF)
-		@asdf where terraform >/dev/null 2>&1 || asdf plugin add terraform https://github.com/asdf-community/asdf-hashicorp.git || true
-		@if ! grep -q "^terraform " .tool-versions 2>/dev/null; then \
-		  v=$$(asdf latest terraform); echo "terraform $$v" >> .tool-versions; \
-		fi
-		@asdf install terraform
+versions-update: ## Install latest tool versions and bump the config (mise up --bump)
+	@bash -lc 'if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) update; else echo "$(VERSIONS_SETUP) not found"; fi'
 
-asdf-java: ## Ensure Java (Temurin) plugin/pin and install
-	# Install Java (Temurin) per .tool-versions (or latest if missing)
-	$(WITH_ASDF)
-		@asdf where java >/dev/null 2>&1 || asdf plugin add java https://github.com/halcyon/asdf-java.git || true
-		@if ! grep -q "^java " .tool-versions 2>/dev/null; then \
-		  v=$$(asdf list all java | grep "^temurin-" | grep -v "jre" | tail -1); echo "java $$v" >> .tool-versions; \
-		fi
-		@asdf install java
+versions-outdated: ## Check for outdated mise-managed tools
+	@bash -lc 'if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) outdated; else echo "$(VERSIONS_SETUP) not found"; fi'
 
-asdf-lua: ## Ensure Lua plugin/pin and install
-	# Install Lua per .tool-versions (or latest if missing)
-	$(WITH_ASDF)
-		@asdf where lua >/dev/null 2>&1 || asdf plugin add lua || true
-		@if ! grep -q "^lua " .tool-versions 2>/dev/null; then \
-		  v=$$(asdf latest lua); echo "lua $$v" >> .tool-versions; \
-		fi
-		@asdf install lua
+versions-cleanup: ## Prune unused installed tool versions (mise prune)
+	@bash -lc 'if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) cleanup; else echo "$(VERSIONS_SETUP) not found"; fi'
 
-asdf-outdated: ## Check for outdated asdf-managed tools
-	@bash -lc 'if [ -x "scripts/asdf_setup.sh" ]; then scripts/asdf_setup.sh outdated; else echo "scripts/asdf_setup.sh not found"; fi'
+versions-cleanup-dry-run: ## Show what versions-cleanup would remove
+	@bash -lc 'if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) cleanup-dry-run; else echo "$(VERSIONS_SETUP) not found"; fi'
 
-asdf-update: ## Update asdf plugins and install latest versions
-	@bash -lc 'if [ -x "scripts/asdf_setup.sh" ]; then scripts/asdf_setup.sh update-all; else echo "scripts/asdf_setup.sh not found"; fi'
+# One-shot migration verb. A deliberate exception to the
+# implementation-neutral naming above: it names both endpoints on purpose,
+# and it is deleted once every repo and host is over. Operates on the
+# ORIGINAL call directory (START_DIR), not on macos-setup, so it can be run
+# from any repo -- the same mechanism the outgoing direnv-enable /
+# direnv-disable targets used. It is purely additive: it writes mise config
+# and warns about leftovers, and deletes, moves, untracks, and commits
+# nothing.
+asdf-to-mise: ## Convert the calling repo from asdf+direnv to mise (additive; deletes nothing)
+	@START_DIR="$(START_DIR)" bash scripts/asdf_to_mise.sh
 
-asdf-cleanup: ## Prune old asdf versions (keep .tool-versions refs, active, newest 3)
-	@bash -lc 'if [ -x "scripts/asdf_setup.sh" ]; then scripts/asdf_setup.sh cleanup; else echo "scripts/asdf_setup.sh not found"; fi'
-
-asdf-cleanup-dry-run: ## Show which old asdf versions asdf-cleanup would remove
-	@bash -lc 'if [ -x "scripts/asdf_setup.sh" ]; then scripts/asdf_setup.sh cleanup-dry-run; else echo "scripts/asdf_setup.sh not found"; fi'
-
-direnv-setup: ## Setup direnv integration (non-destructive)
-	@bash -lc 'if [ -x "scripts/asdf_setup.sh" ]; then scripts/asdf_setup.sh direnv-setup; else echo "scripts/asdf_setup.sh not found"; fi'
-
-04_Install_versionmanagers: ## Apply $(INSTALL_DIR)/$(VM_INSTALL), setup asdf plugins, and update to latest
+04_Install_versionmanagers: ## Apply $(INSTALL_DIR)/$(VM_INSTALL) and set up mise
 	$(call APPLY_INSTALL_TIERS,$(VM_INSTALL))
-	@bash -lc 'if [ -x "scripts/asdf_setup.sh" ]; then scripts/asdf_setup.sh full; else echo "[versionmanagers] scripts/asdf_setup.sh not found or not executable"; fi'
-	@bash -lc 'if [ -x "scripts/asdf_setup.sh" ]; then scripts/asdf_setup.sh update-latest; else echo "[versionmanagers] scripts/asdf_setup.sh not found or not executable"; fi'
-direnv-enable: ## Enable asdf+direnv in the original call directory (supports external wrappers)
-	@startdir="$(START_DIR)"; printf 'use asdf\ndotenv_if_exists\n' > "$$startdir/.envrc"; \
-	cd "$$startdir" && $$($(BREW) --prefix)/bin/direnv allow; \
-	echo "[direnv-enable] Enabled asdf integration in $$startdir/.envrc"
-
-direnv-disable: ## Disable asdf+direnv in the original call directory
-	@startdir="$(START_DIR)"; \
-	if [ -f "$$startdir/.envrc" ]; then \
-		rm "$$startdir/.envrc"; \
-		echo "[direnv-disable] Removed .envrc from $$startdir"; \
-	else \
-		echo "[direnv-disable] No .envrc found in $$startdir"; \
-	fi
+	@bash -lc 'if [ -x "$(VERSIONS_SETUP)" ]; then $(VERSIONS_SETUP) full; else echo "[versionmanagers] $(VERSIONS_SETUP) not found or not executable"; fi'
 
 # Allows: `make 02`, `make ui`, `make shell`, `make versionmanagers`, etc.
 
@@ -759,7 +814,7 @@ sanitize: ## Resolve same-tier Install/Uninstall+RemoveAndPurge collisions by co
 	@bash ./scripts/collision_check.sh --fix
 
 .PHONY: outdated
-outdated: require-dasel ## Check for outdated formulae, casks, MAS apps, and asdf tools
+outdated: require-dasel ## Check for outdated formulae, casks, MAS apps, and managed tool versions
 	@echo "==> Checking for outdated packages across all Install files..."
 	@echo
 	@echo "==> Outdated Homebrew formulae:"
@@ -771,8 +826,8 @@ outdated: require-dasel ## Check for outdated formulae, casks, MAS apps, and asd
 	@echo "==> Outdated Mac App Store apps:"
 	@command -v mas >/dev/null 2>&1 && mas outdated || echo "  mas not installed"
 	@echo
-	@echo "==> Outdated asdf-managed tools:"
-	@$(MAKE) -s asdf-outdated 2>/dev/null || echo "  (unable to check)"
+	@echo "==> Outdated mise-managed tools:"
+	@$(MAKE) -s versions-outdated 2>/dev/null || echo "  (unable to check)"
 	@echo
 	@echo "==> Pending updates in ~/.claude/ (global Claude config repo):"
 	@if [ -x "scripts/claude_repo_setup.sh" ]; then bash scripts/claude_repo_setup.sh outdated || true; else echo "  scripts/claude_repo_setup.sh not found or not executable"; fi

@@ -28,8 +28,8 @@ configuration management.
   VS Code, Claude, Hammerspoon, AWS CDK using layered
   resolution (default < the host's profiles in list
   order < host)
-- **Version Management**: Full asdf + direnv integration
-  with pinned versions in `.tool-versions`
+- **Version Management**: Full mise integration with
+  pinned versions in `mise.toml`
 - **Bootstrap Scripts**: Complete setup from scratch on
   any macOS machine
 - **Layered Configuration**: a host opts into N ordered
@@ -107,7 +107,7 @@ everything automatically.
 # RemoveAndPurge/ entries)
 make install
 
-# Update everything: Homebrew/packages/asdf,
+# Update everything: Homebrew/packages/tool versions,
 # then apply Uninstall and RemoveAndPurge
 make update
 
@@ -178,7 +178,7 @@ It refuses (does nothing, exits non-zero) when:
 
 Out of scope: `make self-update` only updates the
 working tree. Use `make update` to upgrade Homebrew,
-asdf-managed tools, MAS apps, and apply
+mise-managed tool versions, MAS apps, and apply
 `Uninstall/` + `RemoveAndPurge/`.
 
 ### Category Overview
@@ -189,7 +189,7 @@ The setup is organized into numbered `Install/` files:
 - **01-security**: Security tools, VPNs, 1Password
 - **02-ui**: UI tools with Finder, Hammerspoon
 - **03-shell**: Shell tools with automated zsh setup
-- **04-versionmanagers**: asdf + direnv with full bootstrap
+- **04-versionmanagers**: mise with full bootstrap
 - **05-08**: Tools, messaging, browsers, Proton tools
 - **09-development**: Development tools + VS Code extensions
 - **10-14**: Backups, AWS, componentization, data, databases
@@ -229,7 +229,7 @@ its consolidated `config.toml` in the external host tier,
 - **Shell Environment**: Oh My Zsh themes and plugins;
   `aliases.zsh` aggregated across all tiers (default +
   profiles in list order + host) via `resolve_aggregate`
-- **Version Managers**: asdf plugins and pinned versions
+- **Version Managers**: mise with pinned tool versions
 
 ### Uninstalling and purging packages
 
@@ -326,10 +326,16 @@ reference.
 
 `make update` runs `make uninstall` and
 `make remove-and-purge` *after* the upgrade chain
-(Homebrew, casks, MAS, asdf, then `make asdf-cleanup`
-to prune old asdf versions), so even if `brew upgrade`
+(Homebrew, casks, MAS, the slot-04 version-manager
+install, `make versions-update`, then
+`make versions-cleanup` to prune unused tool versions),
+so even if `brew upgrade`
 resurrects something via dependency resolution the
 removal step takes it out before the run completes.
+Applying the slot-04 `Install` before the removal loops
+is what keeps the asdf -> mise cutover safe on a host
+that never ran `make install` — see
+[docs/VERSION_MANAGEMENT.md](docs/VERSION_MANAGEMENT.md).
 
 ### Detecting and fixing collisions
 
@@ -563,7 +569,6 @@ profiles/
 
 default/                            # Global base (lowest tier), in repo root
 ├── aliases.zsh
-├── asdf-plugins.toml
 ├── config.toml                 # Default scalar config: [claude]
 │                               # (branch/hostname), [mailer], [cron],
 │                               # and the profiles array. [mailer] ships
@@ -651,57 +656,90 @@ two-tier resolution (external host > default).
 
 ## Advanced Usage
 
-### Version Management with asdf
+### Version Management with mise
 
-The repository uses asdf for reproducible runtime
-environments:
+The repository uses [mise](https://mise.jdx.dev/) for
+reproducible runtime environments. mise subsumes both a
+version manager and a directory-scoped environment
+loader — the jobs asdf and direnv used to split between
+them.
+
+The Makefile targets are named `versions-*`, not after
+the tool that implements them, so swapping the
+implementation again leaves the public interface — target
+names, aliases, and doc lines — alone. The change is
+bounded to the scripts that name the tool directly:
+`scripts/versions_setup.sh` and `scripts/mise_common.sh`
+drive it, `scripts/diagnose.sh` reports on it,
+`scripts/asdf_to_mise.sh` migrates a repo onto it, and
+`scripts/shell_setup.sh` / `scripts/launchagent_runner.sh`
+put its shims on `PATH`.
 
 ```bash
-# Setup version managers (included in make install)
+# Install mise and its global config (included in make install).
+# This is the INSTALL piece of the asdf -> mise cutover only; it does
+# not uninstall asdf/direnv or clean ~/.zshrc. `make install` and
+# `make update` do the whole cutover. See docs/VERSION_MANAGEMENT.md.
 make versionmanagers
 
-# Manage asdf plugins
-make asdf-plugins-init    # Add nodejs, python, etc.
-make asdf-pin-latest      # Pin latest versions
-make asdf-install         # Install pinned versions
+# Install the versions the resolved config declares
+make versions-install
 
 # Check for updates
-make asdf-outdated        # Check for newer versions
+make versions-outdated
 
-# Update asdf-managed tools
-make asdf-update          # Update and install latest
+# Install latest versions AND bump the config
+# (mise up --bump) — one verb, unlike the old
+# pin-then-update split
+make versions-update
 
-# Prune old, unused versions (keeps versions referenced
-# by any .tool-versions on the machine, currently-active
-# versions, and the newest 3 per plugin)
-make asdf-cleanup-dry-run # Show what would be removed
-make asdf-cleanup         # Remove the old versions
-# (asdf-cleanup also runs automatically after asdf-update
-#  as part of `make update`)
+# Prune unused installed versions (mise prune)
+make versions-cleanup-dry-run # Show what would be removed
+make versions-cleanup         # Remove them
+# (versions-cleanup also runs automatically after
+#  versions-update as part of `make update`)
 
-# Note: Installing latest does NOT activate them
-# Use 'asdf set <plugin> <version> -u' to activate
+# Add a tool to the current project (writes mise.toml)
+mise use node@latest
+mise use java@temurin
 
-# Setup specific tools via asdf
-make asdf-awscli          # Setup awscli via asdf
-make asdf-lua             # Setup lua via asdf
-make asdf-terraform       # Setup terraform via asdf
-
-# Setup direnv integration
-make direnv-setup         # Configure direnv
-make direnv-enable        # Enable in current directory
+# See what is active here and which file set it
+mise ls --current
 ```
 
-#### Plugin Filtering
+#### Config files
 
-Per-plugin version resolution can be customized via
-`asdf-plugins.toml` (a single-winner file: the
-highest-priority tier with it wins). Each `[plugin]`
-section supports `filter`,
-`filter_exclude`, and `max_version` keys to control
-which versions are considered "latest". See
+`mise.toml` is the **one tracked config form**. mise
+reads several other forms too (`mise.local.toml`,
+`.config/mise/config.toml`, …), all merged, and its
+directory walk recurses upward past the git boundary —
+so a stray variant applies silently to every repo
+beneath it. The `.gitignore` block
+`make asdf-to-mise` writes ignores every other form to
+keep that from happening.
+
+The global config lives at
+`${XDG_CONFIG_HOME:-~/.config}/mise/config.toml` and
+carries `[settings] env_file = ".env"`, the true
+`dotenv_if_exists` analogue.
+
+#### Migrating a repo from asdf + direnv
+
+```bash
+make asdf-to-mise
+```
+
+A one-shot, idempotent, **purely additive** converter,
+operating on the directory you invoke it from, one repo
+per run. It generates `mise.toml` from `.tool-versions`,
+writes the `.gitignore` block, and warns about every
+asdf/direnv leftover it finds — deleting nothing, moving
+nothing, untracking nothing, and committing nothing.
+
+See
 [docs/VERSION_MANAGEMENT.md](docs/VERSION_MANAGEMENT.md)
-for details.
+for the full runbook, the multi-version-line pre-flight,
+the LuaRocks pin, and the manual cleanup checklist.
 
 ### Workspace Management (Multi-Monitor Setup)
 
@@ -954,15 +992,17 @@ open "hammerspoon://launchWorkspace?name=macos-setup"
   automatically configured via
   `spaces_shortcuts_setup.sh`
 
-**Current pinned versions** (see `.tool-versions`):
-
-- awscli 2.31.11
-- nodejs, python, pnpm, terraform (managed via asdf)
+**Tool versions** are pinned per project in `mise.toml`
+and per host in the global mise config
+(`${XDG_CONFIG_HOME:-~/.config}/mise/config.toml`). This
+repo declares no `mise.toml` of its own, and the global
+config lives outside the repo; run `mise ls --current` to
+see what is active and which file set it.
 
 ### Per-repo config for `/issue:address`
 
 `.claude/rules/repo-config.md` at the repo root tells the
-`/issue:address` orchestrator and its four subagents
+`/issue:address` orchestrator and its subagents
 (`issue-developer`, `issue-fixer`, `doc-updater`,
 `pr-reviewer`) which VCS, issue tracker, and branching
 strategy this repo uses. Every run re-reads this file at
@@ -1030,7 +1070,7 @@ make claude-plugins-update
 `claude-install` automatically. `make update` runs
 `claude-update` as part of its overall update sweep,
 and `make outdated` runs `claude-outdated` alongside
-the brew/asdf checks.
+the brew/tool-version checks.
 
 **Plugin sync.** The global Claude config repo ships its
 own `plugins.sh` at the repo root (`~/.claude/plugins.sh`
@@ -1071,7 +1111,7 @@ missing-script guards still warn-and-skip with success).
   single-winner; no per-key merge beyond that (a
   host-tier file with only `branch` does NOT inherit a
   default-tier `hostname`).
-- Two optional keys (queried with `dasel`):
+- Optional keys (queried with `dasel`):
   - `branch = "<name>"` -- branch to check out in
     `~/.claude/`. Missing / empty / unknown branch
     falls back to the global repo's default branch.
@@ -1234,7 +1274,7 @@ alternative setup methods including:
 - Security: 1Password, VPNs, security tools
 - Cloud: AWS CLI, AWS CDK
 - AI: Claude, Cursor
-- Version Management: asdf, direnv
+- Version Management: mise
 - And many more...
 
 ## Notes
@@ -1250,8 +1290,10 @@ alternative setup methods including:
   accidental commits of local configuration, with one
   tracked exception: `.claude/rules/repo-config.md`
   (the per-repo config consumed by `/issue:address`)
-- asdf updates install latest versions but do NOT activate
-  them (use `asdf global` or `asdf local` to activate)
+- `make versions-update` installs the latest versions AND
+  writes them into the config that declared them
+  (`mise up --bump`), so the version it installs is the
+  version that becomes active
 
 ## License
 

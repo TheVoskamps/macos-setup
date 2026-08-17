@@ -23,13 +23,12 @@ printf "%s\n" "$PATH"
 
 section "tool locations"
 (command -v brew   && brew --version | head -n1) || echo "brew not found"
-(command -v asdf   && asdf --version           ) || echo "asdf not found"
-(command -v direnv && direnv --version         ) || echo "direnv not found"
+(command -v mise   && mise --version           ) || echo "mise not found"
 (command -v zoxide && zoxide --version         ) || echo "zoxide not found"
 command -v zsh >/dev/null 2>&1 || echo "zsh not found"
 
-section ".tool-versions"
-if [[ -f .tool-versions ]]; then cat .tool-versions; else echo "(none)"; fi
+section "mise config"
+if command -v mise >/dev/null 2>&1; then mise cfg || echo "(mise cfg failed)"; else echo "(mise not available)"; fi
 
 section ".zshrc hooks present?"
 ZSHRC="${ZDOTDIR:-$HOME}/.zshrc"
@@ -48,9 +47,9 @@ section "z/zi functions loaded? (from zsh -l)"
 zout="$(zsh -lic 'typeset -f z  >/dev/null && echo "z function is loaded"  || echo "z not loaded"; typeset -f zi >/dev/null && echo "zi function is loaded" || echo "zi not loaded"' 2>/dev/null | _filter_noise)"
 if [[ -n "$zout" ]]; then echo "$zout"; fi
 
-section "direnv status (from zsh -l)"
-dout="$(zsh -lic 'command -v direnv >/dev/null 2>&1 && direnv status || true' 2>/dev/null | _filter_noise)"
-if [[ -n "$dout" ]]; then echo "$dout"; else echo "(direnv not available or not enabled)"; fi
+section "mise-resolved tools (from zsh -l)"
+dout="$(zsh -lic 'command -v mise >/dev/null 2>&1 && mise ls --current || true' 2>/dev/null | _filter_noise)"
+if [[ -n "$dout" ]]; then echo "$dout"; else echo "(mise not available or no tools resolved here)"; fi
 
 section "m() alias available? (from zsh -l)"
 zsh -lic 'typeset -f m >/dev/null && echo "m function is loaded" || echo "m not loaded"' 2>/dev/null | _filter_noise

@@ -57,9 +57,27 @@ docker-data/
 *.log
 *.tmp
 
-#asdf / direnv
+# asdf / direnv. Still here on purpose: these files survive the migration to
+# mise on every host until that host has actually been migrated, and this
+# repo's own checkout is no exception. `make asdf-to-mise` deletes nothing —
+# it warns. Dropping these lines before the files are gone only makes
+# `git status` dirty, which scripts/self_update.sh reads as a reason to
+# stash and pop on every run. Remove them as an OUTPUT of running the
+# migration against this repo, not by hand ahead of it.
 .envrc
 /.tool-versions
+
+# --- mise (managed by macos-setup `make asdf-to-mise`) ---
+# mise.toml is the ONE tracked config form; it is deliberately NOT
+# ignored. Everything below is either machine-local or a
+# non-canonical location we do not use.
+/mise.local.toml
+/mise/config.toml
+/.mise/config.toml
+/.config/mise.toml
+/.config/mise/config.toml
+/.config/mise/conf.d/
+# --- end mise ---
 
 # Claude config — whitelist shareable files, ignore everything else.
 # New Claude-generated dirs (cache, sessions, projects, todos, ...) stay

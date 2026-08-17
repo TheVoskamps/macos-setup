@@ -12,7 +12,8 @@ provisioning macOS with this repo.
   links, plus the parallel `Uninstall/` and
   `RemoveAndPurge/` frameworks.
 - **[Version Management](VERSION_MANAGEMENT.md):**
-  `asdf` + `direnv` flow and reproducible runtimes.
+  `mise` flow, reproducible runtimes, and the
+  `make asdf-to-mise` migration runbook.
 
 ## Helpful Notes
 
@@ -20,9 +21,11 @@ provisioning macOS with this repo.
   dynamic ones.
 - Each Install target is generated from its filename,
   e.g. `make 02_Install_ui`.
-- `04_Install_versionmanagers` also runs
-  `asdf-plugins-init`, `asdf-pin-latest`, `asdf-install`,
-  and `direnv-setup` automatically.
+- `04_Install_versionmanagers` also ensures the global
+  `mise` config and installs the declared tool versions
+  automatically. It does **not** uninstall `asdf`/`direnv`
+  or clean `~/.zshrc` — `make install` and `make update`
+  do; see [Version Management](VERSION_MANAGEMENT.md).
 
 ## Repository Layout
 
@@ -44,9 +47,9 @@ provisioning macOS with this repo.
 
 - If a `brew bundle` fails, re-run that specific target
   after fixing the issue, or run `make install` again.
-- If `asdf` can't resolve a version, run
-  `make asdf-plugins-init` then `make asdf-pin-latest`
-  and `make asdf-install`.
+- If a tool version isn't resolving, run `mise cfg` to see
+  which config files actually loaded in that directory,
+  then `make versions-install`.
 
 ## SSH / Credentials (Reference)
 

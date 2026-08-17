@@ -1,4 +1,4 @@
-# 04-Uninstall.versionmanagers: Packages to uninstall — Version managers and environment tooling (asdf, direnv, etc.)
+# 04-Uninstall.versionmanagers: Packages to uninstall — Version managers and environment tooling (mise, etc.)
 #
 # Entries listed here are removed by `make uninstall` /
 # `make 04_Uninstall_versionmanagers` and are filtered out of the matching

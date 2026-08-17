@@ -36,7 +36,7 @@ trees drive cleanup and a smart filter on `make install`:
    at `${XDG_CONFIG_HOME:-~/.config}/macos-setup/`
    (overridable via `MACOS_SETUP_HOST_DIR`). See
    `host_tier_dir` in `scripts/config_common.sh`.
-4. **Version pinning** via `.tool-versions` ensures
+4. **Version pinning** via `mise.toml` ensures
    reproducible environments
 5. **Post-install automation** for UI, shell, VS Code,
    Claude, AWS CDK, and Hammerspoon
@@ -203,30 +203,32 @@ output on a no-dasel run.
 make core security ui shell versionmanagers
 make development ai aws
 
-# Version management
-make versionmanagers      # Full asdf + direnv setup
-make asdf-plugins-init    # Add plugins
-make asdf-pin-latest      # Pin latest versions
-make asdf-install         # Install pinned versions
-make asdf-outdated        # Check for newer versions
-make asdf-update          # Update and install latest
+# Version management (mise). Targets are named
+# `versions-*`, not after the tool, so swapping the
+# implementation leaves target names, aliases, and doc
+# lines alone.
+make versionmanagers        # Install mise + the global
+                            # config (install ONLY -- see
+                            # "Tool Version Configuration"
+                            # for the full cutover)
+make versions-install       # Install declared versions
+make versions-outdated      # Check for newer versions
+make versions-update        # Install latest AND bump the
+                            # config (mise up --bump) --
+                            # one verb, so the version it
+                            # installs is the one active
 
-# Prune old, unused installed versions. Keep-set per
-# plugin = versions referenced in any .tool-versions
-# under $HOME, currently-active versions, and the
-# newest 3 (sort -V). Everything else is uninstalled.
-make asdf-cleanup-dry-run # Show what would be removed
-make asdf-cleanup         # Remove the old versions
-# Note: asdf-cleanup also runs automatically after
-# asdf-update as part of 'make update'.
+# Prune unused installed versions (mise prune).
+make versions-cleanup-dry-run # Show what would be removed
+make versions-cleanup         # Remove them
+# Note: versions-cleanup also runs automatically after
+# versions-update as part of 'make update'.
 
-# Note: asdf-update installs latest versions but
-# does NOT update .tool-versions or activate them.
-# Use 'asdf set <plugin> <version> -u' (home) or
-# '-p' (parent .tool-versions) to activate
-
-make direnv-setup         # Configure direnv
-make direnv-enable        # Enable in current dir
+# One-shot migration verb (deliberate exception to the
+# implementation-neutral naming): convert the CALLING
+# repo from asdf+direnv to mise. Purely additive --
+# deletes, moves, untracks, and commits nothing.
+make asdf-to-mise
 ```
 
 ### Workspace Management
@@ -284,7 +286,7 @@ the SSH host alias used in the git remote URL are selected from the
 single-winner `[claude]` section of `config.toml` (host >
 the host's profiles in reverse list order > default; the
 highest tier with a non-empty value for a key wins, no per-key
-merge). The `[claude]` section accepts two optional keys:
+merge). The `[claude]` section accepts these optional keys:
 
 - `branch = "<name>"` -- git branch to check out in `~/.claude/`.
   Missing or unknown branch falls back to the global repo's
@@ -316,7 +318,7 @@ make claude-plugins-update   # Sync plugins only: ~/.claude/plugins.sh
 `make ai` and `make install` call `claude-install` automatically
 as part of the post-install action for `17-Install.ai`.
 `make update` runs `claude-update` and `make outdated` runs
-`claude-outdated` alongside the existing brew/asdf checks.
+`claude-outdated` alongside the existing brew/tool-version checks.
 
 **Plugin sync:** the global Claude config repo ships its own
 `plugins.sh` at the repo root (`~/.claude/plugins.sh` once cloned),
@@ -356,9 +358,9 @@ helper, leaving the caller's cwd untouched.
 
 ```bash
 make outdated  # Check outdated packages/tools
-make update    # Update Homebrew/packages/asdf, prune
-               # old asdf versions (asdf-cleanup), then
-               # apply Uninstall and RemoveAndPurge
+make update    # Update Homebrew/packages/tool versions,
+               # prune unused versions (versions-cleanup),
+               # then apply Uninstall and RemoveAndPurge
 make verify    # Verify installations + check for
                # same-tier Install/Uninstall+RemoveAndPurge
                # collisions
@@ -380,7 +382,19 @@ make diagnose  # Run system diagnostics
 - `02-Install.ui` -> Runs Finder config and
   Hammerspoon setup
 - `03-Install.shell` -> Runs `scripts/shell_setup.sh`
-- `04-Install.versionmanagers` -> Sets up asdf/direnv
+- `04-Install.versionmanagers` -> Runs
+  `scripts/versions_setup.sh full`: ensures the global
+  mise config (importing `~/.tool-versions` when
+  present) plus `[settings] env_file = ".env"`, then
+  installs the declared tool versions. Under
+  `make install` (NOT under the per-slot
+  `make versionmanagers`) it then applies slot 04's
+  `RemoveAndPurge` across default + profiles + host, so
+  the asdf -> mise cutover cannot land half-applied —
+  but only if the shared `MISE_REACHABLE` probe finds a
+  reachable mise at that moment; otherwise the purge is
+  skipped, the run warns, and `make install` exits
+  non-zero — see "Tool Version Configuration"
 - `06-Install.messaging` -> Generates `~/.msmtprc` from `config.toml` `[mailer]`
 - `09-Install.development` -> Installs VS Code extensions
 - `17-Install.ai` -> Installs Cursor extensions,
@@ -437,8 +451,30 @@ filtering into the emitted file it runs
 trusting third-party taps, else `brew bundle` silently
 skips their packages and exits 0 — issue #172). The
 trust is idempotent and conservative — a tap is trusted
-only if its own `tap` line still emits; the `BREW` env
-var overrides the brew binary used. See `docs/INSTALL.md`.
+only if its own `tap` line still emits.
+
+Every binary these paths shell out to is overridable by
+an env var of the same name, all in the one form
+`VAR="${VAR:-default}"`, all defaulting to whatever is
+on PATH: `BREW` (the brew binary, honored by
+`install_filter.sh`'s `brew trust` call and by
+`remove_runner.sh`), `MAS` (the mas binary) and `SUDO`
+(the sudo that drives it), both honored by
+`remove_runner.sh`. In `remove_runner.sh` that means
+EVERY call — the `brew list` / `mas list` probes as well
+as the `brew uninstall`/`--zap` and `sudo mas uninstall`
+calls, since a probe answered by the real binary is what
+decides whether a real removal follows. `SUDO` is
+overridable alongside `MAS` because the mas removal is
+`sudo mas uninstall`: stubbing one half still runs the
+other for real. The Makefile exposes `BREW` as a make
+variable, and GNU make exports command-line variables
+into every recipe's environment, so
+`make remove-and-purge BREW=<stub> MAS=<stub>
+SUDO=<stub>` reaches the runner for all three.
+`scripts/test/remove_runner_brew_override_test.sh`
+fails if a bare `brew`, `mas`, or `sudo` call is
+reintroduced into the runner. See `docs/INSTALL.md`.
 
 A second Homebrew 6.0 quirk is **interactive ask-mode**
 (issue #20): 6.0 made a `Do you want to proceed? [y/n]`
@@ -446,9 +482,9 @@ prompt the default for `install`/`upgrade`/`reinstall`
 (and, via `brew bundle`'s default upgrade, for `bundle`
 too), so an unattended `make update` / `make install`
 hangs forever with no TTY. `HOMEBREW_NO_ASK=1` disables
-it for every brew call with one lever. It is set in three
-scopes, because each has a distinct environment that the
-others don't reach:
+it for every brew call with one lever. It is set in each
+of the scopes below, because each has a distinct
+environment that the others don't reach:
 
 - **Interactive shell** — `scripts/core_setup.sh` (the
   `00-Install.core` post-install action) appends a
@@ -547,7 +583,16 @@ its default + every profile (in order) + host tier via
 the single-shell `APPLY_INSTALL_TIERS` helper. Both
 accumulate the slots whose `brew bundle` returned
 non-zero, print an end-of-run summary listing each
-failed slot, and exit non-zero if any failed. (The
+failed slot, and exit non-zero if any failed. In the
+`install` batch loop that same accumulator also takes a
+non-zero exit from the slot-04 `RemoveAndPurge` applied
+inline, so such a failure lands in the summary too, even
+though the summary's wording names `brew bundle`. A
+slot-04 purge that was HELD BACK by the `MISE_REACHABLE`
+guard is tracked separately: it prints its own
+`Skipped the asdf/direnv removal ...` line after that
+summary, suppresses the success message, and also makes
+the run exit non-zero. (The
 per-slot helper is a single shell precisely so an
 earlier tier's failure cannot make `make` skip the
 later tiers — three separate recipe lines would abort
@@ -555,7 +600,7 @@ the target on the first non-zero exit.) A clean
 `make install` exits 0 with `All Install files
 applied.`; a clean per-slot target exits 0 with no
 summary. Per-slot post-install setup actions
-(hammerspoon, asdf, claude, etc.) are unchanged.
+(hammerspoon, mise, claude, etc.) are unchanged.
 `make update` was already failure-tolerant.
 
 Both code paths are **quiet by default** about
@@ -616,8 +661,12 @@ trees across ALL tiers, and therefore to every target that
 invokes the removal loops: `make update` (whose `% m update`
 output prompted issue #167), `make uninstall`,
 `make remove-and-purge`, and their dry-run companions.
-(`make install` does NOT run the removal loops, so it is
-unaffected by this gating.) The "does this file have an active
+(`make install` does not run the removal loops in
+general, so it is almost unaffected — its one exception,
+the slot-04 `RemoveAndPurge` it applies inline, goes
+through the same runner with the same `--banner`, so the
+gate covers it too. See "Tool Version Configuration".)
+The "does this file have an active
 directive?" decision lives in ONE place —
 `scripts/remove_runner.sh`, the only code that reads the
 file. The Makefile passes the banner text it would
@@ -627,38 +676,141 @@ suppressed or shown together and can never disagree. Real
 errors (malformed directives) still abort with a visible
 message regardless of the quiet gate.
 
-### asdf Plugin Configuration
+### Tool Version Configuration
 
-Per-plugin version resolution is configured via
-`asdf-plugins.toml`, a single-winner file (the
-highest-priority tier with it wins: host > the host's
-profiles in reverse list order > default). Default config
-lives at `default/asdf-plugins.toml`.
+Runtimes are managed by **mise**, installed by the
+`version-managers` profile. The profile keeps its name:
+`version-managers` is the role, not the implementation.
 
-Each `[plugin]` section supports:
+The cutover is hard, not staged: the same profile that
+installs `mise` in
+`Install/04-Install.versionmanagers` removes `asdf` and
+`direnv` in
+`RemoveAndPurge/04-RemoveAndPurge.versionmanagers`,
+because asdf and mise both provide shims for the same
+tools. Only the binaries go — `~/.asdf/`,
+`~/.tool-versions`, `~/.config/direnv/lib/use_asdf.sh`
+and every repo's `.envrc` / `.tool-versions` survive, and
+`make asdf-to-mise` warns about each rather than deleting
+it. `scripts/strip_asdf_zshrc_lines.sh` removes the
+asdf/direnv `~/.zshrc` init lines this repo once wrote,
+and `make shell` (`scripts/shell_setup.sh`) calls it
+before adding
+`export PATH="${XDG_DATA_HOME:-$HOME/.local/share}/mise/shims:$PATH"`
+plus `eval "$(mise activate zsh)"`;
+`scripts/launchagent_runner.sh` puts the same shims
+directory on `PATH` itself, because launchd never sources
+`~/.zshrc`.
 
-- `filter` -- grep pattern applied to
-  `asdf list all <plugin>` (e.g., `"^temurin-"`)
-- `filter_exclude` -- grep -v pattern to remove
-  unwanted matches (e.g., `"jre"`)
-- `max_version` -- version ceiling; only versions
-  `<=` this value (via `sort -V`) are considered
+The cutover breaks into distinct pieces -- install mise,
+uninstall asdf + direnv, strip the `~/.zshrc` lines --
+each owned by a different mechanism. `make install` and
+`make update` each do all of them: `install` runs the
+slot-04 RemoveAndPurge inline (a deliberate one-slot
+exception to "install does not run the removal loops")
+and reaches the strip via `03-Install.shell`, while
+`update` applies the slot-04 `Install` tiers itself
+before the removal loops and calls
+`strip_asdf_zshrc_lines.sh` directly because it never
+runs `shell_setup.sh`. `update` needs that explicit
+install step because `brew upgrade` upgrades an
+installed formula but never installs an absent one, so a
+host that never ran `make install` would otherwise lose
+asdf and direnv and gain no mise. Install strictly
+precedes remove, and BOTH paths gate the removal on the
+same explicit probe -- the `MISE_REACHABLE` Makefile
+macro, evaluated immediately before the destructive call
+rather than left to the surrounding `set -e`. If mise is
+still unreachable after the install step, `update` skips
+slot 04's `Uninstall` and `RemoveAndPurge` (via the
+`REMOVE_SKIP_BASENAMES` Makefile variable, which the
+batch removal loops honor) and skips the strip, while
+`install` skips its inline slot-04 `RemoveAndPurge`;
+both warn and exit non-zero, and every other removal
+slot still applies. `scripts/test/install_cutover_guard_test.sh`
+fails if the `install`-side guard is removed. The per-slot
+`make versionmanagers` does ONLY the install piece --
+per-slot targets install, they do not remove. Driving it
+by hand is `make versionmanagers`,
+`make 04_RemoveAndPurge_versionmanagers`, `make shell`.
+See `docs/VERSION_MANAGEMENT.md`.
 
-Plugins without a `[plugin]` section use
-`asdf latest <plugin>` as before. All version
-resolution (`make asdf-pin-latest`,
-`make asdf-update`, `make asdf-outdated`) goes
-through `resolve_latest_version()` in
-`scripts/asdf_setup.sh`, which reads this config.
+Per-project config is `mise.toml` -- the **one tracked
+config form**. mise reads several other forms as well
+(`mise.local.toml`, `mise/config.toml`,
+`.mise/config.toml`, `.config/mise.toml`,
+`.config/mise/config.toml`, `.config/mise/conf.d/*.toml`),
+all merged with top winning, and the directory walk
+recurses upward to the filesystem root WITHOUT stopping
+at a git boundary -- so a stray `mise.toml` in a parent
+directory silently applies to every repo beneath it.
+The `.gitignore` block `make asdf-to-mise` writes ignores
+every non-canonical form to keep that from happening.
+The block's authoritative text is the heredoc in
+`scripts/asdf_to_mise.sh`; this repo's own `.gitignore`
+and the copy in `docs/VERSION_MANAGEMENT.md` reproduce
+it verbatim. The paragraph here only describes it.
+`mise cfg` is the diagnostic for "which files actually
+loaded here".
 
-Example (`asdf-plugins.toml`):
+The global config lives at mise's own default path,
+`${XDG_CONFIG_HOME:-~/.config}/mise/config.toml`, and
+carries `[settings] env_file = ".env"` -- the true
+`dotenv_if_exists` analogue. (The alternative,
+`[env] _.file`, resolves relative to the config file
+that declares it, so in the global config it would look
+for `~/.env`.) Accepted trade-off: the global setting
+fires on mise's directory-change hook, so a new terminal
+tab opened already inside the directory does not load
+the `.env`.
 
-```toml
-[java]
-filter = "^temurin-"
-filter_exclude = "jre"
-# max_version = "temurin-25.0.2+10.0.LTS"
-```
+mise's native version-prefix matching replaces the old
+bespoke `filter` / `filter_exclude` DSL
+(`java = "temurin"` selects the newest Temurin JDK; jre
+builds are named `temurin-jre-*` and are not selected).
+There is no native equivalent of a `max_version`
+ceiling, and none is needed: the one ceiling this repo
+carried was lua's, whose recorded intent was "stay below
+Lua 5.5", so `lua = "5.4"` is the faithful translation.
+
+**The LuaRocks pin.** LuaRocks 3.13.0 ships a rockspec
+with a duplicate `tag` key. Under asdf's lua plugin that
+broke the build, so this repo pinned 3.12.2 via
+`ASDF_LUA_LUAROCKS_VERSION` -- the variable name that
+plugin reads. `scripts/versions_setup.sh` still exports
+`ASDF_LUA_LUAROCKS_VERSION=3.12.2` so every
+`make versions-*` invocation carries it. On mise it is
+currently INERT: verified against mise 2026.8.6 on
+2026-08-16, `mise registry` resolves `lua` through
+`vfox:mise-plugins/vfox-lua` first, not the asdf plugin,
+and a sandboxed `mise install lua@5.4` built 5.4.8 and
+bootstrapped LuaRocks 3.13.0 successfully with the
+export set. It is kept because it costs nothing and
+still applies to an explicit asdf-backend pin, where the
+breakage is unchanged -- upstream
+`luarocks/luarocks#1851` was closed by a fix to the
+release tooling, and the shipped 3.13.0 tarball is
+PGP-signed with a pinned `source_digest` and was never
+re-rolled. Tracked in issue #6.
+
+**`make asdf-to-mise`** is the one-shot migration verb
+and a deliberate exception to the
+implementation-neutral naming (it names both endpoints
+on purpose, and is deleted once every repo and host is
+over). It operates on the CALLING directory
+(`START_DIR`), one repo per run, and is purely
+additive: it ensures the global config, generates
+`mise.toml` from `.tool-versions`, writes the
+`.gitignore` block, and warns about every asdf/direnv
+leftover -- while deleting, moving, untracking, and
+committing nothing. It aborts if the target is not a
+git repository root, and aborts (quoting the offending
+line, writing no `mise.toml`) on a multi-version
+`.tool-versions` line such as `java temurin 26.0.1+8`,
+which mise's converter turns into a TOML array that
+resolves as two separate installs. See
+`docs/VERSION_MANAGEMENT.md` for the full runbook and
+the manual cleanup checklist.
 
 ### Mailer Configuration
 
@@ -871,8 +1023,8 @@ former in-repo `logs/` directory. This is macOS-native
   Claude Code.
 - `auto-approve-compound-commands.sh` registered
   on `PermissionRequest` and `PreToolUse` for Bash
-- On `PreToolUse`, returns a `deny` verdict for two
-  forbidden command shapes (anywhere in a compound,
+- On `PreToolUse`, returns a `deny` verdict for the
+  forbidden command shapes below (anywhere in a compound,
   anchored to start-of-string or an operator
   boundary `&&`, `||`, `;`, `|`):
   - `cd <path> && <command>` — the
@@ -912,7 +1064,7 @@ former in-repo `logs/` directory. This is macOS-native
 - The only file under `.claude/` that is tracked
   in git (via a `.gitignore` negation). Everything
   else under `.claude/` remains ignored.
-- Read by `/issue:address` and the four issue-*
+- Read by `/issue:address` and the issue-*
   subagents (`issue-developer`, `issue-fixer`,
   `doc-updater`, `pr-reviewer`) at the start of
   every run; each aborts if the file is missing.
@@ -1016,6 +1168,10 @@ former in-repo `logs/` directory. This is macOS-native
 | `host_tier_dir.sh` | Print external host-tier base path (Makefile helper) |
 | `seed_host_tier.sh` | Seed external host tier from template if absent |
 | `shell_setup.sh` | Configures zsh, Oh My Zsh; aggregates `aliases.zsh` |
+| `mise_common.sh` | Global mise config helpers, sourced by the mise scripts |
+| `versions_setup.sh` | Drives mise for the `versions-*` targets and slot 04 |
+| `asdf_to_mise.sh` | One-shot additive asdf+direnv -> mise repo migration |
+| `strip_asdf_zshrc_lines.sh` | Strips the ~/.zshrc lines the cutover orphans |
 | `vscode_extensions.sh` | Installs VS Code extensions |
 | `vscode_setup.sh` | Symlinks VS Code `settings.json` (single-winner) |
 | `hammerspoon_setup.sh` | Symlinks HS config; robust reload (IPC + relaunch) |
@@ -1044,10 +1200,11 @@ All scripts are in the `scripts/` directory.
 To see what versions are currently installed and active:
 
 ```bash
-asdf list            # All installed versions
-asdf list <plugin>   # Versions for specific plugin
-asdf current         # Currently active versions
-cat .tool-versions   # Pinned versions for project
+mise ls              # All installed versions
+mise ls <tool>       # Versions for a specific tool
+mise ls --current    # Currently active versions
+mise cfg             # Which config files loaded here
+cat mise.toml        # Pinned versions for project
 ```
 
 ## Working with This Repository

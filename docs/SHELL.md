@@ -1,7 +1,7 @@
 # Shell Configuration
 
 This repo keeps zsh configuration under version control so your shortcuts
-stay consistent across machines. There are two layers:
+stay consistent across machines. The layers are:
 
 1. **Shared system helpers** in `shared/zsh/` — single source of truth,
    used identically on every machine. NOT three-tier resolved.
@@ -97,25 +97,61 @@ default- and profile-tier `aliases.zsh` files remain in the repo and are
 committed normally). Keep system-level helpers (functions used by
 macos-setup itself) in `shared/zsh/` instead.
 
-## asdf and direnv init lines
+## mise init lines
 
 `make shell` (via `scripts/shell_setup.sh`) idempotently appends the
 following to `~/.zshrc` (each line at most once):
 
 ```zsh
-export PATH="${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH"
-eval "$(direnv hook zsh)"
+export PATH="${XDG_DATA_HOME:-$HOME/.local/share}/mise/shims:$PATH"
+eval "$(mise activate zsh)"
 ```
 
-asdf 0.16+ is a single Go binary; there is no longer a
-`libexec/asdf.sh` to source. The new init pattern (per upstream docs)
-is to put the shims directory on `PATH` directly.
+The activation line is written only once `mise` is on `PATH`; a
+`make shell` that runs before `mise` is installed says so and adds
+the line on the next run. The shims `PATH` export is written
+unconditionally.
 
-If a previous run of this script wrote the legacy
-`. /opt/homebrew/opt/asdf/libexec/asdf.sh` line into your `~/.zshrc`,
-the next `make shell` removes it (the line now errors on every shell
-startup because the file no longer exists). A backup is written to
-`~/.zshrc.bak` only when this cleanup actually fires.
+Both forms are emitted on purpose. `mise activate zsh` is mise's
+preferred interactive form and is what makes `cd` into a project
+switch tool versions (and, with `[settings] env_file`, load its
+`.env`). The shims directory on `PATH` covers every non-interactive
+context that never sources `~/.zshrc` at all.
+
+Scheduled LaunchAgent jobs are one such context — launchd does not
+source `~/.zshrc`, so neither line reaches them. `scripts/launchagent_runner.sh`
+puts the same shims directory on `PATH` itself for exactly that
+reason (the same pattern it uses for `HOMEBREW_NO_ASK`).
+
+### Migrating off asdf + direnv
+
+The `version-managers` profile moved from asdf + direnv to mise. The
+strip lives in `scripts/strip_asdf_zshrc_lines.sh` and removes the
+`~/.zshrc` lines that the change orphaned:
+
+- `. /opt/homebrew/opt/asdf/libexec/asdf.sh` — already dead before
+  the migration (asdf 0.16+ is a single Go binary with no
+  `libexec/asdf.sh` to source) and errors on every shell startup.
+- `export PATH="${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH"`
+- `eval "$(direnv hook zsh)"`
+
+Each pattern is anchored to the exact active form `shell_setup.sh`
+wrote; indented or commented-out variants are deliberately preserved.
+A backup is written to `~/.zshrc.bak` only when this cleanup actually
+fires, so a host that has already migrated is a clean no-op on
+re-run.
+
+It has more than one caller, because the cutover reaches a host down
+either of the paths below, and each must leave `~/.zshrc` clean:
+
+- `make shell` / `make install`, via `scripts/shell_setup.sh`.
+- `make update`, which calls the script directly — it uninstalls asdf
+  and direnv through the `RemoveAndPurge` loop but never runs
+  `shell_setup.sh`, so without the direct call it would remove the
+  binaries and leave their broken init lines behind.
+
+`ZSHRC_PATH` overrides the file it edits (the test suite points it at
+a fixture); it defaults to `~/.zshrc`.
 
 ## Common Aliases (quick reference)
 

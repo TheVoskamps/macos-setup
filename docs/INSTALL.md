@@ -32,8 +32,7 @@
   Shell environment, terminal tools, and related
   utilities
 - [04-Install.versionmanagers](../Install/04-Install.versionmanagers)
-  — Version managers and environment tooling (asdf,
-  direnv, etc.)
+  — Version managers and environment tooling (mise, etc.)
 - [05-Install.tools](../Install/05-Install.tools) —
   General developer tools and utilities
 - [06-Install.messaging](../Install/06-Install.messaging)
@@ -156,7 +155,7 @@ idempotent across re-runs. The trust is conservative: a tap whose
 only formula/cask was commented out by the `Uninstall/` or
 `RemoveAndPurge/` filter is trusted **only if its own `tap` line
 still emits**. The brew binary used is overridable via the `BREW`
-env var (the same knob the Makefile exposes); a failed
+env var (see "Overriding the package-manager binaries" below); a failed
 `brew trust` prints a warning but does not abort the filter.
 
 If a package appears in both `Uninstall/` and `RemoveAndPurge/` at
@@ -195,6 +194,25 @@ package in that profile's Install and in every lower-priority Install
 outranks. A default entry only shadows the default Install, since
 nothing is below it. A host-tier Install file is only filtered against
 host removals, because nothing outranks it.
+
+#### The one slot `make install` also removes
+
+Filtering is normally the *whole* of `make install`'s relationship to
+the removal trees: it never runs the removal loops, so a package
+already installed on the host stays installed even when a removal slot
+lists it. Slot 04 is the one exception. Inside `make install`'s batch
+loop — not in the per-slot `make versionmanagers` / `make
+04_Install_versionmanagers` target — the `04-Install.versionmanagers`
+post-install action applies
+`RemoveAndPurge/04-RemoveAndPurge.versionmanagers` across default +
+profiles + host, right after `scripts/versions_setup.sh full`. The
+asdf → mise cutover cannot be half-applied — asdf and mise
+both provide shims for the same tools, so a host carrying both is the
+failure mode the cutover exists to prevent — and `make install` is the
+entry point a host reaches after `git pull`. The inline call goes
+through `scripts/remove_runner.sh` with a `--banner`, exactly like the
+loops, so the empty-slot quiet gating below applies to it unchanged.
+See [Version Management](VERSION_MANAGEMENT.md).
 
 ### `make uninstall` and `make uninstall-dry-run`
 
@@ -277,8 +295,9 @@ line:
 This applies to both the `Uninstall/` and `RemoveAndPurge/` trees across
 all tiers (global + profile + computer-specific), and so to
 `make uninstall`, `make remove-and-purge`, `make update`, the per-slot
-`NN_Uninstall_*` / `NN_RemoveAndPurge_*` targets, and the dry-run
-companions. The active-directive decision is made in one place
+`NN_Uninstall_*` / `NN_RemoveAndPurge_*` targets, the dry-run
+companions, and the slot-04 `RemoveAndPurge` that `make install`
+applies inline. The active-directive decision is made in one place
 (`scripts/remove_runner.sh`); the Makefile hands it the banner text via
 `--banner=<text>`, so the banner and the runner's lines are always shown
 or suppressed together. Malformed-directive aborts are unaffected — they
@@ -287,11 +306,22 @@ still print a visible error.
 ### `make update` applies both removal trees
 
 `make update` runs `make uninstall` and `make remove-and-purge` *after*
-its upgrade chain (Homebrew, casks, MAS, asdf), so routine maintenance
+its upgrade chain (Homebrew, casks, MAS, the slot-04 version-manager
+install, then the mise update and prune), so routine maintenance
 keeps the in-scope `Uninstall/` and `RemoveAndPurge/` entries enforced
 even when `brew upgrade` resurrects a package via dependency
 resolution. Adding a package to either removal tree is enough — the
 next `make update` will take it out without a separate command.
+
+The one slot `make update` will hold back is slot 04. Its removal
+entries take asdf and direnv out, and the mise that replaces them is
+installed by the slot-04 `Install` earlier in the same run, so when
+mise is still unreachable after that install step `update` skips slot
+04 in both removal loops (via the `REMOVE_SKIP_BASENAMES` Makefile
+variable that `_uninstall_loop` and `_remove_and_purge_loop` honor),
+skips the `~/.zshrc` strip, warns, and exits non-zero. Every other
+slot applies normally. See
+[VERSION_MANAGEMENT.md](VERSION_MANAGEMENT.md).
 
 See [Makefile Usage](MAKEFILE.md#common-targets) for the full
 `make update` description.
@@ -330,6 +360,42 @@ make 01-Install.security
 make security                    # suffix alias
 make 01                          # numeric alias
 ```
+
+### Overriding the package-manager binaries
+
+Every binary the install and removal paths shell out to is overridable
+by an env var of the same name, all in one form
+(`VAR="${VAR:-default}"`) and all defaulting to whatever is on `PATH`:
+
+| Var    | Overrides                | Honored by                              |
+| ------ | ------------------------ | --------------------------------------- |
+| `BREW` | the `brew` binary        | `install_filter.sh`, `remove_runner.sh` |
+| `MAS`  | the `mas` binary         | `remove_runner.sh`                      |
+| `SUDO` | the `sudo` driving `mas` | `remove_runner.sh`                      |
+
+- `scripts/install_filter.sh` — the `brew trust --tap` side effect
+  described under
+  [Third-party taps are auto-trusted](#third-party-taps-are-auto-trusted).
+- `scripts/remove_runner.sh` — **every** shell-out, the
+  `brew list` and `mas list` probes as well as the `brew uninstall` /
+  `sudo mas uninstall` calls. The probe matters as much as the
+  uninstall: a probe answered by the real binary is exactly what
+  decides whether a real removal follows, so an override that covered
+  only the uninstall would not make a test run safe.
+
+`SUDO` exists because the mas removal is `sudo mas uninstall`, so the
+override has to compose: stub only `MAS` and the real `sudo` still
+runs it, stub only `SUDO` and the real `mas` is what gets run.
+
+The Makefile exposes `BREW` as a make variable, and GNU make exports
+command-line variables into every recipe's environment — so
+`make remove-and-purge BREW=/path/to/stub MAS=/path/to/stub
+SUDO=/path/to/stub` reaches `remove_runner.sh` for all three, not just
+the `$(BREW)` references in the recipes. This is what lets the test
+suite drive the removal loops without touching real Homebrew, the real
+Mac App Store, or real `sudo`.
+`scripts/test/remove_runner_brew_override_test.sh` fails if a bare
+`brew`, `mas`, or `sudo` call is reintroduced into the runner.
 
 ## See also
 

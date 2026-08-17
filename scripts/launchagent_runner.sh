@@ -83,6 +83,23 @@ set -euo pipefail
 # re-run, and covers every job that routes through this one entry point.
 export HOMEBREW_NO_ASK=1
 
+# Put mise's shims on PATH for every scheduled job. Same reasoning as
+# HOMEBREW_NO_ASK above: launchd does NOT source ~/.zshrc, so neither the
+# `mise activate zsh` line nor the shims PATH export that
+# scripts/shell_setup.sh writes there reaches this runner. Without the
+# shims, a scheduled `make update` resolves whatever `node`/`python`/... is
+# on launchd's bare PATH rather than the mise-managed version.
+#
+# Exporting it here (rather than in the plist's EnvironmentVariables) means
+# existing schedules self-heal on the next repo pull with no
+# `make schedule-*` re-run, and it covers every job routed through this one
+# entry point. The path is mise's own default install location; it is
+# stated identically by `mise_shims_dir` in scripts/mise_common.sh, which
+# this runner cannot source (the repo root is not resolved yet at this
+# point), and a third time by scripts/shell_setup.sh, which writes the
+# literal into ~/.zshrc. Change one, change all three.
+export PATH="${XDG_DATA_HOME:-$HOME/.local/share}/mise/shims:$PATH"
+
 if [[ $# -lt 2 ]]; then
     cat >&2 <<'EOF'
 Usage:

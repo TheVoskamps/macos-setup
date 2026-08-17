@@ -19,6 +19,22 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
   slot is commented out for that run. This is the recommended way to
   set up a new machine.
 
+  `install` does **not** run the removal loops in general — the smart
+  filter is what keeps a removal-listed package from being installed.
+  The one exception is slot 04's `RemoveAndPurge`, applied inline by
+  the `04-Install.versionmanagers` post-install action in this batch
+  loop only (the per-slot `make versionmanagers` stays install-only),
+  because the asdf → mise cutover is hard by construction: asdf and mise both
+  provide shims for the same tools, so leaving asdf installed
+  alongside mise is the failure mode the cutover exists to prevent.
+  That inline purge is gated on the `MISE_REACHABLE` Makefile macro —
+  the same probe `update` uses, evaluated immediately before the
+  removal rather than left to the surrounding `set -e`. If mise is not
+  reachable at that moment the purge is skipped entirely, the run
+  warns, and `make install` exits non-zero, so a host is never left
+  with asdf gone and no mise.
+  See [Version Management](VERSION_MANAGEMENT.md).
+
   Up-front `dasel` gate: this target (and `update`, `verify`,
   `outdated`) depends on the `.PHONY: require-dasel` prerequisite,
   which runs `scripts/require_dasel_on_path.sh` BEFORE any host-tier
@@ -46,7 +62,13 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
   summary listing each failed slot. It exits non-zero if any slot
   failed (otherwise it exits 0 with `All Install files applied.`). This
   lets a single failing cask be left for later without blocking every
-  later slot — fix the listed slots and re-run `make install`.
+  later slot — fix the listed slots and re-run `make install`. A
+  slot-04 `RemoveAndPurge` that returned non-zero lands in that same
+  summary; one that was *held back* by the `MISE_REACHABLE` guard is
+  tracked separately and prints its own
+  `==> Skipped the asdf/direnv removal ...` line after the summary.
+  Either one suppresses `All Install files applied.` and makes the run
+  exit non-zero.
 
   Quiet by default: the tier walk probes every profile and the host
   tier for each Install slot, but only contributing tiers print output
@@ -76,6 +98,16 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
   `skip: <pkg> not installed` lines. Set `VERBOSE=1` to restore all
   lines for every slot, including empty ones, when debugging.
 
+  Both removal loops run through `scripts/remove_runner.sh`, which
+  honors `BREW`, `MAS`, and `SUDO` overrides at **every** shell-out —
+  the `brew list` / `mas list` probes as well as the uninstalls. GNU
+  make exports command-line variables into every recipe's
+  environment, so `make uninstall BREW=<stub> MAS=<stub> SUDO=<stub>`
+  reaches the runner. This is how a test drives the removal loops
+  without touching real Homebrew, the real Mac App Store, or real
+  `sudo`; see
+  [Overriding the package-manager binaries](INSTALL.md#overriding-the-package-manager-binaries).
+
 - `make uninstall-dry-run`
   Same as `make uninstall` but only prints what would happen. Safe to
   run on a fresh checkout; with empty `Uninstall/` seed files it
@@ -96,12 +128,31 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
 
 - `make update`
   Runs `brew update`, upgrades all formulae and casks, upgrades MAS
-  apps, updates asdf-managed tools, then applies `make uninstall` and
+  apps, applies the slot-04 (`versionmanagers`) `Install` tiers,
+  updates and prunes mise-managed tool versions, then applies
+  `make uninstall` and
   `make remove-and-purge`. Uninstall and purge run *after* the
   upgrade chain so "uninstall wins over install" is the end state:
   even if `brew upgrade` resurrects something via dependency
   resolution, the uninstall step removes it before the user sees the
-  result. Does NOT re-apply `Install/` files.
+  result. Slot 04 is the ONE `Install/` slot `update` applies; no
+  other `Install/` file is re-applied.
+
+  It then calls `scripts/strip_asdf_zshrc_lines.sh`. The purge step
+  uninstalls `asdf` and `direnv`, and `update` never runs
+  `shell_setup.sh`, so without this call it would remove the binaries
+  and leave their `~/.zshrc` init lines erroring on every shell
+  startup. The script is a no-op once the lines are gone.
+
+  Slot 04's `Install` runs first for the same reason: `brew upgrade`
+  upgrades an installed formula but never installs an absent one, so
+  on a host that never ran `make install` the purge would take asdf
+  and direnv out with no mise to replace them. Install strictly
+  precedes remove — and if the `MISE_REACHABLE` probe (the same macro
+  `install` gates its inline purge on, so the two destructive paths
+  cannot drift) still finds no mise after that install step, `update`
+  skips slot 04 in both removal loops and skips the strip, warns, and
+  exits non-zero, leaving every other removal slot to apply normally.
 
 - `make self-update`
   Pulls the latest `main` into this repo via `scripts/self_update.sh`.
@@ -126,7 +177,7 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
   ```
 
   Out of scope: this only updates the working tree. Use `make update`
-  to upgrade Homebrew/asdf/installed software.
+  to upgrade Homebrew/managed tool versions/installed software.
 
 - `make verify`
   Runs `scripts/verify.sh` (per-Install-file verification) and then
@@ -238,7 +289,7 @@ fails. Failed tiers are accumulated and reported in an end-of-run
 summary, and the target exits non-zero if any tier failed (otherwise
 it exits 0 with no summary). A failing cask in one tier therefore
 never silently skips the other tiers of the same slot. The slot's
-post-install setup action (e.g. Hammerspoon for `ui`, asdf for
+post-install setup action (e.g. Hammerspoon for `ui`, mise for
 `versionmanagers`) runs only when the brew-bundle tiers all succeed,
 unchanged from before. Per-slot targets honour `VERBOSE=1` the same
 way `make install` does — the per-tier "not found" lines are quiet by
@@ -306,11 +357,11 @@ These per-Install targets also run a follow-up setup script:
   Applies shell tools and then runs `scripts/shell_setup.sh`.
 
 - `make 04_Install_versionmanagers`
-  Applies version managers and then automatically runs:
-  - `make asdf-plugins-init`
-  - `make asdf-pin-latest`
-  - `make asdf-install`
-  - `make direnv-setup`
+  Applies version managers and then runs `scripts/versions_setup.sh
+  full`: ensures the global mise config exists (importing
+  `~/.tool-versions` when the host has one), ensures
+  `[settings] env_file = ".env"` in it, then installs the tool
+  versions the resolved config declares.
 
 - `make 06_Install_messaging`
   Applies messaging tools and then generates `~/.msmtprc` from the
@@ -331,33 +382,51 @@ These per-Install targets also run a follow-up setup script:
   plugins via `~/.claude/plugins.sh --install` (same as
   `make claude-install`).
 
-## asdf and direnv
+## Version management
 
-Additional targets exist to manage runtimes explicitly:
+Additional targets exist to manage runtimes explicitly. They are named
+`versions-*` rather than after the tool that implements them (mise),
+so swapping the implementation leaves the target names, their callers,
+and the doc lines that reference them alone — the change is bounded to
+the scripts that name the tool directly
+(`scripts/versions_setup.sh`, `scripts/mise_common.sh`, and the
+shell/launchd `PATH` lines in `scripts/shell_setup.sh` and
+`scripts/launchagent_runner.sh`):
 
-- `make asdf-plugins-init`
-- `make asdf-pin-latest`
-- `make asdf-install`
-- `make asdf-lua`
-- `make asdf-node`
-- `make asdf-python`
-- `make asdf-pnpm`
-- `make direnv-setup`
+- `make versions-install` — install the versions the resolved mise
+  config declares
+- `make versions-update` — install latest versions AND bump the
+  config (`mise up --bump`)
+- `make versions-outdated` — report tools with a newer version
+  available
+- `make versions-cleanup` — remove unused installed versions
+  (`mise prune`)
+- `make versions-cleanup-dry-run` — show what cleanup would remove
 
-These integrate with the `.tool-versions` file to ensure
-reproducibility.
+`make update` runs `versions-update` then `versions-cleanup`;
+`make outdated` runs `versions-outdated`.
 
 ---
 
 ## Directory Enablement
 
-To enable asdf+direnv in any project directory, run:
+To convert a project directory from asdf + direnv to mise, run:
 
 ```bash
-make direnv-enable
+make asdf-to-mise
 ```
 
-This writes `use asdf` and `dotenv_if_exists` into `.envrc` (in that
-order) and runs `direnv allow`. The `dotenv_if_exists` line loads a
-local `.env` file when one is present and is a no-op otherwise, so
-directories without a `.env` are unaffected.
+It operates on the directory you invoked it from (`START_DIR`), one
+repo per run. It is **purely additive**: it generates `mise.toml` from
+`.tool-versions`, writes a sentinel-guarded `.gitignore` block pinning
+`mise.toml` as the one tracked config form, and warns about every
+asdf/direnv leftover it finds — while deleting nothing, moving
+nothing, untracking nothing, and committing nothing.
+
+`make asdf-to-mise` is a deliberate exception to the
+implementation-neutral naming above: it names both endpoints on
+purpose because it is a migration verb, and it is deleted once every
+repo and host is over.
+
+See [Version Management](VERSION_MANAGEMENT.md) for the full runbook,
+the multi-version-line pre-flight, and the manual cleanup checklist.
