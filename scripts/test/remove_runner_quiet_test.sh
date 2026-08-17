@@ -58,6 +58,16 @@ ok_empty() {
 
 # A stub `brew` that reports nothing installed (so the active slot's
 # directive becomes a `skip` line) and never fails.
+#
+# EVERY block below routes the runner at this stub, via the BREW env var
+# (direct invocations) or the BREW make variable, which GNU make exports
+# into the recipe environment (Makefile-driven invocations) -- and also
+# shims it onto PATH as `brew` for defence in depth. The active slot names
+# a real cask, and blocks 2-3 drive the NON-dry-run `make uninstall` /
+# `make remove-and-purge`, so an unstubbed brew here would uninstall (and
+# under --mode=purge, --zap) that cask off the developer's machine.
+# scripts/test/remove_runner_brew_override_test.sh pins the runner's side
+# of that contract.
 write_stub_brew() {
   local path="$1"
   cat > "$path" <<'STUB'
@@ -72,10 +82,16 @@ STUB
 # Block 1: drive the runner directly.
 # ---------------------------------------------------------------------
 runner_direct_test() {
-  local dir empty active out rc
+  local dir empty active stub out rc
   dir="$(mktemp -d)"
   printf '# header only\n# Casks\n'              > "$dir/empty"
   printf "# header\n# Casks\ncask 'vibe-notch'\n" > "$dir/active"
+  # BREW points every probe at the stub, so the `skip:` assertion below is
+  # a property of the runner rather than of whether this developer happens
+  # to have vibe-notch installed.
+  stub="$dir/stub_brew.sh"
+  write_stub_brew "$stub"
+  export BREW="$stub"
 
   # Empty slot, VERBOSE unset -> NOTHING on stdout, rc 0.
   out="$(bash "$RUNNER" "$dir/empty" --mode=uninstall --banner="==> BANNER empty" --dry-run 2>&1)"; rc=$?
@@ -102,6 +118,7 @@ runner_direct_test() {
   ok_rc "$rc" 0 "runner: active slot, purge mode exits 0"
   ok_contains "$out" "[purge] Processing"         "runner: active slot, purge mode uses [purge] prefix"
 
+  unset BREW
   rm -rf "$dir"
 }
 
@@ -136,11 +153,15 @@ run_make() {
   host_dir="$(mktemp -d)"
   brew_stub="$root/scripts/stub_brew.sh"
   write_stub_brew "$brew_stub"
+  # Same stub also shimmed onto PATH as bare `brew` (defence in depth --
+  # see the write_stub_brew header).
+  mkdir -p "$root/bin"
+  cp "$brew_stub" "$root/bin/brew"
   if [[ -n "$verbose" ]]; then
-    RUN_OUT="$(cd "$root" && MACOS_SETUP_HOST_DIR="$host_dir" VERBOSE="$verbose" \
+    RUN_OUT="$(cd "$root" && PATH="$root/bin:$PATH" MACOS_SETUP_HOST_DIR="$host_dir" VERBOSE="$verbose" \
       make "$target" BREW="$brew_stub" 2>&1)"; RUN_RC=$?
   else
-    RUN_OUT="$(cd "$root" && MACOS_SETUP_HOST_DIR="$host_dir" \
+    RUN_OUT="$(cd "$root" && PATH="$root/bin:$PATH" MACOS_SETUP_HOST_DIR="$host_dir" \
       make "$target" BREW="$brew_stub" 2>&1)"; RUN_RC=$?
   fi
   rm -rf "$root" "$host_dir"

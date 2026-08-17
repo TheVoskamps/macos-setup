@@ -32,10 +32,12 @@
 #   pointed at a reachable binary the same repo purges normally and
 #   exits 0.
 #
-# Block 2 shims a stub `brew` onto PATH, not just into the BREW make
-# variable: scripts/remove_runner.sh invokes `brew` by bare name, so
-# without the shim a test run would drive the REAL brew against the
-# host's real asdf.
+# Block 2 passes a stub `brew` as the BREW make variable AND shims it onto
+# PATH. BREW is what scripts/remove_runner.sh honors (see
+# scripts/test/remove_runner_brew_override_test.sh, which fails if a bare
+# `brew` call is reintroduced there); the PATH shim is kept as defence in
+# depth, because the fixture names the host's real asdf and a `make install`
+# run reaches more scripts than the runner alone.
 
 set -uo pipefail
 
@@ -121,7 +123,7 @@ static_test() {
 # ---------------------------------------------------------------------
 
 # A stub `brew` that never reports anything installed and never fails a
-# bundle. Shimmed onto PATH (bare-name callers) AND passed as BREW=.
+# bundle. Passed as BREW= AND shimmed onto PATH (defence in depth).
 write_stub_brew() {
   cat > "$1" <<'STUB'
 #!/usr/bin/env bash

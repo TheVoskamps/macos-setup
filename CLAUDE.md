@@ -451,8 +451,24 @@ filtering into the emitted file it runs
 trusting third-party taps, else `brew bundle` silently
 skips their packages and exits 0 — issue #172). The
 trust is idempotent and conservative — a tap is trusted
-only if its own `tap` line still emits; the `BREW` env
-var overrides the brew binary used. See `docs/INSTALL.md`.
+only if its own `tap` line still emits.
+
+The `BREW` env var overrides the brew binary used, in
+BOTH scripts that shell out to Homebrew:
+`install_filter.sh` (the `brew trust` call) and
+`remove_runner.sh` (every call — the `brew list` probes
+as well as the `brew uninstall`/`--zap` calls, since a
+probe answered by the real brew is what decides whether
+a real removal follows). Both use the same form,
+`BREW="${BREW:-brew}"`, defaulting to whatever `brew` is
+on PATH. The Makefile exposes the same knob as a make
+variable, and GNU make exports command-line variables
+into every recipe's environment, so
+`make remove-and-purge BREW=<stub>` reaches the runner
+too. `scripts/test/remove_runner_brew_override_test.sh`
+fails if a bare `brew` call is reintroduced into the
+runner. `sudo mas uninstall` is NOT covered by the
+override. See `docs/INSTALL.md`.
 
 A second Homebrew 6.0 quirk is **interactive ask-mode**
 (issue #20): 6.0 made a `Do you want to proceed? [y/n]`

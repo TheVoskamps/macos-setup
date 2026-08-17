@@ -126,11 +126,16 @@ order_test() {
 # A stub `brew` that reports nothing installed, so the runner only ever
 # emits `skip: <pkg> not installed` and never uninstalls anything.
 #
-# It is shimmed onto PATH as `brew` (not merely passed as the BREW make
-# variable) because scripts/remove_runner.sh invokes `brew` by BARE NAME.
-# Passing BREW= alone would leave these tests driving the REAL brew
-# against the host's real asdf and direnv -- i.e. a test run that
-# uninstalls the very packages this cutover is careful about.
+# It is passed as the BREW make variable AND shimmed onto PATH as `brew`.
+# The BREW variable is what scripts/remove_runner.sh now honors (GNU make
+# exports command-line variables into every recipe's environment, and the
+# runner resolves `BREW="${BREW:-brew}"` -- see
+# scripts/test/remove_runner_brew_override_test.sh, which fails if a bare
+# `brew` call is reintroduced there). The PATH shim is kept as defence in
+# depth: these fixtures name the host's REAL asdf and direnv, a `make`
+# run reaches more scripts than the runner alone, and the cost of one
+# extra stub is nothing against the cost of being wrong -- an earlier
+# round of this test really did uninstall a host formula.
 write_stub_brew() {
   cat > "$1" <<'STUB'
 #!/usr/bin/env bash

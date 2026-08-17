@@ -56,6 +56,15 @@
 #
 # Log lines are prefixed with the active mode (e.g. `[uninstall]` vs
 # `[purge]`) so combined runs are unambiguous.
+#
+# The brew binary is overridable via the `BREW` env var, exactly as in
+# scripts/install_filter.sh (`BREW="${BREW:-brew}"`), and every shell-out
+# to brew here goes through it — the `brew list` probes as well as the
+# `brew uninstall` calls, because a probe against the REAL brew is what
+# decides whether a real uninstall follows. `make ... BREW=<stub>` reaches
+# this script because GNU make exports command-line variables into every
+# recipe's environment. Do not reintroduce a bare `brew` call:
+# scripts/test/remove_runner_brew_override_test.sh fails if you do.
 
 set -uo pipefail
 
@@ -165,12 +174,18 @@ run() {
   "$@"
 }
 
+# The brew binary to use for every probe and every uninstall. Overridable
+# via the BREW env var so tests can stub it (the same knob the Makefile
+# exposes as `BREW=`, and the same convention install_filter.sh uses);
+# defaults to whatever `brew` is on PATH.
+BREW="${BREW:-brew}"
+
 is_brew_installed() {
-  brew list --formula "$1" >/dev/null 2>&1
+  "$BREW" list --formula "$1" >/dev/null 2>&1
 }
 
 is_cask_installed() {
-  brew list --cask "$1" >/dev/null 2>&1
+  "$BREW" list --cask "$1" >/dev/null 2>&1
 }
 
 is_mas_installed() {
@@ -180,8 +195,8 @@ is_mas_installed() {
 uninstall_brew() {
   local name="$1"
   if is_brew_installed "$name"; then
-    if ! run brew uninstall --formula "$name"; then
-      log "WARNING: brew uninstall --formula $name failed — continuing"
+    if ! run "$BREW" uninstall --formula "$name"; then
+      log "WARNING: $BREW uninstall --formula $name failed — continuing"
       FAIL=1
     fi
   else
@@ -193,13 +208,13 @@ uninstall_cask() {
   local name="$1"
   if is_cask_installed "$name"; then
     if [[ "$MODE" == "purge" ]]; then
-      if ! run brew uninstall --cask --zap "$name"; then
-        log "WARNING: brew uninstall --cask --zap $name failed — continuing"
+      if ! run "$BREW" uninstall --cask --zap "$name"; then
+        log "WARNING: $BREW uninstall --cask --zap $name failed — continuing"
         FAIL=1
       fi
     else
-      if ! run brew uninstall --cask "$name"; then
-        log "WARNING: brew uninstall --cask $name failed — continuing"
+      if ! run "$BREW" uninstall --cask "$name"; then
+        log "WARNING: $BREW uninstall --cask $name failed — continuing"
         FAIL=1
       fi
     fi
