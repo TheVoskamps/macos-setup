@@ -4,6 +4,13 @@ This repository uses a dynamic `Makefile` to orchestrate applying
 `Install/` files (formerly `Brewfiles`) and the parallel `Uninstall/`
 and `RemoveAndPurge/` frameworks, plus related setup tasks.
 
+Every recipe runs under `BASH_BIN`, the absolute `/bin/bash`, which is
+also what `SHELL` is set from, and every helper script a recipe invokes
+is named as `$(BASH_BIN) scripts/<name>.sh` rather than a
+`PATH`-resolved bare `bash`. A run that removes Homebrew's `bash`
+formula must not lose the interpreter its own later steps need; see
+[Removals never cascade, and never lose the interpreter](INSTALL.md#removals-never-cascade-and-never-lose-the-interpreter).
+
 ## Common Targets
 
 - `make install`
@@ -107,6 +114,8 @@ and `RemoveAndPurge/` frameworks, plus related setup tasks.
   without touching real Homebrew, the real Mac App Store, or real
   `sudo`; see
   [Overriding the package-manager binaries](INSTALL.md#overriding-the-package-manager-binaries).
+  The runner also exports `HOMEBREW_NO_AUTOREMOVE=1`, so an uninstall
+  never cascades into a shared dependency.
 
 - `make uninstall-dry-run`
   Same as `make uninstall` but only prints what would happen. Safe to
