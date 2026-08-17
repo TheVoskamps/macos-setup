@@ -154,21 +154,35 @@ claude-plugin-path() {
 # object index matters because jq's `or` does not short-circuit the
 # right operand's evaluation errors -- indexing a boolean with
 # .enabled aborts the whole filter (claude-config#44).
+#
+# No-op chatter is dropped from each command's stdout with the same
+# grep -Ev filter as ~/.claude/plugins.sh, whose QUIET_PATTERNS is the
+# upstream source of these patterns -- keep the list textually
+# identical to it. grep exits 1 when it emits nothing, which is
+# exactly what an up-to-date item looks like, so the command's own
+# status is read from zsh's pipestatus (1-indexed) before anything
+# else can overwrite it; `| grep ... || true` would clobber it. stderr
+# is not piped, so genuine error text still reaches the terminal.
 update_claude_plugins() {
   local settings="${1:-$HOME/.claude/settings.json}"
-  local i
+  local i st
   local -a marketplaces plugins
+  local quiet_patterns='Refreshing marketplace cache|Successfully updated marketplace|Checking for updates for plugin|is already at the latest version'
 
   marketplaces=("${(@f)$(jq -r '.extraKnownMarketplaces // {} | keys[]' "$settings")}")
   for i in "${marketplaces[@]}"; do
     [[ -n "$i" ]] || continue
-    claude plugin marketplace update "$i"
+    claude plugin marketplace update "$i" | grep -Ev "$quiet_patterns"
+    st=$pipestatus[1]
+    (( st == 0 )) || echo "update_claude_plugins: marketplace update failed: $i (exit $st)" >&2
   done
 
   plugins=("${(@f)$(jq -r '.enabledPlugins // {} | to_entries[] | select(.value == true or ((.value | type) == "object" and .value.enabled == true)) | .key' "$settings")}")
   for i in "${plugins[@]}"; do
     [[ -n "$i" ]] || continue
-    claude plugin update "$i"
+    claude plugin update "$i" | grep -Ev "$quiet_patterns"
+    st=$pipestatus[1]
+    (( st == 0 )) || echo "update_claude_plugins: plugin update failed: $i (exit $st)" >&2
   done
 }
 
