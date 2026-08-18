@@ -381,6 +381,16 @@ profiles: ## List every profile in the repo, marking the ones this host opts int
 # Processing/Done lines for a tier that removes nothing, when VERBOSE is
 # unset. Banner and runner lines stay in lockstep: a tier prints all of them
 # or none of them.
+#
+# Both loops are failure-TOLERANT but not failure-SILENT, the same posture
+# `install` takes: one tier's non-zero runner exit does not abort the walk
+# (a later tier's removals are independent of an earlier tier's), but every
+# such tier is accumulated, named in an end-of-run summary, and makes the
+# loop exit non-zero. Without the accumulator the loop's trailing `echo` was
+# the last command and supplied the recipe's exit status, so a run in which
+# every tier failed still reported success to `make uninstall`,
+# `make remove-and-purge`, and to `make update`'s `|| FAIL=1` -- the exact
+# partially-failed run remove_runner.sh's non-zero exit exists to signal.
 
 uninstall: ## Apply every tier's [profile] uninstall array, in tier order
 	@set -euo pipefail
@@ -393,11 +403,19 @@ uninstall-dry-run: ## Print what `make uninstall` would do without making any ch
 .PHONY: _uninstall_loop
 _uninstall_loop:
 	@set -uo pipefail; \
+	failed=""; \
 	for tier in $(TIERS); do \
 		case " $(REMOVE_SKIP_TIERS) " in *" $$tier "*) continue;; esac; \
 		$(BASH_BIN) $(REMOVE_RUNNER) "$$tier" --mode=uninstall \
-			--banner="==> Applying Uninstall: $$tier" $(UNINSTALL_DRY_RUN); \
+			--banner="==> Applying Uninstall: $$tier" $(UNINSTALL_DRY_RUN) \
+			|| failed="$$failed $$tier"; \
 	done; \
+	if [ -n "$$failed" ]; then \
+		echo "==> The following tiers' uninstall arrays failed:"; \
+		for s in $$failed; do echo "  - $$s"; done; \
+		echo "All other tiers were processed. Re-run 'make uninstall' after resolving the above."; \
+		exit 1; \
+	fi; \
 	echo "All tiers' uninstall arrays processed."
 
 remove-and-purge: ## Apply every tier's [profile] purge array, in tier order (--zap casks)
@@ -411,11 +429,19 @@ remove-and-purge-dry-run: ## Print what `make remove-and-purge` would do without
 .PHONY: _remove_and_purge_loop
 _remove_and_purge_loop:
 	@set -uo pipefail; \
+	failed=""; \
 	for tier in $(TIERS); do \
 		case " $(REMOVE_SKIP_TIERS) " in *" $$tier "*) continue;; esac; \
 		$(BASH_BIN) $(REMOVE_RUNNER) "$$tier" --mode=purge \
-			--banner="==> Applying RemoveAndPurge: $$tier" $(PURGE_DRY_RUN); \
+			--banner="==> Applying RemoveAndPurge: $$tier" $(PURGE_DRY_RUN) \
+			|| failed="$$failed $$tier"; \
 	done; \
+	if [ -n "$$failed" ]; then \
+		echo "==> The following tiers' purge arrays failed:"; \
+		for s in $$failed; do echo "  - $$s"; done; \
+		echo "All other tiers were processed. Re-run 'make remove-and-purge' after resolving the above."; \
+		exit 1; \
+	fi; \
 	echo "All tiers' purge arrays processed."
 
 # Note: the sed pattern extracting cask names from "already an App" errors depends on
@@ -459,7 +485,13 @@ _remove_and_purge_loop:
 # branch: the removal loops walk $(TIERS), which does not contain the tier
 # there, so naming it in the skip list is inert for them; what the
 # assignment actually buys is the `[ -z "$$VM_SKIP" ]` guard below holding
-# back both ~/.zshrc rewrites.
+# back both ~/.zshrc rewrites AND the `versions-update` / `versions-cleanup`
+# steps. Those two drive mise directly -- scripts/versions_setup.sh calls
+# `require_mise || exit 1` ahead of its mode dispatch -- so on a host with no
+# mise they cannot succeed, and running them unconditionally made every
+# `make update` on a non-opted-in host exit non-zero forever. `VM_SKIP`
+# empty is exactly "opted in AND mise reachable", which is the one state in
+# which driving mise is meaningful, so all four steps share that one guard.
 update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed tool versions, then apply every tier's uninstall and purge arrays
 	@FAIL=0; \
 	echo "==> Updating Homebrew..."; \
@@ -500,10 +532,12 @@ update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed too
 		VM_SKIP="$(VM_TIER)"; \
 		echo "==> Skipping the $(VM_PROFILE) tier: this host does not opt into it."; \
 	fi; \
-	echo "==> Updating mise-managed tools..."; \
-	$(MAKE) -s versions-update || FAIL=1; \
-	echo "==> Pruning unused mise-managed versions..."; \
-	$(MAKE) -s versions-cleanup || FAIL=1; \
+	if [ -z "$$VM_SKIP" ]; then \
+		echo "==> Updating mise-managed tools..."; \
+		$(MAKE) -s versions-update || FAIL=1; \
+		echo "==> Pruning unused mise-managed versions..."; \
+		$(MAKE) -s versions-cleanup || FAIL=1; \
+	fi; \
 	echo "==> Updating ~/.claude/ from the global Claude config repo..."; \
 	if [ -x "scripts/claude_repo_setup.sh" ]; then $(BASH_BIN) scripts/claude_repo_setup.sh update || FAIL=1; else echo "scripts/claude_repo_setup.sh not found or not executable"; fi; \
 	echo "==> Applying every tier's uninstall array..."; \

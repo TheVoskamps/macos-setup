@@ -138,10 +138,75 @@ order_test() {
     "the version-managers tier apply is gated on the host's opt-in"
   ok_before "$recipe" 'if [ -n "$(VM_OPTED_IN)" ]; then' "$vm_apply" \
     "the opt-in gate precedes the version-managers tier apply"
+
+  # versions-update / versions-cleanup drive mise directly, and
+  # scripts/versions_setup.sh calls `require_mise || exit 1` ahead of its
+  # mode dispatch. Run unconditionally they made every `make update` on a
+  # non-opted-in (and therefore mise-less) host exit non-zero forever, which
+  # is exactly what the opt-in path is supposed to leave alone. They share
+  # the VM_SKIP guard -- empty VM_SKIP is "opted in AND mise reachable".
+  local vu_line vc_line guard_line fi_line
+  vu_line="$(grep -nF -- '-s versions-update' <<<"$recipe" | head -1 | cut -d: -f1)"
+  vc_line="$(grep -nF -- '-s versions-cleanup' <<<"$recipe" | head -1 | cut -d: -f1)"
+  guard_line="$(grep -nF 'VM_SKIP' <<<"$recipe" | grep -F 'if [ -z' \
+    | awk -F: -v e="${vu_line:-0}" '$1 < e { l = $1 } END { if (l) print l }')"
+  fi_line="$(awk 'NR>'"${guard_line:-0}"' && /^\t*fi; \\$/ { print NR; exit }' <<<"$recipe")"
+  ok "$([[ -n $guard_line && -n $vu_line && -n $vc_line && -n $fi_line \
+      && $guard_line -lt $vu_line && $vc_line -lt $fi_line ]] && echo 0 || echo 1)" \
+    "versions-update and versions-cleanup sit inside a VM_SKIP guard (guard@${guard_line:-none} vu@${vu_line:-none} vc@${vc_line:-none} fi@${fi_line:-none})"
 }
 
 # ---------------------------------------------------------------------
-# Block 2: REMOVE_SKIP_BASENAMES in the real removal loops.
+# Block 1b: the removal loops surface a failed tier.
+#
+# Each loop walks every tier and must NOT abort on the first failure --
+# a later tier's removals are independent of an earlier tier's -- but it
+# must still exit non-zero, or `make uninstall`, `make remove-and-purge`
+# and `make update`'s `|| FAIL=1` all read a partially-failed run as
+# success. That is what remove_runner.sh's non-zero exit is for.
+# ---------------------------------------------------------------------
+loop_failure_test() {
+  local mode out rc root host_dir stub named
+  for mode in uninstall remove-and-purge; do
+    root="$(make_repo)"
+    host_dir="$(mktemp -d)"
+    printf 'profiles = ["version-managers", "tools"]\n' > "$host_dir/config.toml"
+    # A runner that fails for EVERY tier, so both the accumulation and the
+    # keep-walking behavior are observable in one run.
+    stub="$root/scripts/failing_runner.sh"
+    printf '#!/bin/bash\nexit 7\n' >"$stub"
+    chmod +x "$stub"
+
+    out="$(cd "$root" && MACOS_SETUP_HOST_DIR="$host_dir" \
+      make -s "$mode" REMOVE_RUNNER="scripts/failing_runner.sh" 2>/dev/null)"; rc=$?
+
+    ok "$([[ $rc -ne 0 ]] && echo 0 || echo 1)" \
+      "make $mode exits non-zero when a tier's runner fails (rc=$rc)"
+    ok_contains "$out" "failed:" \
+      "make $mode names the failed tiers in a summary"
+    # Failure-TOLERANT, not abort-on-first: every tier in the walk is
+    # attempted, so both profile tiers show up in the summary.
+    ok_contains "$out" "  - profiles/version-managers" \
+      "make $mode attempted the first failing tier"
+    ok_contains "$out" "  - profiles/tools" \
+      "make $mode kept walking to a later tier after the first failure"
+    named="$(grep -c '^  - ' <<<"$out")"
+    ok "$([[ ${named:-0} -gt 1 ]] && echo 0 || echo 1)" \
+      "make $mode summary names more than one tier (named=$named)"
+
+    rm -rf "$root" "$host_dir"
+  done
+
+  # A clean run still reports success, so the accumulator did not turn every
+  # run non-zero.
+  run_make "uninstall" ""
+  ok "$RUN_RC" "make uninstall still exits zero when no tier fails"
+  ok_contains "$RUN_OUT" "All tiers' uninstall arrays processed." \
+    "a clean uninstall run still prints its success line"
+}
+
+# ---------------------------------------------------------------------
+# Block 2: REMOVE_SKIP_TIERS in the real removal loops.
 # ---------------------------------------------------------------------
 
 # A stub `brew` that reports nothing installed, so the runner only ever
@@ -243,6 +308,8 @@ skip_test() {
 
 echo "=== Block 1: update recipe ordering ==="
 order_test
+echo "=== Block 1b: the removal loops surface a failed tier ==="
+loop_failure_test
 echo "=== Block 2: REMOVE_SKIP_TIERS in the removal loops ==="
 skip_test
 

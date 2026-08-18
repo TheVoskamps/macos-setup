@@ -685,6 +685,14 @@ uninstalled with `--zap` (also removes the cask's declared
 user data). `make remove-and-purge-dry-run` is the dry-run
 companion.
 
+Both removal loops are **failure-tolerant but not
+failure-silent**, the same posture `make install` takes: a
+tier whose `remove_runner.sh` returns non-zero does not
+abort the walk, but it is accumulated, named in an
+end-of-run summary, and makes the loop exit non-zero — so
+`make uninstall`, `make remove-and-purge`, and `make
+update`'s `|| FAIL=1` all see a partially-failed run.
+
 The removal paths are also **quiet by default about tiers
 that remove nothing** (mirroring the install gating above).
 Nearly every tier removes nothing, so a `make update` (which
@@ -797,10 +805,23 @@ reaches the tier only as one iteration of its tier walk --
 while `update`, which applies the tier explicitly outside
 that walk, spells the same test out as the `VM_OPTED_IN`
 Makefile variable and skips the tier apply, both
-`~/.zshrc` rewrites, and the asdf/direnv removal on a host
-that did not opt in. That is a normal configuration, not a
-failure: it prints one line and leaves the exit status
-alone.
+`~/.zshrc` rewrites, the `versions-update` /
+`versions-cleanup` steps, and the asdf/direnv removal on a
+host that did not opt in. That is a normal configuration,
+not a failure: it prints one line and leaves the exit
+status alone. The `versions-*` steps need that gate because
+`scripts/versions_setup.sh` calls `require_mise || exit 1`
+ahead of its mode dispatch, so on a mise-less host they
+cannot succeed and
+running them unconditionally made every `make update`
+there exit non-zero forever.
+One `~/.zshrc` write is NOT gated and is reached on every
+host: `shell_setup.sh` is a CORE-tier `post_install`, so
+`make install` / `make core` always run
+`ensure_mise_zshrc_lines.sh`, whose shims-`PATH` export is
+deliberately ungated (an entry naming a directory that does
+not exist is inert). Only the `mise activate` line is gated
+on a reachable mise. See `docs/VERSION_MANAGEMENT.md`.
 `make profile version-managers` does ONLY the install
 piece -- per-profile application installs, it does not
 remove. Driving it by hand is

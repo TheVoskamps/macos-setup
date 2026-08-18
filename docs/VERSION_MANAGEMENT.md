@@ -213,19 +213,46 @@ step is what carries a host that has never run `make install`:
 installs an absent one, so without it `update` would remove asdf and
 direnv and put nothing in their place.
 
-**Neither path touches a host that did not opt in.** Everything above
-is conditional on `version-managers` appearing in the host's `profiles`
-array. `make install` gets that for free: it reaches the tier only as
-one iteration of its tier walk, and a host that does not list the
-profile has no such iteration. `make update` applies the tier
+**The cutover proper skips a host that did not opt in.** Everything
+above is conditional on `version-managers` appearing in the host's
+`profiles` array. `make install` gets that for free: it reaches the
+tier only as one iteration of its tier walk, and a host that does not
+list the profile has no such iteration. `make update` applies the tier
 explicitly, outside any walk, so it spells the same test out as the
 `VM_OPTED_IN` Makefile variable and skips the tier apply, both
-`~/.zshrc` rewrites, and the removal of asdf/direnv when the host is
-not opted in. That is a normal configuration, not a failure: the step
-prints one line and the run's exit status is unaffected. A host that
-never asked for `version-managers` therefore never gets mise
-installed, never gets its global mise config written, and never has
-its `~/.zshrc` rewritten — by either path.
+`~/.zshrc` rewrites, the `versions-update` / `versions-cleanup` steps,
+and the removal of asdf/direnv when the host is not opted in. That is a
+normal configuration, not a failure: the step prints one line and the
+run's exit status is unaffected. (The `versions-*` steps share that
+gate for a concrete reason: they drive mise directly and
+`scripts/versions_setup.sh` calls `require_mise || exit 1` ahead of its
+mode dispatch, so on a mise-less host running them unconditionally
+made every `make update` exit non-zero forever.) A host that never
+asked for `version-managers` therefore never gets mise installed and
+never gets its global mise config written.
+
+**One exception, deliberate: the shims `PATH` line.**
+`scripts/ensure_mise_zshrc_lines.sh` is reached on every host, not just
+opted-in ones, because it is called by `scripts/shell_setup.sh` — a
+**core-tier** `post_install` action, so `make install` and `make core`
+run it whatever the host's `profiles` array says. (`make update` does
+not: it calls the script directly, under the `VM_OPTED_IN` gate above,
+and never runs `shell_setup.sh`.) Down that core-tier path a
+non-opted-in host does get two `~/.zshrc` edits:
+
+- `strip_asdf_zshrc_lines.sh` removes the asdf/direnv init lines this
+  repo once wrote. A no-op on a host that never had them.
+- `ensure_mise_zshrc_lines.sh` appends the shims `PATH` export. That
+  line is **ungated on purpose** — see the script's own header: a
+  `PATH` entry naming a directory that does not exist is inert, and it
+  is correct the moment mise lands. Its companion
+  `eval "$(mise activate zsh)"` IS gated on a reachable mise, so the
+  line that would error on every shell startup is the one withheld.
+
+So the accurate claim is narrower than "never rewritten": a
+non-opted-in host gets an inert `PATH` entry and no activation line,
+and it never gets mise, the global mise config, or an asdf/direnv
+removal.
 
 **Install strictly precedes remove, and the removal is guarded.**
 On an opted-in host, both paths probe for a reachable mise immediately
