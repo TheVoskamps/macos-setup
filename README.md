@@ -45,7 +45,7 @@ profiles it opts into.
 
 ## Quick Start (Recommended)
 
-### Step 1: Bootstrap Your Machine
+### Bootstrap Your Machine
 
 Download and run the bootstrap script from any location:
 
@@ -77,7 +77,7 @@ bash ./bootstrap.sh
 > for when you *do* need SSH auth (pushing to this repo,
 > cloning private repos).
 
-### Step 2: Install Everything
+### Install Everything
 
 ```bash
 cd macos-setup
@@ -594,9 +594,10 @@ profiles/
 │                               # uninstall / purge (per-tier), plus any
 │                               # [claude]/[mailer]/[cron] overrides
 │                               # (single-winner per section)
-├── claude-code-aliases/        # A "no-software" profile: mostly an
-│   ├── aliases.zsh             # aliases.zsh (the cr + cr-repo Claude
-│   └── Brewfile                # wrappers) plus the jq those need
+├── claude-code-aliases/        # Mostly an aliases.zsh: the cr +
+│   ├── aliases.zsh             # cr-repo Claude wrappers and the
+│   └── Brewfile                # save/load_claude_auth account
+│                               # switchers, plus the jq those need
 ├── aws/                        # …40 more single-purpose profiles
 └── …                           #   (databases, web, plex, yubikey, …)
 

@@ -86,10 +86,10 @@ be noticeable.
     variant that requires an existing repo with an `origin` remote and
     errors otherwise). The same profile carries `save_claude_auth` /
     `load_claude_auth` for switching between Claude Code Max accounts
-    (see "Multiple Claude Code accounts" below). A profile may carry an
-    `aliases.zsh` and nothing
-    else (a "no-software" profile such as `claude-code-aliases`, which
-    has no `Brewfile`) — opting into it just contributes its
+    (see "Multiple Claude Code accounts" below). A profile may exist
+    mostly to carry an `aliases.zsh` — `claude-code-aliases` ships
+    only that file plus a `Brewfile` declaring the `jq` its
+    functions parse JSON with; opting into it mainly contributes its
     aliases to the aggregate.
   - **host tier** — only genuinely host-specific entries (e.g. an
     `icloud` shortcut to a machine's iCloud Drive path).
@@ -130,7 +130,7 @@ save_claude_auth [--account NAME] [--force]   # back up the live login
 load_claude_auth [--account NAME] [--force]   # restore a saved login
 ```
 
-There are two kinds of profile:
+The kinds of profile:
 
 - **The built-in default** — used automatically when `--account` is
   omitted, on both save and load. It is stored exactly like any named
@@ -167,9 +167,9 @@ Behavior worth knowing:
   sessions before switching.
 
 Switching accounts is an explicit step before launching Claude — it is
-not a flag on `cr` or the other launchers. `jq` (core tier) and the
-macOS `security` built-in are the only dependencies, so the profile
-stays no-software. Covered by
+not a flag on `cr` or the other launchers. The pair adds no new
+dependency: `jq` is already declared (by the core tier and by this
+profile's own `Brewfile`) and `security` ships with macOS. Covered by
 `scripts/test/save_load_claude_auth_test.zsh`, which stubs `security`
 and points `HOME` at a temp dir so the real Keychain and
 `~/.claude.json` are never touched.

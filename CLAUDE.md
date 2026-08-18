@@ -352,7 +352,7 @@ calls are **non-fatal**: if the `claude` CLI is not on PATH, if
 predating the plugins refactor), or if `plugins.sh` exits non-zero,
 the sync prints a warning and is skipped/ignored rather than aborting
 `make install` / `make update` (same posture as the
-`git pull` step). The two standalone targets `claude-plugins-install`
+`git pull` step). The standalone targets `claude-plugins-install`
 / `claude-plugins-update` drive the same code path directly and DO
 surface a `plugins.sh` non-zero exit (the missing-binary /
 missing-script guards still warn-and-skip with success). Both the
@@ -1091,10 +1091,11 @@ former in-repo `logs/` directory. This is macOS-native
     is already installed by the default tier for
     bootstrap). The `cr` Claude-CLI wrapper and its
     `cr-repo` companion live in
-    `profiles/claude-code-aliases/aliases.zsh` — a
-    no-software profile that exists only to carry those
-    functions, opted into alongside a `claude`/`claude-latest`
-    profile. `cr` works from any cwd: when the cwd is inside an
+    `profiles/claude-code-aliases/aliases.zsh` — a profile
+    that exists to carry those functions (its `Brewfile`
+    declares only the `jq` they need), opted into
+    alongside a `claude`/`claude-latest` profile. `cr` works
+    from any cwd: when the cwd is inside an
     existing repo (root OR a subdirectory) it `cd`s to the repo
     root and derives the session name from `origin`; when the cwd
     is outside any repo it `git init`s a throwaway repo, runs
@@ -1109,7 +1110,7 @@ former in-repo `logs/` directory. This is macOS-native
     `Claude Code-credentials`) and the `oauthAccount` block of
     `~/.claude.json` are swapped, backed up per account as
     `Claude Code-credentials-<account>` and the `0400` sidecar
-    `~/.claude.json.<account>`. Two profile kinds: the built-in
+    `~/.claude.json.<account>`. Profile kinds: the built-in
     default (used when `--account` is omitted; the name `default`
     is reserved and can never be typed) and named profiles
     (explicit `--account NAME`, validated against
