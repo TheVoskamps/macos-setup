@@ -12,23 +12,32 @@ source "$SCRIPT_DIR/config_common.sh"
 
 COMPUTER_NAME_LOWER="$(get_hostname)"
 
-# Ordered profile list for this host (lowest priority first).
-PROFILES=()
-while IFS= read -r _p; do PROFILES+=("$_p"); done < <(get_profiles "$REPO_ROOT")
+# Ordered profile list for this host (lowest priority first), read in the
+# tagged form "<config.toml path>\t<profile name>" so every diagnostic
+# below can name the file that declares the offending entry. Either tier
+# can contribute a name — the host tier's config.toml or the
+# repo-tracked default/config.toml — so a fixed filename in the message
+# would send the user to the wrong file. Split on the FIRST tab only: a
+# rejected name may itself contain one.
+tagged_profiles=()
+while IFS= read -r _line; do
+  [[ -n "$_line" ]] || continue
+  tagged_profiles+=("$_line")
+done < <(get_profiles_tagged "$REPO_ROOT")
 
 # Hard error: a profile name that get_profiles had to drop. Those names
 # only warn on the apply paths (an abort would fire at Makefile parse
 # time, before any prerequisite could report it), so verify is where the
 # rejection becomes fatal.
 invalid_profiles=()
-while IFS= read -r _p; do
-  [[ -n "$_p" ]] && invalid_profiles+=("$_p")
-done < <(get_invalid_profiles "$REPO_ROOT")
+while IFS= read -r _line; do
+  [[ -n "$_line" ]] && invalid_profiles+=("$_line")
+done < <(get_invalid_profiles_tagged "$REPO_ROOT")
 if [[ ${#invalid_profiles[@]} -gt 0 ]]; then
-  echo "[verify] ERROR: host '$COMPUTER_NAME_LOWER' lists unusable profile name(s) in the 'profiles' array of $(host_tier_dir)/config.toml." >&2
+  echo "[verify] ERROR: host '$COMPUTER_NAME_LOWER' has unusable profile name(s) in a 'profiles' array; each is shown below with the config.toml that declares it." >&2
   echo "[verify] A profile name may contain only letters, digits, '.', '_' and '-': it is both a directory name and a whitespace-delimited word in the Makefile's tier list." >&2
-  for _p in "${invalid_profiles[@]}"; do
-    echo "[verify]   - [$_p]" >&2
+  for _line in "${invalid_profiles[@]}"; do
+    echo "[verify]   - [${_line#*$'\t'}]  (in ${_line%%$'\t'*})" >&2
   done
   exit 1
 fi
@@ -38,15 +47,16 @@ fi
 # is a configuration bug — verify fails loudly rather than silently
 # falling back. (install_filter.sh warns at install time instead.)
 unknown_profiles=()
-for _p in ${PROFILES[@]+"${PROFILES[@]}"}; do
-  if [[ ! -d "$REPO_ROOT/profiles/$_p" ]]; then
-    unknown_profiles+=("$_p")
+for _line in ${tagged_profiles[@]+"${tagged_profiles[@]}"}; do
+  if [[ ! -d "$REPO_ROOT/profiles/${_line#*$'\t'}" ]]; then
+    unknown_profiles+=("$_line")
   fi
 done
 if [[ ${#unknown_profiles[@]} -gt 0 ]]; then
-  echo "[verify] ERROR: host '$COMPUTER_NAME_LOWER' lists unknown profile(s) in the 'profiles' array of $(host_tier_dir)/config.toml:" >&2
-  for _p in "${unknown_profiles[@]}"; do
-    echo "[verify]   - $_p  (no profiles/$_p/ directory)" >&2
+  echo "[verify] ERROR: host '$COMPUTER_NAME_LOWER' names unknown profile(s) in a 'profiles' array; each is shown below with the config.toml that declares it:" >&2
+  for _line in "${unknown_profiles[@]}"; do
+    _p="${_line#*$'\t'}"
+    echo "[verify]   - $_p  (no profiles/$_p/ directory; in ${_line%%$'\t'*})" >&2
   done
   exit 1
 fi

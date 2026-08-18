@@ -51,7 +51,11 @@ interpreter its own later steps need; see
   — the one read both walks go through — drops a name that fails the
   pattern and warns on stderr (visible during `make`, since the
   `PROFILES` expansion no longer discards it); `make verify` turns the
-  same rejection into a hard error.
+  same rejection into a hard error. Both diagnostics print the rejected
+  name alongside the `config.toml` that declares it, because either the
+  external host tier's file or the repo-tracked `default/config.toml`
+  can contribute a name — the profile list is read from both tiers and
+  the default tier's array is prepended.
 
   Every apply path — `install`, `core`, and `profile` — routes
   through `scripts/apply_tier.sh`, so "what applying a tier means" lives

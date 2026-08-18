@@ -634,6 +634,23 @@ the same rejection into a hard error via
 deliberate: the Makefile expands `PROFILES` at parse time,
 before any prerequisite could report an abort.
 
+Every profile-name diagnostic — the `get_profiles` warning,
+`make verify`'s unusable-name and unknown-profile errors,
+and `install_filter.sh`'s install-time unknown-profile
+warning — prints the offending name next to the
+`config.toml` that declares it. Both the external host
+tier's file and the repo-tracked `default/config.toml`
+feed the array, so a fixed filename in the message would
+send the user to the wrong file. The read layer carries
+the attribution: `read_raw_profiles_tagged` emits
+`<config.toml path><TAB><name>` and is the primitive the
+plain-name readers (`read_raw_profiles`, `get_profiles`,
+`get_invalid_profiles`) and their tagged counterparts
+(`get_profiles_tagged`, `get_invalid_profiles_tagged`) are
+built from. Dedup-keeping-last runs on the NAME, so a host
+re-listing a default name takes over its attribution along
+with its position.
+
 Machines with no `profiles` array skip the profile tier
 entirely and fall back directly from the external host
 tier to default (two-tier behavior, fully backward

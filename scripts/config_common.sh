@@ -373,25 +373,51 @@ profile_name_is_valid() {
 # ones (get_invalid_profiles); both partition this one read, so the
 # prepend/dedup rules live here once.
 #
+# Because BOTH tiers can contribute a name, every diagnostic about a bad
+# name has to say WHICH config.toml declared it — naming the host tier
+# unconditionally sends the user hunting through the wrong file when the
+# offending name came from the repo-tracked default/config.toml. So the
+# TAGGED form below is the primitive: it emits
+# "<config.toml path>\t<profile name>" per surviving entry, and the
+# plain-name reader drops the tag.
+#
 # `repo_root` locates the default tier's config.toml; the host tier is
 # the external host_tier_dir.
-read_raw_profiles() {
+read_raw_profiles_tagged() {
     local repo_root="$1"
 
     local default_toml host_toml
     default_toml="$(config_toml_path "$repo_root/default")"
     host_toml="$(config_toml_path "$(host_tier_dir)")"
 
-    # Read each tier's profiles array, one entry per line.
-    local default_list host_list
-    default_list="$(read_toml_array "$default_toml" "profiles")"
-    host_list="$(read_toml_array "$host_toml" "profiles")"
+    # Read each tier's profiles array, one entry per line, tagging each
+    # entry with the file it came from. Default first, host second, then
+    # dedup keeping the last occurrence of each NAME — so a host re-listing
+    # a default name takes over both the position and the attribution.
+    local toml n
+    {
+        for toml in "$default_toml" "$host_toml"; do
+            while IFS= read -r n; do
+                # Drop blank / all-whitespace entries, the same entries
+                # dedup_keep_last's `NF` guard dropped before tagging.
+                [[ -n "${n//[[:space:]]/}" ]] || continue
+                printf '%s\t%s\n' "$toml" "$n"
+            done < <(read_toml_array "$toml" "profiles")
+        done
+    } | dedup_tagged_keep_last
+}
 
-    # Concatenate default-first, host-second, then dedup keeping the last
-    # occurrence of each name.
-    local combined
-    combined="$(printf '%s\n%s\n' "$default_list" "$host_list")"
-    dedup_keep_last <<< "$combined"
+# The plain-name view of read_raw_profiles_tagged: one profile name per
+# line, tag stripped.
+#
+# A rejected name may itself contain a tab, so every reader of a tagged
+# line splits on the FIRST tab only: `${line%%<tab>*}` is the file,
+# `${line#*<tab>}` is the name.
+read_raw_profiles() {
+    local line
+    while IFS= read -r line; do
+        printf '%s\n' "${line#*$'\t'}"
+    done < <(read_raw_profiles_tagged "$1")
 }
 
 # Get the ordered list of profiles for the current host.
@@ -407,25 +433,42 @@ read_raw_profiles() {
 # missing dasel. `make verify` turns the same rejection into a hard
 # error via get_invalid_profiles, which is where a user goes to have
 # their config checked.
+#
+# The warning names, per rejected entry, the config.toml that declares
+# it: either tier can contribute a name, so a fixed filename would send
+# the user to the wrong file half the time.
 get_profiles() {
     local repo_root="$1"
 
-    local p rejected=()
-    while IFS= read -r p; do
-        [[ -n "$p" ]] || continue
-        if profile_name_is_valid "$p"; then
-            printf '%s\n' "$p"
+    local line rejected=()
+    while IFS= read -r line; do
+        if profile_name_is_valid "${line#*$'\t'}"; then
+            printf '%s\n' "${line#*$'\t'}"
         else
-            rejected+=("$p")
+            rejected+=("$line")
         fi
-    done < <(read_raw_profiles "$repo_root")
+    done < <(read_raw_profiles_tagged "$repo_root")
 
     if [[ ${#rejected[@]} -gt 0 ]]; then
-        echo "Warning: ignoring unusable profile name(s) in the 'profiles' array of $(host_tier_dir)/config.toml (allowed: letters, digits, '.', '_', '-'):" >&2
-        for p in "${rejected[@]}"; do
-            echo "Warning:   - [$p]" >&2
+        echo "Warning: ignoring unusable profile name(s) from a 'profiles' array (allowed: letters, digits, '.', '_', '-'); each is shown with the config.toml that declares it:" >&2
+        for line in "${rejected[@]}"; do
+            echo "Warning:   - [${line#*$'\t'}]  (in ${line%%$'\t'*})" >&2
         done
     fi
+}
+
+# The tagged view of get_profiles: "<config.toml path>\t<profile name>"
+# for each USABLE name, in the same order, and silent (no warning — the
+# rejected entries are get_invalid_profiles_tagged's business). A caller
+# that must attribute a surviving name to a file — `make verify`
+# reporting a name with no `profiles/<name>/` directory — reads this
+# instead of get_profiles.
+get_profiles_tagged() {
+    local repo_root="$1"
+    local line
+    while IFS= read -r line; do
+        profile_name_is_valid "${line#*$'\t'}" && printf '%s\n' "$line"
+    done < <(read_raw_profiles_tagged "$repo_root")
 }
 
 # The complement of get_profiles: the names it dropped, one per line.
@@ -433,11 +476,21 @@ get_profiles() {
 # otherwise only warn.
 get_invalid_profiles() {
     local repo_root="$1"
-    local p
-    while IFS= read -r p; do
-        [[ -n "$p" ]] || continue
-        profile_name_is_valid "$p" || printf '%s\n' "$p"
-    done < <(read_raw_profiles "$repo_root")
+    local line
+    while IFS= read -r line; do
+        printf '%s\n' "${line#*$'\t'}"
+    done < <(get_invalid_profiles_tagged "$repo_root")
+}
+
+# The tagged view of get_invalid_profiles: "<config.toml path>\t<name>"
+# for each rejected name, so `make verify` can name the file the user has
+# to edit rather than guessing at the host tier.
+get_invalid_profiles_tagged() {
+    local repo_root="$1"
+    local line
+    while IFS= read -r line; do
+        profile_name_is_valid "${line#*$'\t'}" || printf '%s\n' "$line"
+    done < <(read_raw_profiles_tagged "$repo_root")
 }
 
 # Read a TOML array as newline-separated entries via dasel (v3 contract).
@@ -618,6 +671,20 @@ parse_removal_entry() {
 dedup_keep_last() {
     awk 'NF { line[NR]=$0; last[$0]=NR }
          END { for (i=1;i<=NR;i++) if (last[line[i]]==i) print line[i] }'
+}
+
+# The tagged counterpart of dedup_keep_last, for "<file>\t<name>" lines:
+# dedup on the NAME (everything after the first tab) while emitting the
+# whole line, keeping the LAST occurrence of each name. Blank lines are
+# dropped. Used by read_raw_profiles_tagged, where two tiers can declare
+# the same profile name from different config.toml files and the winner
+# must carry its own tier's attribution.
+dedup_tagged_keep_last() {
+    awk 'NF {
+             n = $0; sub(/^[^\t]*\t/, "", n)
+             i++; line[i] = $0; name[i] = n; last[n] = i
+         }
+         END { for (j = 1; j <= i; j++) if (last[name[j]] == j) print line[j] }'
 }
 
 # Resolve a SINGLE-WINNER file: highest-priority tier wins.

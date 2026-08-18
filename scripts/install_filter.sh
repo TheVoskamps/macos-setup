@@ -95,17 +95,27 @@ if [[ "$HOST_DIR_ABS" != /* ]] && [[ -d "$HOST_DIR_ABS" ]]; then
 fi
 
 HOSTNAME_LOWER="$(get_hostname)"
-# Ordered profile list for this host (lowest priority first).
+# Ordered profile list for this host (lowest priority first), read in the
+# tagged form "<config.toml path>\t<profile name>" so the warning below
+# can name the file that declares the offending name — either the host
+# tier's config.toml or the repo-tracked default/config.toml. Split on
+# the FIRST tab only.
 PROFILES=()
-while IFS= read -r _p; do PROFILES+=("$_p"); done < <(get_profiles "$REPO_ROOT")
+tagged_profiles=()
+while IFS= read -r _line; do
+  [[ -n "$_line" ]] || continue
+  tagged_profiles+=("$_line")
+  PROFILES+=("${_line#*$'\t'}")
+done < <(get_profiles_tagged "$REPO_ROOT")
 
 # Warn (do NOT fail) at install time if a listed profile has no
 # matching profiles/<name>/ directory. `make verify` turns the same
 # condition into a hard error; install proceeds, just skipping the
 # missing tier.
-for _p in ${PROFILES[@]+"${PROFILES[@]}"}; do
+for _line in ${tagged_profiles[@]+"${tagged_profiles[@]}"}; do
+  _p="${_line#*$'\t'}"
   if [[ ! -d "$REPO_ROOT/profiles/$_p" ]]; then
-    echo "[install-filter] WARNING: host '$HOSTNAME_LOWER' lists unknown profile '$_p' (no profiles/$_p/ directory); skipping that tier" >&2
+    echo "[install-filter] WARNING: host '$HOSTNAME_LOWER' gets unknown profile '$_p' from ${_line%%$'\t'*} (no profiles/$_p/ directory); skipping that tier" >&2
   fi
 done
 

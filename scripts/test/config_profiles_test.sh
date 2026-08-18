@@ -129,6 +129,37 @@ resolver_tests() {
   ok "$(get_profiles "$ROOT" 2>/dev/null | paste -sd, -)" "ok-name.1_2" \
     "get_profiles: rejects make/shell metacharacters, keeps a valid name"
 
+  # --- Source attribution -------------------------------------------
+  # BOTH tiers can contribute a name, so every diagnostic about a bad
+  # name must name the config.toml that actually declares it. A bad name
+  # in the repo-tracked default/config.toml used to be reported against
+  # the external host tier's file, where the user would never find it.
+  write_profiles_toml "$ROOT/default" "bad name"
+  write_profiles_toml "$HOSTDIR" aws
+  ok "$(get_invalid_profiles_tagged "$ROOT")" \
+    "$(printf '%s\t%s' "$ROOT/default/config.toml" "bad name")" \
+    "get_invalid_profiles_tagged: attributes a default-tier name to default/config.toml"
+  if get_profiles "$ROOT" 2>&1 >/dev/null | grep -qF "$ROOT/default/config.toml"; then
+    echo "PASS: get_profiles warning names the default tier's config.toml"; ((pass++))
+  else
+    echo "FAIL: get_profiles warning should name $ROOT/default/config.toml"; ((fail++))
+  fi
+  # ... and a host-tier name is still attributed to the host tier.
+  write_profiles_toml "$HOSTDIR" aws "bad host name"
+  ok "$(get_invalid_profiles_tagged "$ROOT" | paste -sd@ -)" \
+    "$(printf '%s\t%s@%s\t%s' \
+        "$ROOT/default/config.toml" "bad name" \
+        "$HOSTDIR/config.toml" "bad host name")" \
+    "get_invalid_profiles_tagged: attributes each tier's name to its own file"
+  # A host re-listing a default name takes over the attribution, the same
+  # way it takes over the position (dedup-keeping-last).
+  write_profiles_toml "$ROOT/default" aws
+  write_profiles_toml "$HOSTDIR" aws
+  ok "$(get_profiles_tagged "$ROOT")" \
+    "$(printf '%s\t%s' "$HOSTDIR/config.toml" "aws")" \
+    "get_profiles_tagged: host re-listing a default name wins the attribution"
+  rm -f "$ROOT/default/config.toml"
+
   write_profiles_toml "$HOSTDIR" aws edwin-dev
 
   echo D > "$ROOT/default/x"
