@@ -55,7 +55,7 @@ Per-project, `mise.toml` is the config file. Add tools with
 node = "24.5.0"
 python = "3.13.2"
 java = "temurin-26.0.1+8"
-lua = "5.4"
+lua = "5.5"
 ```
 
 mise's prefix matching covers most of what the old
@@ -63,14 +63,6 @@ mise's prefix matching covers most of what the old
 Temurin JDK (jre builds are named `temurin-jre-*` and are not
 selected), so the old `filter` / `filter_exclude` keys have native
 equivalents.
-
-There is no native equivalent of the old `max_version` **ceiling**:
-`mise latest lua@5.4` returns the newest 5.4.x, which may be above a
-declared ceiling. That turned out not to matter here. The one ceiling
-the repo carried was `lua max_version = "5.4.7"`, whose recorded
-intent was "stay below Lua 5.5" — 5.4.7 was just the newest 5.4.x
-when it was written. `lua = "5.4"` is the faithful translation. If
-you ever need a true ceiling, use an exact pin.
 
 ### The LuaRocks pin
 
