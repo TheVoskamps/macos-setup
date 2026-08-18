@@ -60,7 +60,7 @@
 # [mailer] — generic SMTP relay settings for outgoing mail (msmtp).
 # msmtp is a relay client, not an MTA, so a relay account is required
 # (Gmail app-password, Fastmail, your ISP, your own AWS SES SMTP
-# credentials, etc.). Fill these in, then run 'make messaging' to
+# credentials, etc.). Fill these in, then run 'make core' to
 # generate ~/.msmtprc.
 # ---------------------------------------------------------------------
 # [mailer]

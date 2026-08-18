@@ -112,6 +112,17 @@ VERSIONS_SETUP := scripts/versions_setup.sh
 VM_PROFILE := version-managers
 VM_TIER    := profiles/$(VM_PROFILE)
 
+# Whether THIS host opts into that profile: non-empty when $(VM_PROFILE) is
+# in the host's ordered $(PROFILES) list, empty otherwise.
+#
+# `install` needs no such test -- it reaches the version-managers tier only
+# as one iteration of its $(TIERS) walk, and a host that does not list the
+# profile has no such iteration. `update` applies the tier EXPLICITLY,
+# outside any walk, so without this test it would install mise and mutate
+# the global mise config on every host, opted in or not. The two paths must
+# agree on which hosts get the cutover, so `update` gates on this.
+VM_OPTED_IN := $(filter $(VM_PROFILE),$(PROFILES))
+
 # The mise-reachability probe that gates the DESTRUCTIVE half of the
 # asdf -> mise cutover. Removing the old version manager on a host where
 # the replacement is not in place leaves that host with NO version
@@ -434,6 +445,18 @@ _remove_and_purge_loop:
 # leaving both in place -- and pointing ~/.zshrc at a mise that is not there
 # would error on every shell startup, which is the failure the strip exists
 # to prevent. That path warns and sets FAIL, so the run exits non-zero.
+#
+# The whole cutover is gated on $(VM_OPTED_IN) first: a host that does not
+# list `version-managers` in its `profiles` array never had mise installed
+# by `install` (that tier is simply absent from its $(TIERS) walk), so
+# `update` must not install it either, must not rewrite that host's
+# ~/.zshrc, and must not touch its global mise config. On such a host the
+# step prints one line and moves on -- it is a normal configuration, not a
+# failure, so FAIL is untouched. VM_SKIP is set to the tier anyway on that
+# branch: the removal loops walk $(TIERS), which does not contain the tier
+# there, so naming it in the skip list is inert for them; what the
+# assignment actually buys is the `[ -z "$$VM_SKIP" ]` guard below holding
+# back both ~/.zshrc rewrites.
 update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed tool versions, then apply every tier's uninstall and purge arrays
 	@FAIL=0; \
 	echo "==> Updating Homebrew..."; \
@@ -457,17 +480,22 @@ update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed too
 	fi; \
 	echo "==> Upgrading Mac App Store apps..."; \
 	if command -v mas >/dev/null 2>&1; then mas upgrade || FAIL=1; fi; \
-	echo "==> Applying the $(VM_PROFILE) tier ($(VM_TIER))..."; \
-	$(BASH_BIN) $(APPLY_TIER) "$(VM_TIER)" || FAIL=1; \
-	if $(MISE_REACHABLE); then \
-		VM_SKIP=""; \
+	if [ -n "$(VM_OPTED_IN)" ]; then \
+		echo "==> Applying the $(VM_PROFILE) tier ($(VM_TIER))..."; \
+		$(BASH_BIN) $(APPLY_TIER) "$(VM_TIER)" || FAIL=1; \
+		if $(MISE_REACHABLE); then \
+			VM_SKIP=""; \
+		else \
+			VM_SKIP="$(VM_TIER)"; \
+			echo "WARNING: mise is not reachable after the install step." >&2; \
+			echo "         Skipping the asdf/direnv removal ($(VM_TIER)) and the ~/.zshrc rewrites," >&2; \
+			echo "         so this host is not left with no version manager at all." >&2; \
+			echo "         Every other tier still applies. Fix the mise install and re-run 'make update'." >&2; \
+			FAIL=1; \
+		fi; \
 	else \
 		VM_SKIP="$(VM_TIER)"; \
-		echo "WARNING: mise is not reachable after the install step." >&2; \
-		echo "         Skipping the asdf/direnv removal ($(VM_TIER)) and the ~/.zshrc rewrites," >&2; \
-		echo "         so this host is not left with no version manager at all." >&2; \
-		echo "         Every other tier still applies. Fix the mise install and re-run 'make update'." >&2; \
-		FAIL=1; \
+		echo "==> Skipping the $(VM_PROFILE) tier: this host does not opt into it."; \
 	fi; \
 	echo "==> Updating mise-managed tools..."; \
 	$(MAKE) -s versions-update || FAIL=1; \

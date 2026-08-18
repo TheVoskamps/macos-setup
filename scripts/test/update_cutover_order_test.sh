@@ -127,6 +127,17 @@ order_test() {
   # The skip list names the version-managers tier only.
   ok_contains "$recipe" 'VM_SKIP="$(VM_TIER)"' \
     "the skip list is the version-managers tier"
+
+  # The cutover only runs on hosts that opted into the profile. `install`
+  # gets this for free -- it reaches the tier only as one iteration of its
+  # $(TIERS) walk -- but `update` applies the tier explicitly, so it has to
+  # spell the test out or it would install mise on every host.
+  ok "$(grep -q '^VM_OPTED_IN  *:= *\$(filter \$(VM_PROFILE),\$(PROFILES))$' "$MAKEFILE" && echo 0 || echo 1)" \
+    "VM_OPTED_IN tests this host's profiles list for the version-managers profile"
+  ok_contains "$recipe" 'if [ -n "$(VM_OPTED_IN)" ]; then' \
+    "the version-managers tier apply is gated on the host's opt-in"
+  ok_before "$recipe" 'if [ -n "$(VM_OPTED_IN)" ]; then' "$vm_apply" \
+    "the opt-in gate precedes the version-managers tier apply"
 }
 
 # ---------------------------------------------------------------------

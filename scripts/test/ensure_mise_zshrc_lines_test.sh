@@ -8,7 +8,7 @@
 # the cutover purely via `make update` ended with mise installed, the old
 # version manager gone, and no version manager wired into the interactive
 # shell — observed on a real host, whose ~/.zshrc had zero `mise` lines until
-# a manual `make shell`.
+# a manual `make shell_setup`.
 #
 # Block 1 (behavioral): the script itself — writes both lines, is idempotent,
 # and holds the activation line back when mise is unreachable.

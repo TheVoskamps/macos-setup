@@ -141,7 +141,7 @@ case5_home="$SANDBOX_BASE/case5/home"
 mk_fake_repo "$case5_old"
 mk_fake_home "$case5_old" "$case5_home"
 
-# Move repo, repoint the symlink (this simulates `make shell` rerun)
+# Move repo, repoint the symlink (this simulates a `make shell_setup` rerun)
 mkdir -p "$(dirname "$case5_new")"
 mv "$case5_old" "$case5_new"
 rm "$case5_home/.zsh-shared"

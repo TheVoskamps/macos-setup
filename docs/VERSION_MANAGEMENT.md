@@ -213,11 +213,25 @@ step is what carries a host that has never run `make install`:
 installs an absent one, so without it `update` would remove asdf and
 direnv and put nothing in their place.
 
+**Neither path touches a host that did not opt in.** Everything above
+is conditional on `version-managers` appearing in the host's `profiles`
+array. `make install` gets that for free: it reaches the tier only as
+one iteration of its tier walk, and a host that does not list the
+profile has no such iteration. `make update` applies the tier
+explicitly, outside any walk, so it spells the same test out as the
+`VM_OPTED_IN` Makefile variable and skips the tier apply, both
+`~/.zshrc` rewrites, and the removal of asdf/direnv when the host is
+not opted in. That is a normal configuration, not a failure: the step
+prints one line and the run's exit status is unaffected. A host that
+never asked for `version-managers` therefore never gets mise
+installed, never gets its global mise config written, and never has
+its `~/.zshrc` rewritten — by either path.
+
 **Install strictly precedes remove, and the removal is guarded.**
-Both paths probe for a reachable mise immediately before they remove
-anything, through one shared Makefile macro (`MISE_REACHABLE`), and
-hold the removal back when the probe fails — `brew bundle` failed,
-the host never opted into the `version-managers` profile, the binary
+On an opted-in host, both paths probe for a reachable mise immediately
+before they remove anything, through one shared Makefile macro
+(`MISE_REACHABLE`), and hold the removal back when the probe fails —
+`brew bundle` failed, the binary
 is off `PATH`. `make update` skips the `version-managers` tier in both
 removal loops and skips both `~/.zshrc` rewrites — pointing
 `~/.zshrc` at a mise that is not there would error on every shell

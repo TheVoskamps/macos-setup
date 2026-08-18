@@ -787,6 +787,16 @@ rewrites, while
 both warn and exit non-zero, and every other tier
 still applies. `scripts/test/install_cutover_guard_test.sh`
 fails if the `install`-side guard is removed.
+The whole cutover is conditional on the host opting into
+`version-managers`. `install` gets that for free -- it
+reaches the tier only as one iteration of its tier walk --
+while `update`, which applies the tier explicitly outside
+that walk, spells the same test out as the `VM_OPTED_IN`
+Makefile variable and skips the tier apply, both
+`~/.zshrc` rewrites, and the asdf/direnv removal on a host
+that did not opt in. That is a normal configuration, not a
+failure: it prints one line and leaves the exit status
+alone.
 `make profile version-managers` does ONLY the install
 piece -- per-profile application installs, it does not
 remove. Driving it by hand is

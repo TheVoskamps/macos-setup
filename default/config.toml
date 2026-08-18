@@ -52,7 +52,7 @@
 # credentials, etc.). This default tier carries the shared relay config
 # (host/port/from/keychain); each host overrides smtp_from with its own
 # machine-named address and (for SES machines) sets smtp_user. Run
-# 'make messaging' to generate ~/.msmtprc from the resolved values.
+# 'make core' to generate ~/.msmtprc from the resolved values.
 #
 # These are REAL, ACTIVE values: the default tier is the tier that
 # resolves at runtime, so it must carry working defaults — if it stayed
