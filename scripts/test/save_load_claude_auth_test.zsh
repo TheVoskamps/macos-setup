@@ -281,6 +281,81 @@ new_case () {
     fi
 )
 
+# --- Test 11: a failed Keychain backup write makes save fail loudly
+#     with nothing saved -- no sidecar, no "saved" message. ---------------
+(
+    eval "$(new_case)"; source "$PROFILE"; eval "$SECURITY_STUB"
+    functions[security_orig]=$functions[security]
+    security () {
+        [[ "$1" == "add-generic-password" ]] && return 1
+        security_orig "$@"
+    }
+    seed_login a@x.com uuid-a tok-a
+    err="$(save_claude_auth --account work 2>&1)"
+    if [[ $? -ne 0 && "$err" == *"FAILED"* && "$err" != *"saved 'work'"* \
+        && ! -e "$HOME/.claude.json.work" ]]; then
+        pass "save fails loudly on a Keychain write failure, writing no sidecar"
+    else
+        die "save with a failing Keychain write did not fail loudly with nothing saved"
+    fi
+)
+
+# --- Test 12: load with a corrupt ~/.claude.json refuses up front --
+#     nothing changed: Keychain untouched, JSON untouched, no temp
+#     leftover under $HOME. ------------------------------------------------
+(
+    eval "$(new_case)"; source "$PROFILE"; eval "$SECURITY_STUB"
+    seed_login a@x.com uuid-a tok-a
+    save_claude_auth --account work 2>/dev/null
+    print -- "not json" > "$HOME/.claude.json"
+    err="$(load_claude_auth --account work 2>&1)"
+    rc=$?
+    leftovers=( "$HOME"/.claude.json-new.*(N) )
+    if [[ $rc -ne 0 && "$err" == *"nothing changed"* \
+        && "$err" != *"switched to"* \
+        && "$(cat "$SEC_DIR/Claude Code-credentials")" == "tok-a" \
+        && "$(cat "$HOME/.claude.json")" == "not json" ]] \
+        && (( ${#leftovers} == 0 )); then
+        pass "load refuses a corrupt ~/.claude.json with nothing changed"
+    else
+        die "load with corrupt ~/.claude.json did not refuse cleanly"
+    fi
+)
+
+# --- Test 13: a failed live-Keychain write makes load fail loudly,
+#     leaving both halves unchanged. ---------------------------------------
+(
+    eval "$(new_case)"; source "$PROFILE"; eval "$SECURITY_STUB"
+    functions[security_orig]=$functions[security]
+    security () {
+        if [[ "$1" == "add-generic-password" ]]; then
+            local -i i
+            for (( i = 2; i <= $#; i++ )); do
+                if [[ "${@[i]}" == "-s" && "${@[i+1]}" == "Claude Code-credentials" ]]; then
+                    return 1
+                fi
+            done
+        fi
+        security_orig "$@"
+    }
+    seed_login a@x.com uuid-a tok-a
+    save_claude_auth --account work 2>/dev/null
+    seed_login b@x.com uuid-b tok-b
+    save_claude_auth --account other 2>/dev/null
+    err="$(load_claude_auth --account work 2>&1)"
+    rc=$?
+    leftovers=( "$HOME"/.claude.json-new.*(N) )
+    if [[ $rc -ne 0 && "$err" == *"both unchanged"* \
+        && "$err" != *"switched to"* \
+        && "$(cat "$SEC_DIR/Claude Code-credentials")" == "tok-b" \
+        && "$(jq -r '.oauthAccount.emailAddress' "$HOME/.claude.json")" == "b@x.com" ]] \
+        && (( ${#leftovers} == 0 )); then
+        pass "load fails loudly on a live-Keychain write failure, both halves unchanged"
+    else
+        die "load with a failing live-Keychain write did not fail cleanly"
+    fi
+)
+
 pass=( "$COUNT_DIR"/pass.*(N) )
 fail=( "$COUNT_DIR"/fail.*(N) )
 print

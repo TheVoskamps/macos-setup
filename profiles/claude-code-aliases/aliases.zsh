@@ -277,7 +277,14 @@ save_claude_auth () {
         return 1
     fi
 
-    security add-generic-password -U -s "Claude Code-credentials-${account}" -a "$USER" -w "$pw" >/dev/null
+    # The Keychain backup is written before the sidecar, and each write
+    # is checked: a failed write reports the state it actually left
+    # behind and returns non-zero, never the "saved" message.
+    if ! security add-generic-password -U -s "Claude Code-credentials-${account}" -a "$USER" -w "$pw" >/dev/null; then
+        unset pw
+        echo "save_claude_auth: writing the Keychain backup for '${account}' FAILED -- nothing was saved (no Keychain backup, no sidecar)" >&2
+        return 1
+    fi
     unset pw
 
     # The sidecar is created 0400 (read-only for the owner: it is only
@@ -285,7 +292,10 @@ save_claude_auth () {
     # remove the old one before writing. `command rm` bypasses the
     # `rm -i` safety alias from default/aliases.zsh.
     command rm -f ~/.claude.json."${account}"
-    jq -n --argjson oauth "$oauth" '{oauthAccount: $oauth}' > ~/.claude.json."${account}"
+    if ! jq -n --argjson oauth "$oauth" '{oauthAccount: $oauth}' > ~/.claude.json."${account}"; then
+        echo "save_claude_auth: writing the sidecar ~/.claude.json.${account} FAILED -- the Keychain backup for '${account}' was written but the sidecar is missing or incomplete, so load_claude_auth will not accept this profile; re-run save_claude_auth with --force" >&2
+        return 1
+    fi
     chmod 0400 ~/.claude.json."${account}"
     echo "save_claude_auth: saved '${account}'" >&2
 }
@@ -357,18 +367,56 @@ load_claude_auth () {
         fi
     fi
 
+    # Validate every source the swap depends on BEFORE changing
+    # anything, so a bad input means "refused, nothing changed" rather
+    # than a half-applied switch that leaves the Keychain and
+    # ~/.claude.json naming different accounts. There is deliberately
+    # no unwind past the first write: a write that fails anyway
+    # reports the state it actually left behind and returns non-zero.
     pw=$(security find-generic-password -s "Claude Code-credentials-${account}" -a "$USER" -w 2>/dev/null) || {
         echo "load_claude_auth: no Keychain entry for '${account}'" >&2
         return 1
     }
-    security add-generic-password -U -s "Claude Code-credentials" -a "$USER" -w "$pw" >/dev/null
+
+    oauth=$(jq '.oauthAccount' ~/.claude.json."${account}" 2>/dev/null)
+    if [[ -z "$oauth" || "$oauth" == "null" ]]; then
+        echo "load_claude_auth: sidecar ~/.claude.json.${account} is unreadable or carries no oauthAccount -- nothing changed" >&2
+        unset pw
+        return 1
+    fi
+
+    # Build the rewritten ~/.claude.json first, while everything is
+    # still untouched. The temp file lives next to its destination
+    # (inside $HOME, so the test sandbox contains it and the mv below
+    # stays on one filesystem); its name does not match the
+    # ~/.claude.json.* sidecar pattern, so a leftover can never be
+    # mistaken for a saved profile.
+    tmp=$(mktemp ~/.claude.json-new.XXXXXX) || {
+        echo "load_claude_auth: cannot create a temp file under \$HOME -- nothing changed" >&2
+        unset pw
+        return 1
+    }
+    if ! jq --argjson oauth "$oauth" '.oauthAccount = $oauth' ~/.claude.json > "$tmp"; then
+        echo "load_claude_auth: cannot rewrite ~/.claude.json (is it valid JSON?) -- nothing changed" >&2
+        command rm -f "$tmp"
+        unset pw
+        return 1
+    fi
+
+    if ! security add-generic-password -U -s "Claude Code-credentials" -a "$USER" -w "$pw" >/dev/null; then
+        echo "load_claude_auth: writing the live Keychain item FAILED -- the Keychain and ~/.claude.json are both unchanged (still the previous account)" >&2
+        command rm -f "$tmp"
+        unset pw
+        return 1
+    fi
     unset pw
 
-    oauth=$(jq '.oauthAccount' ~/.claude.json."${account}")
-    tmp=$(mktemp)
     # `command mv -f` bypasses the `mv -i` safety alias that
     # default/aliases.zsh defines for every host, which would prompt.
-    jq --argjson oauth "$oauth" '.oauthAccount = $oauth' ~/.claude.json > "$tmp" \
-        && command mv -f "$tmp" ~/.claude.json
+    if ! command mv -f "$tmp" ~/.claude.json; then
+        echo "load_claude_auth: the Keychain now holds '${account}' but rewriting ~/.claude.json FAILED -- the two halves name different accounts; re-run load_claude_auth for '${account}'" >&2
+        command rm -f "$tmp"
+        return 1
+    fi
     echo "load_claude_auth: switched to '${account}'" >&2
 }
