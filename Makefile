@@ -111,8 +111,10 @@ REMOVE_SKIP_TIERS ?=
 # they drive lives behind scripts/versions_setup.sh, so swapping it again
 # leaves the public interface — target names and doc lines — alone.
 # The swap is bounded, not one-file: the tool is also named directly in
-# scripts/mise_common.sh, scripts/shell_setup.sh (the ~/.zshrc init lines),
-# scripts/launchagent_runner.sh (the shims PATH) and scripts/diagnose.sh.
+# scripts/mise_common.sh, scripts/ensure_mise_zshrc_lines.sh (the ~/.zshrc
+# init lines shell_setup.sh delegates to), scripts/launchagent_runner.sh
+# (the shims PATH), scripts/diagnose.sh, and the version-managers profile's
+# Brewfile.
 # Both the version-manager script and the migration script guard on
 # `command -v mise` themselves, so nothing here needs to bootstrap mise.
 VERSIONS_SETUP := scripts/versions_setup.sh

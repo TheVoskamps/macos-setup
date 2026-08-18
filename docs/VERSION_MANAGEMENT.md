@@ -285,10 +285,10 @@ make remove-and-purge           # uninstall asdf + direnv
 make shell_setup                # rewrite the ~/.zshrc lines
 ```
 
-`make remove-and-purge` walks every tier, so on a host whose only
-populated `purge` array is the `version-managers` one this removes
-exactly asdf and direnv. Rehearse with `make remove-and-purge-dry-run`
-first if other tiers have entries.
+`make remove-and-purge` walks **every** tier, not just this one, so it
+also applies whatever the other tiers declare — today the core tier's
+`purge = ["cask:qblocker"]`, plus anything your host tier carries.
+Rehearse with `make remove-and-purge-dry-run` first to see the full set.
 
 Removing the binaries touches none of the data they left behind:
 `~/.asdf/`, `~/.tool-versions`, `~/.config/direnv/lib/use_asdf.sh`,

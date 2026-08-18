@@ -652,9 +652,9 @@ order:
 Applying a tier means: filter its `Brewfile` against the
 in-scope removal arrays (per the tier rule above), feed the
 result to `brew bundle`, then run its `[profile]
-post_install` commands in declared order. All three apply
-paths — `make install`, `make core`, and
-`make profile <name>...` — route through
+post_install` commands in declared order. Every apply
+path — `make install`, `make core`, and
+`make profile <name>...` — routes through
 `scripts/apply_tier.sh`, so what "applying a tier" means
 lives in exactly one place and they cannot drift.
 
@@ -1286,6 +1286,7 @@ former in-repo `logs/` directory. This is macOS-native
 | `list_profiles.sh` | Print this host's ordered profile list (one per line) |
 | `host_tier_dir.sh` | Print external host-tier base path (Makefile helper) |
 | `seed_host_tier.sh` | Seed external host tier from template if absent |
+| `core_setup.sh` | Computer/host names + the HOMEBREW_NO_* ~/.zshrc exports |
 | `shell_setup.sh` | Configures zsh, Oh My Zsh; aggregates `aliases.zsh` |
 | `mise_common.sh` | Global mise config helpers, sourced by the mise scripts |
 | `versions_setup.sh` | Drives mise for `versions-*` and its own tier |
@@ -1294,6 +1295,7 @@ former in-repo `logs/` directory. This is macOS-native
 | `ensure_mise_zshrc_lines.sh` | Adds the mise ~/.zshrc shims/activate lines |
 | `vscode_extensions.sh` | Installs VS Code extensions |
 | `vscode_setup.sh` | Symlinks VS Code `settings.json` (single-winner) |
+| `cdk_setup.sh` | Symlinks the single-winner `.cdk.json` (`aws` profile) |
 | `hammerspoon_setup.sh` | Symlinks HS config; robust reload (IPC + relaunch) |
 | `spaces_shortcuts_setup.sh` | Configures Ctrl+1-9 desktop shortcuts |
 | `msmtp_setup.sh` | Generates ~/.msmtprc from config.toml [mailer] values |

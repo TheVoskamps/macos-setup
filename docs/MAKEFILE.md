@@ -53,7 +53,7 @@ interpreter its own later steps need; see
   `PROFILES` expansion no longer discards it); `make verify` turns the
   same rejection into a hard error.
 
-  All three apply paths — `install`, `core`, and `profile` — route
+  Every apply path — `install`, `core`, and `profile` — routes
   through `scripts/apply_tier.sh`, so "what applying a tier means" lives
   in exactly one place and they cannot drift.
 
