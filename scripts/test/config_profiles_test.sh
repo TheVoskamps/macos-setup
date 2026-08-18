@@ -105,6 +105,32 @@ resolver_tests() {
   ok "$(get_profiles "$ROOT" | paste -sd, -)" "aws,edwin-dev" \
     "get_profiles: ordered profiles array (external host tier config.toml)"
 
+  # A name carrying whitespace would word-split in the Makefile's
+  # `$(addprefix profiles/,$(PROFILES))` while tier_roots() read it whole,
+  # so get_profiles drops it (warning on stderr) and both walks stay in
+  # agreement. get_invalid_profiles is the complement `make verify` fails on.
+  write_profiles_toml "$HOSTDIR" aws "my profile" edwin-dev
+  ok "$(get_profiles "$ROOT" 2>/dev/null | paste -sd, -)" "aws,edwin-dev" \
+    "get_profiles: drops a name containing a space"
+  ok "$(get_invalid_profiles "$ROOT" | paste -sd, -)" "my profile" \
+    "get_invalid_profiles: reports the dropped name"
+  if get_profiles "$ROOT" 2>&1 >/dev/null | grep -q 'my profile'; then
+    echo "PASS: get_profiles warns on stderr naming the dropped profile"; ((pass++))
+  else
+    echo "FAIL: get_profiles should warn on stderr naming the dropped profile"; ((fail++))
+  fi
+  # tier_roots() consumes get_profiles, so it drops the same name — this is
+  # the "both walks agree" assertion, from the shell side.
+  ok "$(tier_roots "$ROOT" 2>/dev/null | sed "s#$ROOT/#REPO/#; s#^$HOSTDIR\$#HOST#" | paste -sd, -)" \
+    "REPO/default,REPO/profiles/aws,REPO/profiles/edwin-dev,HOST" \
+    "tier_roots: skips a whitespace-bearing profile name"
+  # Other make/shell metacharacters are rejected by the same predicate.
+  write_profiles_toml "$HOSTDIR" 'a$b' 'c#d' 'ok-name.1_2'
+  ok "$(get_profiles "$ROOT" 2>/dev/null | paste -sd, -)" "ok-name.1_2" \
+    "get_profiles: rejects make/shell metacharacters, keeps a valid name"
+
+  write_profiles_toml "$HOSTDIR" aws edwin-dev
+
   echo D > "$ROOT/default/x"
   ok "$(resolve_file "$ROOT" x)" "$ROOT/default/x" \
     "resolve_file: default only"
@@ -415,6 +441,19 @@ verify_unknown_profile_test() {
   ( cd "$ROOT" && bash scripts/verify.sh >/dev/null 2>&1 ); rc=$?
   ok_rc "$rc" 1 "verify: unknown profile exits 1"
   if grep -q "bogus" <<<"$err" && grep -q 'unknown profile' <<<"$err"; then echo "PASS: verify names the unknown profile"; ((pass++)); else echo "FAIL: verify error should name 'bogus'"; ((fail++)); fi
+
+  # An UNUSABLE name (one get_profiles had to drop) is a hard error too —
+  # it never reaches the unknown-profile check, because get_profiles
+  # filtered it out, so verify reads it back via get_invalid_profiles.
+  write_profiles_toml "$HOSTDIR" known "my profile"
+  err="$(cd "$ROOT" && bash scripts/verify.sh 2>&1 >/dev/null)"
+  ( cd "$ROOT" && bash scripts/verify.sh >/dev/null 2>&1 ); rc=$?
+  ok_rc "$rc" 1 "verify: unusable profile name exits 1"
+  if grep -q 'unusable profile name' <<<"$err" && grep -q 'my profile' <<<"$err"; then
+    echo "PASS: verify names the unusable profile"; ((pass++))
+  else
+    echo "FAIL: verify error should name 'my profile'"; ((fail++))
+  fi
 
   unset MACOS_SETUP_HOST_DIR
   rm -rf "$ROOT" "$HOSTDIR"

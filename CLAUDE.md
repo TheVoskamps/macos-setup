@@ -616,6 +616,24 @@ time. A default-tier `profiles` array (if present) is
 prepended to the host's array, deduped keeping the last
 occurrence.
 
+A profile name may contain only letters, digits, `.`, `_`
+and `-` (`PROFILE_NAME_RE` in `scripts/config_common.sh`).
+The name is both a directory component and a
+whitespace-delimited word in the Makefile's `TIERS` list —
+`$(addprefix profiles/,$(PROFILES))` splits on whitespace,
+so a name carrying a space would become two phantom tiers
+there while `tier_roots()`, a newline-safe walk, resolved
+the real one, and the two walks would disagree. Make has no
+list type whose elements can hold whitespace, so the gap is
+closed by rejecting the names rather than by teaching the
+Makefile a newline-safe walk. `get_profiles` — the single
+read chokepoint both walks go through — drops a name that
+fails the pattern and warns on stderr; `make verify` turns
+the same rejection into a hard error via
+`get_invalid_profiles`. Dropping rather than aborting is
+deliberate: the Makefile expands `PROFILES` at parse time,
+before any prerequisite could report an abort.
+
 Machines with no `profiles` array skip the profile tier
 entirely and fall back directly from the external host
 tier to default (two-tier behavior, fully backward

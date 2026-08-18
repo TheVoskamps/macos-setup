@@ -690,6 +690,15 @@ prepended to the host's, deduped keeping the last
 occurrence. Machines with no `profiles` array fall back to
 two-tier resolution (external host > default).
 
+A profile name may contain only letters, digits, `.`, `_`
+and `-`. The name is both a directory component and a
+whitespace-delimited word in the Makefile's tier list, so a
+name carrying a space would be applied as two phantom tiers
+by `make install` while the shell-side tier walk resolved
+the real one. A name that fails the pattern is dropped with
+a warning at install time and is a hard error in
+`make verify`.
+
 ## Advanced Usage
 
 ### Version Management with mise

@@ -331,7 +331,34 @@ resolve_config_value() {
     echo ""
 }
 
-# Get the ordered list of profiles for the current host.
+# --- Profile-name validation -------------------------------------------
+#
+# A profile name is BOTH a directory component (`profiles/<name>/`) and a
+# word in the Makefile's `TIERS` list, which is built as
+# `$(addprefix profiles/,$(PROFILES))`. GNU make splits a variable on
+# whitespace, so a name carrying a space (or a tab) becomes TWO tier
+# words there while `tier_roots()` below — a newline-safe
+# `while IFS= read -r` walk — resolves it as one. The two walks would
+# then disagree: `make install` would silently skip two nonexistent
+# tiers and `verify.sh` would check the real one.
+#
+# Of the two ways to close that gap — teach the Makefile a newline-safe
+# walk, or refuse the names that break it — we take the second. Make has
+# no list type whose elements can contain whitespace, so the first is not
+# expressible; the second is one predicate at the single read chokepoint.
+#
+# The permitted charset is deliberately narrower than "no whitespace":
+# `$`, `#`, `%`, `:`, `\` and friends are each special somewhere in make,
+# in a shell word, or in a filesystem path, and no real profile needs
+# them. Every profile in `profiles/` matches this pattern today.
+PROFILE_NAME_RE='^[A-Za-z0-9._-]+$'
+
+# Return 0 when the given profile name is usable in every walk.
+profile_name_is_valid() {
+    [[ "$1" =~ $PROFILE_NAME_RE ]]
+}
+
+# Read the host's profile list from config.toml WITHOUT validating it.
 #
 # The profile list is the one AGGREGATE key in config.toml: it cannot be
 # resolved *through* profiles (it defines the stack), so it is read from
@@ -342,12 +369,13 @@ resolve_config_value() {
 # the same profile the LAST occurrence wins (dedup-keeping-last), so a
 # host re-listing a default profile moves it later in the order.
 #
-# Emits one profile name per line, in final priority order (lowest
-# first). Emits nothing when neither tier carries a profiles array.
+# Callers want either the usable names (get_profiles) or the rejected
+# ones (get_invalid_profiles); both partition this one read, so the
+# prepend/dedup rules live here once.
 #
 # `repo_root` locates the default tier's config.toml; the host tier is
 # the external host_tier_dir.
-get_profiles() {
+read_raw_profiles() {
     local repo_root="$1"
 
     local default_toml host_toml
@@ -364,6 +392,52 @@ get_profiles() {
     local combined
     combined="$(printf '%s\n%s\n' "$default_list" "$host_list")"
     dedup_keep_last <<< "$combined"
+}
+
+# Get the ordered list of profiles for the current host.
+#
+# Emits one profile name per line, in final priority order (lowest
+# first). Emits nothing when neither tier carries a profiles array.
+#
+# Names that fail profile_name_is_valid are DROPPED, with a warning on
+# stderr naming each one. Dropping (rather than aborting) is what keeps
+# the Makefile's parse-time `$(shell list_profiles.sh)` expansion honest:
+# an abort there would fire before any target's prerequisite could report
+# it, the same trap `list_profiles.sh` already guards against for a
+# missing dasel. `make verify` turns the same rejection into a hard
+# error via get_invalid_profiles, which is where a user goes to have
+# their config checked.
+get_profiles() {
+    local repo_root="$1"
+
+    local p rejected=()
+    while IFS= read -r p; do
+        [[ -n "$p" ]] || continue
+        if profile_name_is_valid "$p"; then
+            printf '%s\n' "$p"
+        else
+            rejected+=("$p")
+        fi
+    done < <(read_raw_profiles "$repo_root")
+
+    if [[ ${#rejected[@]} -gt 0 ]]; then
+        echo "Warning: ignoring unusable profile name(s) in the 'profiles' array of $(host_tier_dir)/config.toml (allowed: letters, digits, '.', '_', '-'):" >&2
+        for p in "${rejected[@]}"; do
+            echo "Warning:   - [$p]" >&2
+        done
+    fi
+}
+
+# The complement of get_profiles: the names it dropped, one per line.
+# `make verify` uses this to fail loudly on a config that would
+# otherwise only warn.
+get_invalid_profiles() {
+    local repo_root="$1"
+    local p
+    while IFS= read -r p; do
+        [[ -n "$p" ]] || continue
+        profile_name_is_valid "$p" || printf '%s\n' "$p"
+    done < <(read_raw_profiles "$repo_root")
 }
 
 # Read a TOML array as newline-separated entries via dasel (v3 contract).

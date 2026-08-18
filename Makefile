@@ -61,7 +61,13 @@ CORE_TIER := default
 # an empty list (zero-profile host: core < host). Parsing is delegated to
 # scripts/list_profiles.sh (which reuses get_profiles in config_common.sh,
 # querying config.toml via dasel) rather than inlined here.
-PROFILES := $(shell $(BASH_BIN) scripts/list_profiles.sh 2>/dev/null)
+#
+# stderr is NOT redirected away: get_profiles warns there about profile
+# names it had to drop (see PROFILE_NAME_RE in config_common.sh), and a
+# warning swallowed at parse time is exactly the silent divergence that
+# validation exists to prevent. The dasel-off-PATH case still prints
+# nothing here — list_profiles.sh short-circuits before any config read.
+PROFILES := $(shell $(BASH_BIN) scripts/list_profiles.sh)
 
 # Every profile that EXISTS in the repo, whether this host opts into it or
 # not. This is what `make profile <name>` validates against and what
@@ -71,6 +77,12 @@ KNOWN_PROFILES := $(sort $(notdir $(wildcard profiles/*)))
 
 # The full tier stack for this host, in APPLY order (lowest priority first).
 # Mirrors tier_roots() in scripts/config_common.sh.
+#
+# `addprefix` word-splits PROFILES on whitespace, where tier_roots() reads
+# it a line at a time. The two agree because get_profiles emits only names
+# matching PROFILE_NAME_RE (letters, digits, '.', '_', '-'), so a name can
+# never span two words here; `make verify` hard-errors on any name that
+# was dropped for failing it.
 TIERS := $(CORE_TIER) $(addprefix profiles/,$(PROFILES)) $(HOST_DIR)
 
 APPLY_TIER     := scripts/apply_tier.sh

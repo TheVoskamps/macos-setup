@@ -38,6 +38,21 @@ interpreter its own later steps need; see
   run, in declared order. This is the recommended way to set up a new
   machine.
 
+  A profile name may contain only letters, digits, `.`, `_` and `-`
+  (`PROFILE_NAME_RE` in `scripts/config_common.sh`). The name is both a
+  directory component and a whitespace-delimited word in the Makefile's
+  `TIERS` list, which is built with
+  `$(addprefix profiles/,$(PROFILES))` — a name carrying a space would
+  become two phantom tiers there while `tier_roots()`, the newline-safe
+  shell-side walk, resolved the real one, and `make install` and
+  `verify.sh` would then disagree about which tiers exist. Make has no
+  list type whose elements can hold whitespace, so the gap is closed by
+  rejecting such names rather than by rewriting the walk. `get_profiles`
+  — the one read both walks go through — drops a name that fails the
+  pattern and warns on stderr (visible during `make`, since the
+  `PROFILES` expansion no longer discards it); `make verify` turns the
+  same rejection into a hard error.
+
   All three apply paths — `install`, `core`, and `profile` — route
   through `scripts/apply_tier.sh`, so "what applying a tier means" lives
   in exactly one place and they cannot drift.
@@ -362,7 +377,8 @@ now:
 | `vscode_extensions.sh code` + `vscode_setup.sh` | `visual-studio-code` |
 | `vscode_extensions.sh cursor` | `cursor` |
 | `cdk_setup.sh` | `aws` |
-| `claude_disable_autoupdater.sh`, `claude_repo_setup.sh` | `claude`(-latest) |
+| `claude_disable_autoupdater.sh` | `claude`(-latest) |
+| `claude_repo_setup.sh install` | `claude`(-latest) |
 
 Each hook moved to the tier that installs the software it configures, so
 a host that does not opt into `desktop-ui` no longer runs the Hammerspoon

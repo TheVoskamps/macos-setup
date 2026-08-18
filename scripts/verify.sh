@@ -16,6 +16,23 @@ COMPUTER_NAME_LOWER="$(get_hostname)"
 PROFILES=()
 while IFS= read -r _p; do PROFILES+=("$_p"); done < <(get_profiles "$REPO_ROOT")
 
+# Hard error: a profile name that get_profiles had to drop. Those names
+# only warn on the apply paths (an abort would fire at Makefile parse
+# time, before any prerequisite could report it), so verify is where the
+# rejection becomes fatal.
+invalid_profiles=()
+while IFS= read -r _p; do
+  [[ -n "$_p" ]] && invalid_profiles+=("$_p")
+done < <(get_invalid_profiles "$REPO_ROOT")
+if [[ ${#invalid_profiles[@]} -gt 0 ]]; then
+  echo "[verify] ERROR: host '$COMPUTER_NAME_LOWER' lists unusable profile name(s) in the 'profiles' array of $(host_tier_dir)/config.toml." >&2
+  echo "[verify] A profile name may contain only letters, digits, '.', '_' and '-': it is both a directory name and a whitespace-delimited word in the Makefile's tier list." >&2
+  for _p in "${invalid_profiles[@]}"; do
+    echo "[verify]   - [$_p]" >&2
+  done
+  exit 1
+fi
+
 # Hard error: every profile named in the host's `profiles` array must
 # have a matching profiles/<name>/ directory. An unknown profile name
 # is a configuration bug — verify fails loudly rather than silently
