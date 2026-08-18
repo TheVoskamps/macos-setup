@@ -84,9 +84,12 @@ be noticeable.
     `origin`, and outside any repo it `git init`s a throwaway repo and
     tears down only the `.git` it created; `cr-repo` is the strict
     variant that requires an existing repo with an `origin` remote and
-    errors otherwise). A profile may carry an `aliases.zsh` and nothing
-    else (a "no-software" profile such as `claude-code-aliases`, which
-    has no `Brewfile`) — opting into it just contributes its
+    errors otherwise). The same profile carries `save_claude_auth` /
+    `load_claude_auth` for switching between Claude Code Max accounts
+    (see "Multiple Claude Code accounts" below). A profile may exist
+    mostly to carry an `aliases.zsh` — `claude-code-aliases` ships
+    only that file plus a `Brewfile` declaring the `jq` its
+    functions parse JSON with; opting into it mainly contributes its
     aliases to the aggregate.
   - **host tier** — only genuinely host-specific entries (e.g. an
     `icloud` shortcut to a machine's iCloud Drive path).
@@ -105,6 +108,71 @@ file lives OUTSIDE the repo, so backing it up is your responsibility (the
 default- and profile-tier `aliases.zsh` files remain in the repo and are
 committed normally). Keep system-level helpers (functions used by
 macos-setup itself) in `shared/zsh/` instead.
+
+## Multiple Claude Code accounts (`save_claude_auth` / `load_claude_auth`)
+
+The `claude-code-aliases` profile carries a pair of functions for using
+more than one Claude Code Max account on a single machine, without
+forking `~/.claude`. Skills, plugins, settings, and session history stay
+shared; only the pieces that carry account identity get swapped:
+
+- the OAuth token in the macOS Keychain, service
+  `Claude Code-credentials`
+- the `oauthAccount` block in `~/.claude.json`
+
+Per-account backups live in the Keychain item
+`Claude Code-credentials-<account>` and the sidecar file
+`~/.claude.json.<account>` (created `0400` — it is only ever read back
+by `load_claude_auth`).
+
+```zsh
+save_claude_auth [--account NAME] [--force]   # back up the live login
+load_claude_auth [--account NAME] [--force]   # restore a saved login
+```
+
+The kinds of profile:
+
+- **The built-in default** — used automatically when `--account` is
+  omitted, on both save and load. It is stored exactly like any named
+  profile (suffix `default`), but that name can never be typed:
+  `--account default` is always rejected, so "the implicit one" and "a
+  profile someone explicitly named default" can never be confused.
+- **Named profiles** — anything saved or loaded with an explicit
+  `--account NAME`.
+
+Behavior worth knowing:
+
+- **Names are validated.** A name is both a filename component and a
+  Keychain service suffix, so it must match `^[A-Za-z0-9._@-]+$` (the
+  repo's `PROFILE_NAME_RE` charset plus `@`, so a Claude account email
+  works verbatim as the name). Anything else — including `--account`
+  with no following value, and any unrecognized argument — is rejected
+  by name with a non-zero return.
+- **Save refuses to overwrite** an existing profile (built-in default
+  or named) without `--force`.
+- **Load refuses to clobber an unsaved identity.** Loading overwrites
+  the live Keychain item and `~/.claude.json`; if the identity that was
+  live was never saved, it is gone and that account must be logged into
+  again. Before overwriting, `load_claude_auth` compares the live
+  `oauthAccount` against every `~/.claude.json.*` sidecar (on
+  `.emailAddress` and `.accountUuid`) and aborts when none matches,
+  unless `--force` is passed.
+- **Load with no `--account`** requires that the built-in default has
+  been saved at least once; otherwise it fails loudly rather than
+  silently leaving the current login untouched.
+- **Concurrency is a documented limitation, not a guarded one.** There
+  is one live identity at a time; switching while another Claude
+  session is running repoints the Keychain item and `~/.claude.json`
+  underneath it. No locking is implemented — quit running Claude
+  sessions before switching.
+
+Switching accounts is an explicit step before launching Claude — it is
+not a flag on `cr` or the other launchers. The pair adds no new
+dependency: `jq` is already declared (by the core tier and by this
+profile's own `Brewfile`) and `security` ships with macOS. Covered by
+`scripts/test/save_load_claude_auth_test.zsh`, which stubs `security`
+and points `HOME` at a temp dir so the real Keychain and
+`~/.claude.json` are never touched.
 
 ## mise init lines
 
