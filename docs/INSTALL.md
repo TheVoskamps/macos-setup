@@ -331,7 +331,7 @@ list is a directory glob.
 (`make: unrecognized option '--name'`). The positional form covers it and
 supports ordered multi-install.
 
-Two accepted rough edges, both on already-failing paths:
+Accepted rough edges, both on already-failing paths:
 
 - `make profile install` emits `warning: overriding commands for target
   'install'` (the argument-as-phony-no-op trick), then validation rejects

@@ -136,7 +136,7 @@ interpreter its own later steps need; see
 
   `make profile --name <foo>` is **not** achievable: make consumes
   `--`-prefixed arguments as its own options before the Makefile sees
-  them (`make: unrecognized option '--name'`). Two accepted rough edges
+  them (`make: unrecognized option '--name'`). Accepted rough edges
   follow from the `$(eval)` trick that makes the positional form work,
   both on already-failing paths: `make profile install` emits a
   `warning: overriding commands for target 'install'` before validation

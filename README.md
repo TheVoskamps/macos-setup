@@ -234,9 +234,11 @@ its consolidated `config.toml` in the external host tier,
   so init.lua re-loads from the corrected symlink. If
   the reload still can't be confirmed it prints a loud
   warning telling you to reload manually from the
-  menubar (Hammerspoon icon → Reload Config) and `make
-  ui` exits non-zero rather than silently leaving your
-  hotkeys dead
+  menubar (Hammerspoon icon → Reload Config) and the
+  `desktop-ui` tier is reported as failed (so
+  `make profile desktop-ui` / `make install` exit
+  non-zero) rather than silently leaving your hotkeys
+  dead
 - **AWS CDK**: Config via `resolve_file` for `.cdk.json`
 - **Shell Environment**: Oh My Zsh themes and plugins;
   `aliases.zsh` aggregated across all tiers (default +
@@ -245,17 +247,17 @@ its consolidated `config.toml` in the external host tier,
 
 ### Uninstalling and purging packages
 
-Each tier's `config.toml` can carry two removal arrays
+Each tier's `config.toml` can carry removal arrays
 under `[profile]`: `uninstall` and `purge`.
 
 Pick the right one for your goal:
 
-- **Uninstall** removes the app but leaves your
+- **`uninstall`** removes the app but leaves your
   settings, login data, and caches in `~/Library` etc.,
   so reinstalling later picks up where you left off.
   Use this when you might want the app back, or when
   you're temporarily disabling it on a machine.
-- **RemoveAndPurge** removes the app *and* all data the
+- **`purge`** removes the app *and* all data the
   cask declares — preferences, caches, support files,
   login items. Reinstalling starts fresh. Use this for
   software you're done with permanently (e.g.

@@ -36,7 +36,7 @@ brew bundle --file=./profiles/web/Brewfile
 
 ## Remove an App
 
-Two declarative options plus an ad-hoc fallback.
+Declarative options, plus an ad-hoc fallback.
 
 1. **Uninstall (binary only) — recommended for "I might want this back":**
    add the package to the `[profile] uninstall` array in the
@@ -50,7 +50,7 @@ Two declarative options plus an ad-hoc fallback.
    uninstall = ["cask:firefox"]
    ```
 
-2. **RemoveAndPurge (binary + user data) — recommended for "I'm done
+2. **Purge (binary + user data) — recommended for "I'm done
    with this permanently":** add it to that tier's `[profile] purge`
    array instead. `make remove-and-purge` removes it; `make install`
    filters it out from then on. For casks the runner uses
@@ -97,7 +97,12 @@ mas list              # show installed MAS apps with IDs
 ## Tips
 
 - `brew bundle dump --file=./.snapshot` creates a snapshot of your
-  current machine (`scripts/mas_export.sh` wraps this).
+  current machine.
+- `scripts/mas_export.sh` covers the MAS half separately: it runs
+  `mas list` and writes ready-to-paste `mas "<Name>", id: <id>` lines to
+  `./MAS-from-this-Mac.snippet` (override the path with `BUNDLE_FILE`).
+  It does not call `brew bundle dump`, so it reports no formulae or
+  casks.
 - Keep each profile small and single-responsibility. A host composes the
   roles it wants by listing several in its `profiles` array, and
   `make profiles` shows what is available.

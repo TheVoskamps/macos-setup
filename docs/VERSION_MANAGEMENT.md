@@ -238,7 +238,7 @@ opted-in ones, because it is called by `scripts/shell_setup.sh` — a
 run it whatever the host's `profiles` array says. (`make update` does
 not: it calls the script directly, under the `VM_OPTED_IN` gate above,
 and never runs `shell_setup.sh`.) Down that core-tier path a
-non-opted-in host does get two `~/.zshrc` edits:
+non-opted-in host does get these `~/.zshrc` edits:
 
 - `strip_asdf_zshrc_lines.sh` removes the asdf/direnv init lines this
   repo once wrote. A no-op on a host that never had them.
