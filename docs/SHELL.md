@@ -114,7 +114,7 @@ macos-setup itself) in `shared/zsh/` instead.
 The `claude-code-aliases` profile carries a pair of functions for using
 more than one Claude Code Max account on a single machine, without
 forking `~/.claude`. Skills, plugins, settings, and session history stay
-shared; only the two pieces that carry account identity get swapped:
+shared; only the pieces that carry account identity get swapped:
 
 - the OAuth token in the macOS Keychain, service
   `Claude Code-credentials`

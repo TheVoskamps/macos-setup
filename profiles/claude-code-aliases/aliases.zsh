@@ -203,7 +203,7 @@ claude-vm() {
 # Multiple Claude Code Max accounts on one machine (issue #49).
 #
 # Skills, plugins, settings and session history stay shared in ~/.claude;
-# only the two pieces that carry account identity get swapped:
+# only the pieces that carry account identity get swapped:
 #   - the OAuth token in the macOS Keychain, service "Claude Code-credentials"
 #   - the .oauthAccount block in ~/.claude.json
 # Per-account backups live in the Keychain item

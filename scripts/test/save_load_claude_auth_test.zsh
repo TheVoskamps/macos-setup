@@ -3,7 +3,7 @@
 # Functional tests for save_claude_auth / load_claude_auth (issue #49).
 #
 # The pair lives in profiles/claude-code-aliases/aliases.zsh. They swap
-# the two pieces of Claude Code account identity -- the Keychain item
+# the pieces of Claude Code account identity -- the Keychain item
 # "Claude Code-credentials" and the .oauthAccount block of ~/.claude.json
 # -- to and from per-account backups ("Claude Code-credentials-<account>"
 # and ~/.claude.json.<account>).
