@@ -6,11 +6,10 @@
 #
 #   default  <  profile[0]  <  profile[1]  <  ...  <  profile[n]  <  host
 #
-# A host opts into N ordered profiles by listing them, one per line, in
-# the EXTERNAL host tier's `profiles` file (lowest priority first; the
-# last-listed profile sits just under the host tier). Blank lines and
-# `#`-comment lines are ignored. A host with no `profiles` file (or an
-# empty one) collapses to the two-tier `default < host` model.
+# A host opts into N ordered profiles by listing them in the `profiles`
+# array of the EXTERNAL host tier's `config.toml` (lowest priority first;
+# the last-listed profile sits just under the host tier). A host with no
+# `profiles` array collapses to the two-tier `default < host` model.
 #
 # The host tier lives OUTSIDE the repo, at the path returned by
 # `host_tier_dir` (default `${XDG_CONFIG_HOME:-$HOME/.config}/macos-setup`,
@@ -27,11 +26,11 @@
 # --- Central file-kind table -------------------------------------------
 #
 # Relative paths that AGGREGATE (concatenate / union across all tiers).
-# Everything not listed here is single-winner. The Install / Uninstall /
-# RemoveAndPurge trees also aggregate, but they are driven by the
-# Makefile and install_filter.sh tier walk rather than by these
+# Everything not listed here is single-winner. Each tier's `Brewfile` and
+# its `[profile]` section of config.toml also aggregate, but they are
+# driven by the Makefile / install_filter.sh tier walk rather than by these
 # resolver functions, so they are documented here but not enumerated as
-# resolver paths.
+# resolver paths. See "Tier enumeration" below.
 AGGREGATE_FILES=(
     "aliases.zsh"
 )
@@ -44,9 +43,11 @@ AGGREGATE_FILES=(
 # `config/claude`, and `cron/mailto` are now consolidated into a single
 # `config.toml` per tier (issue #156). The `[mailer]`, `[claude]`, and
 # `[cron]` sections of `config.toml` are single-winner; the `profiles`
-# array is the one aggregate key (see resolve_config_toml_section and
-# get_profiles below). `config.toml` itself is single-winner per
-# section, so it is not in AGGREGATE_FILES.
+# array is the one aggregate key (see resolve_config_value and
+# get_profiles below); and the `[profile]` section is PER-TIER — never
+# resolved across tiers at all (see read_post_install / read_removals).
+# `config.toml` itself is single-winner per section, so it is not in
+# AGGREGATE_FILES.
 SINGLE_WINNER_FILES=(
     ".vscode/settings.json"
     ".hammerspoon/init.lua"
@@ -79,7 +80,7 @@ get_hostname() {
 # per-machine config into tracked files). It now lives on local disk,
 # OUTSIDE the repo, carrying config.toml (the consolidated profiles
 # array + [claude]/[mailer]/[cron] sections), aliases.zsh,
-# .hammerspoon/*, .vscode/settings.json, Install/*, and .cdk.json.
+# .hammerspoon/*, .vscode/settings.json, Brewfile, and .cdk.json.
 # Backup/sync of this directory is the user's responsibility.
 #
 # The base path is routed through ONE function so it is overridable
@@ -330,7 +331,34 @@ resolve_config_value() {
     echo ""
 }
 
-# Get the ordered list of profiles for the current host.
+# --- Profile-name validation -------------------------------------------
+#
+# A profile name is BOTH a directory component (`profiles/<name>/`) and a
+# word in the Makefile's `TIERS` list, which is built as
+# `$(addprefix profiles/,$(PROFILES))`. GNU make splits a variable on
+# whitespace, so a name carrying a space (or a tab) becomes TWO tier
+# words there while `tier_roots()` below — a newline-safe
+# `while IFS= read -r` walk — resolves it as one. The two walks would
+# then disagree: `make install` would silently skip two nonexistent
+# tiers and `verify.sh` would check the real one.
+#
+# Of the two ways to close that gap — teach the Makefile a newline-safe
+# walk, or refuse the names that break it — we take the second. Make has
+# no list type whose elements can contain whitespace, so the first is not
+# expressible; the second is one predicate at the single read chokepoint.
+#
+# The permitted charset is deliberately narrower than "no whitespace":
+# `$`, `#`, `%`, `:`, `\` and friends are each special somewhere in make,
+# in a shell word, or in a filesystem path, and no real profile needs
+# them. Every profile in `profiles/` matches this pattern today.
+PROFILE_NAME_RE='^[A-Za-z0-9._-]+$'
+
+# Return 0 when the given profile name is usable in every walk.
+profile_name_is_valid() {
+    [[ "$1" =~ $PROFILE_NAME_RE ]]
+}
+
+# Read the host's profile list from config.toml WITHOUT validating it.
 #
 # The profile list is the one AGGREGATE key in config.toml: it cannot be
 # resolved *through* profiles (it defines the stack), so it is read from
@@ -341,28 +369,128 @@ resolve_config_value() {
 # the same profile the LAST occurrence wins (dedup-keeping-last), so a
 # host re-listing a default profile moves it later in the order.
 #
-# Emits one profile name per line, in final priority order (lowest
-# first). Emits nothing when neither tier carries a profiles array.
+# Callers want either the usable names (get_profiles) or the rejected
+# ones (get_invalid_profiles); both partition this one read, so the
+# prepend/dedup rules live here once.
+#
+# Because BOTH tiers can contribute a name, every diagnostic about a bad
+# name has to say WHICH config.toml declared it — naming the host tier
+# unconditionally sends the user hunting through the wrong file when the
+# offending name came from the repo-tracked default/config.toml. So the
+# TAGGED form below is the primitive: it emits
+# "<config.toml path>\t<profile name>" per surviving entry, and the
+# plain-name reader drops the tag.
 #
 # `repo_root` locates the default tier's config.toml; the host tier is
 # the external host_tier_dir.
-get_profiles() {
+read_raw_profiles_tagged() {
     local repo_root="$1"
 
     local default_toml host_toml
     default_toml="$(config_toml_path "$repo_root/default")"
     host_toml="$(config_toml_path "$(host_tier_dir)")"
 
-    # Read each tier's profiles array, one entry per line.
-    local default_list host_list
-    default_list="$(read_toml_array "$default_toml" "profiles")"
-    host_list="$(read_toml_array "$host_toml" "profiles")"
+    # Read each tier's profiles array, one entry per line, tagging each
+    # entry with the file it came from. Default first, host second, then
+    # dedup keeping the last occurrence of each NAME — so a host re-listing
+    # a default name takes over both the position and the attribution.
+    local toml n
+    {
+        for toml in "$default_toml" "$host_toml"; do
+            while IFS= read -r n; do
+                # Drop blank / all-whitespace entries, the same entries
+                # dedup_keep_last's `NF` guard dropped before tagging.
+                [[ -n "${n//[[:space:]]/}" ]] || continue
+                printf '%s\t%s\n' "$toml" "$n"
+            done < <(read_toml_array "$toml" "profiles")
+        done
+    } | dedup_tagged_keep_last
+}
 
-    # Concatenate default-first, host-second, then dedup keeping the last
-    # occurrence of each name.
-    local combined
-    combined="$(printf '%s\n%s\n' "$default_list" "$host_list")"
-    dedup_keep_last <<< "$combined"
+# The plain-name view of read_raw_profiles_tagged: one profile name per
+# line, tag stripped.
+#
+# A rejected name may itself contain a tab, so every reader of a tagged
+# line splits on the FIRST tab only: `${line%%<tab>*}` is the file,
+# `${line#*<tab>}` is the name.
+read_raw_profiles() {
+    local line
+    while IFS= read -r line; do
+        printf '%s\n' "${line#*$'\t'}"
+    done < <(read_raw_profiles_tagged "$1")
+}
+
+# Get the ordered list of profiles for the current host.
+#
+# Emits one profile name per line, in final priority order (lowest
+# first). Emits nothing when neither tier carries a profiles array.
+#
+# Names that fail profile_name_is_valid are DROPPED, with a warning on
+# stderr naming each one. Dropping (rather than aborting) is what keeps
+# the Makefile's parse-time `$(shell list_profiles.sh)` expansion honest:
+# an abort there would fire before any target's prerequisite could report
+# it, the same trap `list_profiles.sh` already guards against for a
+# missing dasel. `make verify` turns the same rejection into a hard
+# error via get_invalid_profiles, which is where a user goes to have
+# their config checked.
+#
+# The warning names, per rejected entry, the config.toml that declares
+# it: either tier can contribute a name, so a fixed filename would send
+# the user to the wrong file half the time.
+get_profiles() {
+    local repo_root="$1"
+
+    local line rejected=()
+    while IFS= read -r line; do
+        if profile_name_is_valid "${line#*$'\t'}"; then
+            printf '%s\n' "${line#*$'\t'}"
+        else
+            rejected+=("$line")
+        fi
+    done < <(read_raw_profiles_tagged "$repo_root")
+
+    if [[ ${#rejected[@]} -gt 0 ]]; then
+        echo "Warning: ignoring unusable profile name(s) from a 'profiles' array (allowed: letters, digits, '.', '_', '-'); each is shown with the config.toml that declares it:" >&2
+        for line in "${rejected[@]}"; do
+            echo "Warning:   - [${line#*$'\t'}]  (in ${line%%$'\t'*})" >&2
+        done
+    fi
+}
+
+# The tagged view of get_profiles: "<config.toml path>\t<profile name>"
+# for each USABLE name, in the same order, and silent (no warning — the
+# rejected entries are get_invalid_profiles_tagged's business). A caller
+# that must attribute a surviving name to a file — `make verify`
+# reporting a name with no `profiles/<name>/` directory — reads this
+# instead of get_profiles.
+get_profiles_tagged() {
+    local repo_root="$1"
+    local line
+    while IFS= read -r line; do
+        profile_name_is_valid "${line#*$'\t'}" && printf '%s\n' "$line"
+    done < <(read_raw_profiles_tagged "$repo_root")
+}
+
+# The complement of get_profiles: the names it dropped, one per line.
+# `make verify` uses this to fail loudly on a config that would
+# otherwise only warn.
+get_invalid_profiles() {
+    local repo_root="$1"
+    local line
+    while IFS= read -r line; do
+        printf '%s\n' "${line#*$'\t'}"
+    done < <(get_invalid_profiles_tagged "$repo_root")
+}
+
+# The tagged view of get_invalid_profiles: "<config.toml path>\t<name>"
+# for each rejected name, so `make verify` can name the file the user has
+# to edit rather than guessing at the host tier.
+get_invalid_profiles_tagged() {
+    local repo_root="$1"
+    local line
+    while IFS= read -r line; do
+        profile_name_is_valid "${line#*$'\t'}" || printf '%s\n' "$line"
+    done < <(read_raw_profiles_tagged "$repo_root")
 }
 
 # Read a TOML array as newline-separated entries via dasel (v3 contract).
@@ -402,6 +530,140 @@ read_toml_array() {
     done
 }
 
+# --- Tier enumeration ---------------------------------------------------
+#
+# A TIER ROOT is the directory that holds one tier's `Brewfile`,
+# `config.toml`, `aliases.zsh`, and friends. There are exactly three
+# shapes, and they are the same three the resolvers above walk:
+#
+#   $repo_root/default            the CORE tier (lowest priority)
+#   $repo_root/profiles/<name>    one per profile the host opted into,
+#                                 in the host's list order
+#   $(host_tier_dir)              the external host tier (highest)
+#
+# The numbered `Install/NN-Install.<slug>` convention these replaced is
+# gone: a tier contributes ONE unnumbered Brewfile, and the profile IS the
+# category (issue #33).
+
+# Emit every tier root for this host, one per line, in APPLY order
+# (lowest priority first: core -> profiles in list order -> host).
+# Args: repo_root
+tier_roots() {
+    local repo_root="$1"
+    echo "$repo_root/default"
+    local p
+    while IFS= read -r p; do
+        [[ -n "$p" ]] && echo "$repo_root/profiles/$p"
+    done < <(get_profiles "$repo_root")
+    host_tier_dir
+}
+
+# Human-readable label for a tier root, for banners and error messages.
+#
+# The tier root is normalized to an absolute path FIRST. Callers legitimately
+# pass relative roots — the Makefile's tier list is `default profiles/<name>
+# … $(HOST_DIR)`, mixing both — and comparing a relative `default` against
+# an absolute `$repo_root/default` matches nothing, which silently mislabels
+# every in-repo tier as the host tier.
+#
+# A tier that matches none of the three shapes falls back to its own path
+# rather than a guessed label, so a caller passing something unexpected sees
+# what it passed.
+# Args: repo_root, tier_root
+tier_label() {
+    local repo_root="$1" tier_root="$2"
+    local abs="$tier_root"
+    if [[ "$abs" != /* ]] && [[ -d "$abs" ]]; then
+        abs="$(cd "$abs" && pwd)"
+    fi
+
+    local host_abs
+    host_abs="$(host_tier_dir)"
+    if [[ "$host_abs" != /* ]] && [[ -d "$host_abs" ]]; then
+        host_abs="$(cd "$host_abs" && pwd)"
+    fi
+
+    case "$abs" in
+        "$repo_root/default")    echo "core" ;;
+        "$repo_root/profiles/"*) echo "profile ${abs#"$repo_root"/profiles/}" ;;
+        "$host_abs")             echo "host" ;;
+        *)                       echo "$tier_root" ;;
+    esac
+}
+
+# --- [profile] section reads --------------------------------------------
+#
+# `[profile]` is the one config.toml section that is NOT resolved across
+# tiers. [claude]/[mailer]/[cron] answer "what is the value for this host",
+# so the highest tier with a value wins (resolve_config_value). [profile]
+# answers "what does THIS tier contribute", so every tier's section applies
+# on its own, in tier order. Reading it is therefore a plain per-file read,
+# never a precedence walk.
+
+# Emit this tier's post-install commands, one per line, in declared order.
+# Each is a repo-root-relative script path plus optional arguments.
+# Args: tier_root
+read_post_install() {
+    read_toml_array "$(config_toml_path "$1")" "profile.post_install"
+}
+
+# Emit this tier's removal entries for one kind, one per line, in declared
+# order. Args: tier_root, kind (uninstall|purge).
+read_removals() {
+    local tier_root="$1" kind="$2"
+    case "$kind" in
+        uninstall|purge) ;;
+        *) echo "read_removals: unknown kind '$kind' (want uninstall|purge)" >&2; return 2 ;;
+    esac
+    read_toml_array "$(config_toml_path "$tier_root")" "profile.$kind"
+}
+
+# Parse one removal entry into "<kind>\t<identifier>\t<label>".
+#
+#   brew:<formula>    -> brew  <formula>  <formula>
+#   cask:<token>      -> cask  <token>    <token>
+#   mas:<id>          -> mas   <id>       <id>
+#   mas:<id>:<Name>   -> mas   <id>       <Name>
+#
+# `identifier` is what the package is addressed by (and what the install
+# filter matches a Brewfile line against); `label` is only ever used in log
+# lines. Returns 2 and prints a diagnostic on a malformed entry — a silently
+# ignored removal is exactly the failure this parse exists to prevent.
+# Args: entry
+parse_removal_entry() {
+    local entry="$1"
+    local kind="${entry%%:*}"
+    local rest="${entry#*:}"
+
+    if [[ "$entry" != *:* || -z "$rest" ]]; then
+        echo "malformed removal entry (want '<kind>:<identifier>'): $entry" >&2
+        return 2
+    fi
+
+    case "$kind" in
+        brew|cask)
+            if [[ "$rest" == *:* ]]; then
+                echo "malformed removal entry ('$kind' takes no label): $entry" >&2
+                return 2
+            fi
+            printf '%s\t%s\t%s\n' "$kind" "$rest" "$rest"
+            ;;
+        mas)
+            local id="${rest%%:*}" label
+            if [[ "$rest" == *:* ]]; then label="${rest#*:}"; else label="$id"; fi
+            if [[ ! "$id" =~ ^[0-9]+$ ]]; then
+                echo "malformed removal entry (mas id must be numeric): $entry" >&2
+                return 2
+            fi
+            printf '%s\t%s\t%s\n' "mas" "$id" "$label"
+            ;;
+        *)
+            echo "malformed removal entry (unknown kind '$kind', want brew|cask|mas): $entry" >&2
+            return 2
+            ;;
+    esac
+}
+
 # Read newline-separated names on stdin and emit them deduplicated,
 # keeping the LAST occurrence of each name (so a later tier re-listing a
 # name moves it later in the order). Blank lines are dropped. Order of
@@ -409,6 +671,20 @@ read_toml_array() {
 dedup_keep_last() {
     awk 'NF { line[NR]=$0; last[$0]=NR }
          END { for (i=1;i<=NR;i++) if (last[line[i]]==i) print line[i] }'
+}
+
+# The tagged counterpart of dedup_keep_last, for "<file>\t<name>" lines:
+# dedup on the NAME (everything after the first tab) while emitting the
+# whole line, keeping the LAST occurrence of each name. Blank lines are
+# dropped. Used by read_raw_profiles_tagged, where two tiers can declare
+# the same profile name from different config.toml files and the winner
+# must carry its own tier's attribution.
+dedup_tagged_keep_last() {
+    awk 'NF {
+             n = $0; sub(/^[^\t]*\t/, "", n)
+             i++; line[i] = $0; name[i] = n; last[n] = i
+         }
+         END { for (j = 1; j <= i; j++) if (last[name[j]] == j) print line[j] }'
 }
 
 # Resolve a SINGLE-WINNER file: highest-priority tier wins.

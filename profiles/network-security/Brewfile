@@ -1,0 +1,6 @@
+# Brewfile for the 'network-security' profile
+
+# Casks
+cask 'little-snitch'
+cask 'micro-snitch'
+cask 'protonvpn'

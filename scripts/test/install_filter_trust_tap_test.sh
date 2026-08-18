@@ -17,7 +17,7 @@
 # MACOS_SETUP_HOST_DIR, and run install_filter.sh with BREW pointed at the
 # stub. They assert:
 #   - an emitted `tap` directive gets trusted (one trust call per tap)
-#   - a tap whose own line is FILTERED OUT (commented by Uninstall) is
+#   - a tap whose own line is FILTERED OUT (commented out) is
 #     NOT trusted; an emitted tap in the same file still is
 #   - re-running is idempotent (no error; the stub is invoked the same way
 #     each run — `brew trust` itself is a no-op on already-trusted taps)
@@ -70,26 +70,27 @@ STUB
   chmod +x "$path"
 }
 
-# Build a minimal synthetic repo: scripts the filter sources, plus an
-# Install/Uninstall/RemoveAndPurge tree the caller can populate. Echoes the
-# repo root path.
+# Build a minimal synthetic repo: the scripts the filter sources, plus a
+# core tier the caller populates with a Brewfile (and, where a block needs
+# a removal, a config.toml carrying a `[profile] uninstall` array). Echoes
+# the repo root path.
 make_repo() {
   local root; root="$(mktemp -d)"
-  mkdir -p "$root/scripts" "$root/Install" "$root/Uninstall" "$root/RemoveAndPurge"
+  mkdir -p "$root/scripts" "$root/default"
   cp "$REPO_ROOT/scripts/config_common.sh" \
      "$REPO_ROOT/scripts/install_filter.sh" \
      "$root/scripts/"
   echo "$root"
 }
 
-# Run install_filter.sh on $root/Install/$slot with a fresh trust log and a
-# host tier pointed at a temp dir. Captures:
+# Run install_filter.sh on $root/default/Brewfile with a fresh trust log
+# and a host tier pointed at a temp dir. Captures:
 #   RUN_RC       : filter exit code
 #   RUN_OUT_FILE : path the filter printed (the emitted temp file)
 #   RUN_EMITTED  : contents of that emitted file
 #   TRUST_LOG    : path to the trust log (one trusted tap per line)
 run_filter() {
-  local root="$1" slot="$2"
+  local root="$1"
   local host_dir brew_stub
   host_dir="$(mktemp -d)"
   brew_stub="$root/scripts/stub_brew.sh"
@@ -99,7 +100,7 @@ run_filter() {
   RUN_OUT_FILE="$(cd "$root" && \
     MACOS_SETUP_HOST_DIR="$host_dir" \
     BREW="$brew_stub" BREW_TRUST_LOG="$TRUST_LOG" \
-    bash scripts/install_filter.sh "Install/$slot" 2>/dev/null)"; RUN_RC=$?
+    bash scripts/install_filter.sh "default/Brewfile" 2>/dev/null)"; RUN_RC=$?
 
   RUN_EMITTED=""
   [[ -f "$RUN_OUT_FILE" ]] && RUN_EMITTED="$(cat "$RUN_OUT_FILE")"
@@ -121,11 +122,11 @@ trust_count() {
 # ---------------------------------------------------------------------
 emitted_tap_is_trusted_test() {
   local root; root="$(make_repo)"
-  cat > "$root/Install/50-Install.example" <<'EOF'
+  cat > "$root/default/Brewfile" <<'EOF'
 tap 'atlassian/homebrew-acli'
 brew 'acli'
 EOF
-  run_filter "$root" "50-Install.example"
+  run_filter "$root"
   ok_rc "$RUN_RC" 0 "emitted tap: filter exits 0"
   ok "$(trust_count 'atlassian/homebrew-acli')" "1" "emitted tap: trusted exactly once"
   ok_contains "$RUN_EMITTED" "tap 'atlassian/homebrew-acli'" "emitted tap: tap line still emitted verbatim"
@@ -141,43 +142,44 @@ EOF
 # directives), so to exercise "tap line not emitted" we comment it out
 # directly in the Install file. The tap whose line is a live directive
 # must be trusted; the commented-out one must not. We also include a
-# brew that IS filtered by Uninstall, to confirm trust keys off the tap
+# brew that IS filtered by a removal array, to confirm trust keys off the tap
 # line's own emission, not off whether a sibling package survived.
 # ---------------------------------------------------------------------
 filtered_tap_not_trusted_test() {
   local root; root="$(make_repo)"
-  cat > "$root/Install/51-Install.example" <<'EOF'
+  cat > "$root/default/Brewfile" <<'EOF'
 tap 'aws/tap'
 # tap 'commented/out'
 brew 'awscli'
 EOF
-  # Uninstall awscli at the same tier so its brew line is filtered out.
-  # The `aws/tap` line itself still emits, so it must still be trusted —
-  # this is the "trust keys off the tap line, not its packages" case.
-  cat > "$root/Uninstall/51-Uninstall.example" <<'EOF'
-brew 'awscli'
+  # Remove awscli at the same tier so its brew line is filtered out. The
+  # `aws/tap` line itself still emits, so it must still be trusted — this
+  # is the "trust keys off the tap line, not its packages" case.
+  cat > "$root/default/config.toml" <<'EOF'
+[profile]
+uninstall = ["brew:awscli"]
 EOF
-  run_filter "$root" "51-Install.example"
+  run_filter "$root"
   ok_rc "$RUN_RC" 0 "filtered case: filter exits 0"
   ok "$(trust_count 'aws/tap')" "1" "filtered case: emitted tap trusted once"
   ok "$(trust_count 'commented/out')" "0" "filtered case: commented-out tap NOT trusted"
-  ok_contains "$RUN_EMITTED" "# filtered: also listed in" "filtered case: awscli was filtered out"
+  ok_contains "$RUN_EMITTED" "# filtered: also removed by" "filtered case: awscli was filtered out"
   rm -rf "$root"
 }
 
 # ---------------------------------------------------------------------
-# Block 3: fully-filtered slot does not spuriously trust.
+# Block 3: a fully-filtered tier does not spuriously trust.
 #
-# A slot whose ONLY tap line is commented out (so nothing surviving is a
+# A Brewfile whose ONLY tap line is commented out (so nothing surviving is a
 # `tap` directive) must produce zero trust calls.
 # ---------------------------------------------------------------------
 fully_commented_tap_not_trusted_test() {
   local root; root="$(make_repo)"
-  cat > "$root/Install/52-Install.example" <<'EOF'
+  cat > "$root/default/Brewfile" <<'EOF'
 # tap 'never/trusted'
 brew 'ripgrep'
 EOF
-  run_filter "$root" "52-Install.example"
+  run_filter "$root"
   ok_rc "$RUN_RC" 0 "fully-commented: filter exits 0"
   ok "$(wc -l < "$TRUST_LOG" | tr -d ' ')" "0" "fully-commented: zero trust calls"
   rm -rf "$root"
@@ -190,13 +192,13 @@ EOF
 # ---------------------------------------------------------------------
 idempotent_rerun_test() {
   local root; root="$(make_repo)"
-  cat > "$root/Install/53-Install.example" <<'EOF'
+  cat > "$root/default/Brewfile" <<'EOF'
 tap 'localstack/tap'
 brew 'localstack'
 EOF
-  run_filter "$root" "53-Install.example"
+  run_filter "$root"
   local rc1="$RUN_RC" cnt1; cnt1="$(trust_count 'localstack/tap')"
-  run_filter "$root" "53-Install.example"
+  run_filter "$root"
   local rc2="$RUN_RC" cnt2; cnt2="$(trust_count 'localstack/tap')"
   ok_rc "$rc1" 0 "idempotent: first run exits 0"
   ok_rc "$rc2" 0 "idempotent: second run exits 0"

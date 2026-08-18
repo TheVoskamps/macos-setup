@@ -9,7 +9,7 @@
 # the script used to reload is the one that cannot work in exactly the
 # broken state where reloading matters most. The old code also swallowed
 # the real IPC error (`2>/dev/null`) and printed a soft `Note:` that got
-# lost in the `make ui` output wall.
+# lost in the `make profile desktop-ui` output wall.
 #
 # reload_hammerspoon now:
 #   1. tries IPC WITHOUT discarding stderr (the real error is the signal),

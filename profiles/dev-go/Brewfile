@@ -1,0 +1,4 @@
+# Brewfile for the 'dev-go' profile
+
+# Homebrew formulae
+brew 'go'

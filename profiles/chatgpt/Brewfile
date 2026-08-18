@@ -1,0 +1,4 @@
+# Brewfile for the 'chatgpt' profile
+
+# Casks
+cask 'chatgpt'

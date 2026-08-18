@@ -28,11 +28,11 @@ MAILER="${MAILER:-msmtp}"
 case "$MAILER" in
     msmtp)
         if ! command -v msmtp >/dev/null 2>&1; then
-            echo "Error: [cron] mailto is configured but msmtp is not installed. Run 'make messaging' first." >&2
+            echo "Error: [cron] mailto is configured but msmtp is not installed. Run 'make core' first." >&2
             exit 1
         fi
         if [[ ! -f "$HOME/.msmtprc" ]]; then
-            echo "Error: [cron] mailto is configured but ~/.msmtprc is missing. Run 'make messaging' first." >&2
+            echo "Error: [cron] mailto is configured but ~/.msmtprc is missing. Run 'make core' first." >&2
             exit 1
         fi
         ;;

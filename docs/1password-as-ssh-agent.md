@@ -20,8 +20,8 @@ your vault unlock), so the private key never sits unencrypted on disk.
 ## Prerequisites
 
 - The 1Password 8 desktop app, installed and signed in. (Install it
-  with `brew install --cask 1password`, or via the `01-security`
-  Install category — `make security`.)
+  with `brew install --cask 1password`, or via the `1password`
+  profile — `make profile 1password`.)
 - An SSH key stored in 1Password's **Private** vault. 1Password can
   generate one for you (New Item → SSH Key) and, during creation, add
   the matching public key to your GitHub account.

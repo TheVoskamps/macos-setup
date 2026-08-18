@@ -34,11 +34,11 @@ case "$MAILER" in
     msmtp)
         # Validate msmtp prerequisites
         if ! command -v msmtp >/dev/null 2>&1; then
-            echo "Error: MAILER=msmtp but msmtp is not installed. Run 'make messaging' first." >&2
+            echo "Error: MAILER=msmtp but msmtp is not installed. Run 'make core' first." >&2
             exit 1
         fi
         if [[ ! -f "$HOME/.msmtprc" ]]; then
-            echo "Error: MAILER=msmtp but ~/.msmtprc is missing. Run 'make messaging' first." >&2
+            echo "Error: MAILER=msmtp but ~/.msmtprc is missing. Run 'make core' first." >&2
             exit 1
         fi
         printf '%s\n' "$MESSAGE" | msmtp "$RECIPIENT"

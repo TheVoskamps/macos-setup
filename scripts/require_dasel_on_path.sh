@@ -13,7 +13,7 @@
 # fails with command-not-found (exit 127).
 #
 # Without this gate, that failure surfaces LATE and CRYPTICALLY: after
-# host-tier seeding and partway into 00-Install.core, as a buried
+# host-tier seeding and partway into the first tier, as a buried
 # `dasel version exited 127` from require_dasel_v3. This script is a
 # single up-front hard gate the config-dependent `make` targets run as a
 # prerequisite, BEFORE host-tier seeding, the recipe-level config reads,

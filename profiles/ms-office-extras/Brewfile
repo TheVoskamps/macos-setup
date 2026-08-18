@@ -1,0 +1,6 @@
+# Brewfile for the 'ms-office-extras' profile
+
+# Mac App Store (mas)
+mas 'Microsoft Outlook', id: 985367838
+mas 'Microsoft OneNote', id: 784801555
+mas 'Microsoft OneDrive', id: 823766827

@@ -8,7 +8,7 @@
 # checks that `dasel` is reachable as a BARE command and aborts loudly
 # with a PATH-specific remediation when it is not — turning the old
 # cryptic, late `dasel version exited 127` (from require_dasel_v3 partway
-# into 00-Install.core) into an actionable up-front abort.
+# into the first tier) into an actionable up-front abort.
 #
 # This is a REACHABILITY check only; the exactly-v3 version assertion is
 # the separate job of require_dasel_v3 (covered by

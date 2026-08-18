@@ -1,50 +1,56 @@
 #!/usr/bin/env bash
-# scripts/remove_runner.sh — execute a single Uninstall/<NN-Uninstall.suffix>
-# or RemoveAndPurge/<NN-RemoveAndPurge.suffix> file by uninstalling each
-# listed brew/cask/mas entry that is currently installed. Idempotent and
-# tier-agnostic: callers are responsible for invoking it once per
-# (tier, file) combination they care about.
+# scripts/remove_runner.sh — execute one TIER's removal list by uninstalling
+# each listed brew/cask/mas entry that is currently installed. Idempotent
+# and tier-agnostic: callers invoke it once per (tier, mode) combination
+# they care about.
 #
-# Usage: scripts/remove_runner.sh <path-to-removal-file> \
+# Usage: scripts/remove_runner.sh <tier-root> \
 #          [--mode={uninstall|purge}] [--dry-run] [--banner=<text>]
 #
-# Quiet-by-default for empty slots (issue #167):
-#   Most numbered slot files are just a comment header with no actual
-#   package to remove. To keep the removal loops — `make update`,
-#   `make uninstall`, `make remove-and-purge`, and their dry-run
-#   companions — readable, a slot file with
-#   ZERO active directives (no uncommented brew/cask/mas line) prints
-#   NOTHING by default — neither the optional `--banner` line the caller
-#   passes nor the runner's own `Processing` / `Done` lines. A slot file
-#   that HAS at least one active directive prints fully, INCLUDING any
-#   `skip: <pkg> not installed` lines (those are genuinely useful). Set
-#   the VERBOSE env var to any non-empty value to restore ALL lines for
-#   EVERY slot, including empty ones, for debugging.
+# `<tier-root>` is a tier directory — `default/`, `profiles/<name>/`, or the
+# external host tier. The entries come from that tier's
+# `config.toml` `[profile] uninstall` (for `--mode=uninstall`) or
+# `[profile] purge` (for `--mode=purge`) array. Before issue #33 the
+# entries came from a numbered `Uninstall/NN-Uninstall.<slug>` /
+# `RemoveAndPurge/NN-RemoveAndPurge.<slug>` file instead; the removal
+# SEMANTICS are unchanged, only where the list is read from.
 #
-#   This "does the file have an active directive?" decision lives in ONE
-#   place — here, the only code that reads the file — so the caller's
-#   banner and the runner's Processing/Done lines can never disagree about
-#   whether a given slot+tier is silent. The Makefile passes the banner
-#   text it would otherwise have echoed itself via `--banner=<text>`.
+# Entry grammar (see parse_removal_entry in config_common.sh):
+#   "brew:<formula>"    "cask:<token>"    "mas:<id>"    "mas:<id>:<Name>"
+#
+# Quiet-by-default for empty tiers (issue #167):
+#   Most tiers remove nothing. To keep the removal loops — `make update`,
+#   `make uninstall`, `make remove-and-purge`, and their dry-run companions —
+#   readable, a tier with an EMPTY (or absent) array for the active mode
+#   prints NOTHING by default — neither the optional `--banner` line the
+#   caller passes nor the runner's own `Processing` / `Done` lines. A tier
+#   with at least one entry prints fully, INCLUDING any
+#   `skip: <pkg> not installed` lines (those are genuinely useful). Set the
+#   VERBOSE env var to any non-empty value to restore ALL lines for EVERY
+#   tier, including empty ones, for debugging.
+#
+#   This "does the tier remove anything?" decision lives in ONE place —
+#   here, the only code that reads the array — so the caller's banner and
+#   the runner's Processing/Done lines can never disagree about whether a
+#   given tier is silent. The Makefile passes the banner text it would
+#   otherwise have echoed itself via `--banner=<text>`.
 #
 # Modes:
-#   --mode=uninstall (default): remove the binary; leave user data on
-#       disk. For `cask 'foo'` this runs `brew uninstall --cask foo`.
-#   --mode=purge: also pass --zap to cask uninstalls. For
-#       `cask 'foo'` this runs `brew uninstall --cask --zap foo`,
-#       which also removes the cask's declared user data
-#       (preferences, caches, login items).
+#   --mode=uninstall (default): read `[profile] uninstall`; remove the
+#       binary and leave user data on disk. For `cask:foo` this runs
+#       `brew uninstall --cask foo`.
+#   --mode=purge: read `[profile] purge`; also pass --zap to cask
+#       uninstalls. For `cask:foo` this runs
+#       `brew uninstall --cask --zap foo`, which also removes the cask's
+#       declared user data (preferences, caches, login items).
 #
-#   The default mode is `uninstall`; this preserves the previous
-#   uninstall behavior so any out-of-tree caller continues to work
-#   without changes.
+#   The default mode is `uninstall`.
 #
 # Behavior in both modes:
-#   - brew 'foo'                 -> brew uninstall --formula foo (if installed)
-#   - mas 'Name', id: NNNNN      -> sudo mas uninstall NNNNN     (if installed)
-#                                   (via "$SUDO" "$MAS"; see the override note)
-#   - tap '...'                  -> ignored
-#   - blank lines / comments     -> ignored
+#   - brew:foo        -> brew uninstall --formula foo   (if installed)
+#   - cask:foo        -> brew uninstall --cask [--zap] foo (if installed)
+#   - mas:NNNNN       -> sudo mas uninstall NNNNN       (if installed)
+#                        (via "$SUDO" "$MAS"; see the override note)
 #
 #   - Skip messages are emitted when an entry is already absent.
 #   - brew formula and cask uninstall failures are non-fatal-but-tracked:
@@ -52,7 +58,7 @@
 #     callers (e.g. `make uninstall`) see a partially-failed run.
 #   - mas uninstall failures are warn-only-untracked (best-effort): they
 #     are logged but do not affect the runner's exit status.
-#   - Malformed lines or unsupported directives abort the run with exit 2.
+#   - A malformed entry aborts the run with exit 2.
 #   - --dry-run prints actions without executing anything; exits 0.
 #
 # Log lines are prefixed with the active mode (e.g. `[uninstall]` vs
@@ -79,6 +85,11 @@
 
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/config_common.sh"
+
 # Accumulator for non-fatal-but-tracked failures (brew formula/cask
 # uninstall errors). Mirrors the pattern used by `make update` so a
 # partially-failed run surfaces a non-zero exit. mas failures stay
@@ -87,25 +98,25 @@ FAIL=0
 
 usage() {
   cat >&2 <<EOF
-Usage: $(basename "$0") <path-to-removal-file> [--mode={uninstall|purge}] [--dry-run] [--banner=<text>]
+Usage: $(basename "$0") <tier-root> [--mode={uninstall|purge}] [--dry-run] [--banner=<text>]
 
-Uninstall every brew/cask/mas entry listed in the given file that is
-currently installed. tap directives are ignored.
+Uninstall every brew/cask/mas entry in the tier's config.toml
+[profile] uninstall (or purge) array that is currently installed.
 
   --mode=uninstall (default)  remove the binary; leave user data on disk
   --mode=purge                also pass --zap to cask uninstalls
                               (removes the cask's declared user data)
   --dry-run                   print actions without executing
   --banner=<text>             one line to echo before processing, unless
-                              the file has no active directive and VERBOSE
-                              is unset (then the whole slot stays silent)
+                              the tier's array is empty and VERBOSE is
+                              unset (then the whole tier stays silent)
 EOF
   exit 64
 }
 
 DRY_RUN=0
 MODE="uninstall"
-FILE=""
+TIER=""
 BANNER=""
 
 # --- Arg parsing ---
@@ -125,54 +136,51 @@ for arg in "$@"; do
       usage
       ;;
     *)
-      if [[ -n "$FILE" ]]; then
-        echo "[remove_runner] Multiple files given: $FILE and $arg" >&2
+      if [[ -n "$TIER" ]]; then
+        echo "[remove_runner] Multiple tiers given: $TIER and $arg" >&2
         usage
       fi
-      FILE="$arg"
+      TIER="$arg"
       ;;
   esac
 done
 
-if [[ -z "$FILE" ]]; then
+if [[ -z "$TIER" ]]; then
   usage
 fi
 
-if [[ ! -f "$FILE" ]]; then
-  echo "[$MODE] File not found: $FILE" >&2
-  exit 2
+# A tier that does not exist on disk removes nothing. This is a normal
+# state, not an error: the host tier is absent until it is seeded, and a
+# profile in the host's list may be unknown (install_filter.sh warns; make
+# verify hard-errors). Exit silently so the removal loops stay quiet.
+if [[ ! -d "$TIER" ]]; then
+  exit 0
 fi
+
+TIER_LABEL="$(tier_label "$REPO_ROOT" "$TIER")"
 
 # --- Helpers ---
 log() {
   echo "[$MODE] $*"
 }
 
-# Static check: does the file have at least one ACTIVE directive — an
-# uncommented, non-blank brew/cask/mas line? Used to decide whether this
-# slot+tier prints anything at all in the common quiet (non-VERBOSE) case.
-# Mirrors the per-line parse below (strip trailing comments + whitespace,
-# then match the brew/cask/mas keyword) so the gate and the parse loop
-# agree on what counts as "active". tap lines do NOT count — the runner
-# ignores them, so a tap-only file has nothing to do.
-has_active_directive() {
-  local raw line
-  while IFS= read -r raw || [[ -n "$raw" ]]; do
-    line="${raw%%#*}"
-    line="$(echo "$line" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
-    [[ -z "$line" ]] && continue
-    if [[ "$line" =~ ^(brew|cask|mas)[[:space:]] ]]; then
-      return 0
-    fi
-  done < "$FILE"
-  return 1
-}
+# Collect this tier's entries for the active mode, parsed, one
+# "<kind>\t<identifier>\t<label>" record per line. A malformed entry aborts.
+ENTRIES="$(mktemp)"
+trap 'rm -f "$ENTRIES"' EXIT
+while IFS= read -r entry; do
+  [[ -n "$entry" ]] || continue
+  if ! parse_removal_entry "$entry" >> "$ENTRIES"; then
+    echo "[$MODE] ERROR: $TIER/config.toml [profile] $MODE: $entry" >&2
+    exit 2
+  fi
+done < <(read_removals "$TIER" "$MODE")
 
 # QUIET=1 means: suppress the banner and the Processing/Done lines for
-# this (empty) slot. VERBOSE (any non-empty value) forces full output for
-# every slot, including empty ones, for debugging.
+# this (empty) tier. VERBOSE (any non-empty value) forces full output for
+# every tier, including empty ones, for debugging.
 QUIET=0
-if [[ -z "${VERBOSE:-}" ]] && ! has_active_directive; then
+if [[ -z "${VERBOSE:-}" ]] && [[ ! -s "$ENTRIES" ]]; then
   QUIET=1
 fi
 
@@ -204,11 +212,11 @@ SUDO="${SUDO:-sudo}"
 # which removes every formula nothing declares a dependency on any more. That
 # is how uninstalling asdf took Homebrew's `bash` formula with it mid-run, and
 # a run that deletes the interpreter its own later steps need cannot finish.
-# This runner is the ONE place both removal trees (Uninstall/ and
-# RemoveAndPurge/) actually call brew, so exporting it here covers `make
-# uninstall`, `make remove-and-purge`, `make update`'s two loops, and the
-# slot-04 purge `make install` applies inline. Removing genuinely unneeded
-# dependencies stays available as a deliberate, separate `brew autoremove`.
+# This runner is the ONE place both removal modes actually call brew, so
+# exporting it here covers `make uninstall`, `make remove-and-purge`, `make
+# update`'s two loops, and the version-managers purge `make install` applies
+# inline. Removing genuinely unneeded dependencies stays available as a
+# deliberate, separate `brew autoremove`.
 export HOMEBREW_NO_AUTOREMOVE=1
 
 is_brew_installed() {
@@ -255,7 +263,7 @@ uninstall_cask() {
 }
 
 uninstall_mas() {
-  local name="$1" id="$2"
+  local id="$1" name="$2"
   if ! command -v "$MAS" >/dev/null 2>&1; then
     log "skip: $name (id $id) — mas CLI not found: $MAS"
     return 0
@@ -274,52 +282,28 @@ uninstall_mas() {
   fi
 }
 
-# --- Main parse loop ---
+# --- Main loop ---
 # Emit the caller-supplied banner first (the `==> Applying ...` line the
 # Makefile would otherwise have echoed itself), then the Processing line.
-# Both are suppressed for an empty slot in quiet mode so the banner and
+# Both are suppressed for an empty tier in quiet mode so the banner and
 # the runner's lines stay in lockstep — never one without the other.
 if [[ "$QUIET" -eq 0 ]]; then
   [[ -n "$BANNER" ]] && echo "$BANNER"
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    log "Processing $FILE (dry-run)"
+    log "Processing $TIER_LABEL (dry-run)"
   else
-    log "Processing $FILE"
+    log "Processing $TIER_LABEL"
   fi
 fi
 
-lineno=0
-while IFS= read -r raw || [[ -n "$raw" ]]; do
-  lineno=$((lineno + 1))
+while IFS=$'\t' read -r kind id label; do
+  [[ -n "$kind" ]] || continue
+  case "$kind" in
+    brew) uninstall_brew "$id" ;;
+    cask) uninstall_cask "$id" ;;
+    mas)  uninstall_mas "$id" "$label" ;;
+  esac
+done < "$ENTRIES"
 
-  # Strip trailing comments and surrounding whitespace.
-  line="${raw%%#*}"
-  line="$(echo "$line" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
-  [[ -z "$line" ]] && continue
-
-  if [[ "$line" =~ ^tap[[:space:]]+[\"\'][^\"\']+[\"\'] ]]; then
-    # tap directives are intentionally ignored.
-    continue
-  fi
-
-  if [[ "$line" =~ ^brew[[:space:]]+[\"\']([^\"\']+)[\"\'] ]]; then
-    uninstall_brew "${BASH_REMATCH[1]}"
-    continue
-  fi
-
-  if [[ "$line" =~ ^cask[[:space:]]+[\"\']([^\"\']+)[\"\'] ]]; then
-    uninstall_cask "${BASH_REMATCH[1]}"
-    continue
-  fi
-
-  if [[ "$line" =~ ^mas[[:space:]]+[\"\']([^\"\']+)[\"\'][[:space:]]*,[[:space:]]*id[:=][[:space:]]*([0-9]+) ]]; then
-    uninstall_mas "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
-    continue
-  fi
-
-  echo "[$MODE] ERROR: $FILE:$lineno: malformed or unsupported directive: $line" >&2
-  exit 2
-done < "$FILE"
-
-[[ "$QUIET" -eq 0 ]] && log "Done: $FILE"
+[[ "$QUIET" -eq 0 ]] && log "Done: $TIER_LABEL"
 exit $FAIL

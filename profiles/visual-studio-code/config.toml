@@ -1,0 +1,11 @@
+# config.toml for the 'visual-studio-code' profile.
+
+[profile]
+# The VS Code post-install pair: install the declared extensions, then
+# symlink the single-winner .vscode/settings.json (this profile ships one).
+# Both live here rather than in the core tier because they are no-ops
+# without the `visual-studio-code` cask this profile installs.
+post_install = [
+  "scripts/vscode_extensions.sh code",
+  "scripts/vscode_setup.sh",
+]

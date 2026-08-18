@@ -1,0 +1,5 @@
+# Brewfile for the 'logitech' profile
+
+# Casks
+cask 'logitech-g-hub'
+cask 'logitune'

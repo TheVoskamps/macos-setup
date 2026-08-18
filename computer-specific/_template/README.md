@@ -25,6 +25,7 @@ The external host tier mirrors the layout this template ships:
 | Path                    | Purpose                                       |
 | ----------------------- | --------------------------------------------- |
 | `config.toml`           | Scalar config: profiles array + sections.     |
+| `Brewfile`              | Host-only packages (optional; not seeded).    |
 | `aliases.zsh`           | Personal shell aliases (aggregate tier).      |
 | `.vscode/settings.json` | VS Code settings override.                    |
 | `.cdk.json`             | AWS CDK config override.                      |
@@ -37,9 +38,12 @@ verifies it, and config reads hard-abort loudly on a non-v3 dasel).
 See `config.toml` in this directory for the full set of documented
 fields.
 
-You may also add host-only `Install/`, `Uninstall/`, and
-`RemoveAndPurge/` files here; they aggregate on top of the in-repo
-`default` + `profiles` tiers exactly as the old in-repo host tier did.
+You may also add a host-only `Brewfile` here, and host-only `uninstall`
+/ `purge` arrays under `[profile]` in `config.toml`. The host tier is the
+highest-priority tier, so its Brewfile applies last, and its removal
+arrays suppress the matching package in **every** lower tier's
+Brewfile — that is how "I opted into `web` but I don't want its Firefox"
+is expressed. See `docs/INSTALL.md`.
 
 ## Resolution order (unchanged)
 

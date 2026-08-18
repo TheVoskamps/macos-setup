@@ -3,7 +3,7 @@
 # These live with the dev-core profile (not the default tier) so a
 # machine that doesn't do development never gets the git alias soup.
 # The git BINARY is installed in the default tier (bootstrap.sh needs
-# it); dev-core re-asserts `git` in its Install/05-Install.tools as a
+# it); dev-core re-asserts `git` in its own Brewfile as a
 # development tool, alongside `gh`. Install is additive and idempotent,
 # so the re-assertion is harmless.
 

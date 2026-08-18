@@ -30,6 +30,11 @@
 # just under this host's own config). Each name must match a directory
 # under profiles/<name>/.
 #
+# A name may contain only letters, digits, '.', '_' and '-'. Anything
+# else (a space above all) word-splits into phantom tiers in the
+# Makefile's tier list, so `make` drops the name with a warning and
+# `make verify` treats it as a hard error.
+#
 # A host with no `profiles` array (like this template) selects no
 # profiles and collapses to the two-tier model: default < host.
 #
@@ -60,7 +65,7 @@
 # [mailer] — generic SMTP relay settings for outgoing mail (msmtp).
 # msmtp is a relay client, not an MTA, so a relay account is required
 # (Gmail app-password, Fastmail, your ISP, your own AWS SES SMTP
-# credentials, etc.). Fill these in, then run 'make messaging' to
+# credentials, etc.). Fill these in, then run 'make core' to
 # generate ~/.msmtprc.
 # ---------------------------------------------------------------------
 # [mailer]
@@ -87,3 +92,33 @@
 # Email address that scheduled LaunchAgent jobs send their output to.
 # When unset, jobs write to a per-job log file instead.
 # mailto = "you@example.com"
+
+# ---------------------------------------------------------------------
+# [profile] — what THIS tier contributes to an install run, beyond its
+# Brewfile.
+#
+# Unlike the sections above, [profile] is NOT resolved across tiers: every
+# tier's section applies on its own, in tier order (core -> each profile in
+# the `profiles` array above -> host). This host tier is the LAST one, so
+# its post_install runs last and its removal arrays outrank every other
+# tier's.
+#
+#   post_install  commands run after this tier's Brewfile, in order. Each
+#                 entry is a path relative to the macos-setup repo root
+#                 plus optional arguments.
+#   uninstall     packages this tier removes (binary only).
+#   purge         packages this tier removes, additionally passing --zap to
+#                 cask uninstalls so the cask's user data goes too.
+#
+# Entries in uninstall / purge are "<kind>:<identifier>" strings:
+#   "brew:<formula>"   "cask:<token>"   "mas:<id>"   "mas:<id>:<Name>"
+#
+# A package listed here is ALSO filtered out of every tier's Brewfile
+# before `brew bundle` sees it — that is how you opt out of one package
+# from a profile you otherwise want. Example: keep the `web` profile but
+# skip its Firefox.
+# ---------------------------------------------------------------------
+# [profile]
+# post_install = []
+# uninstall = ["cask:firefox"]
+# purge = []

@@ -8,7 +8,7 @@
 # the cutover purely via `make update` ended with mise installed, the old
 # version manager gone, and no version manager wired into the interactive
 # shell — observed on a real host, whose ~/.zshrc had zero `mise` lines until
-# a manual `make shell`.
+# a manual `make shell_setup`.
 #
 # Block 1 (behavioral): the script itself — writes both lines, is idempotent,
 # and holds the activation line back when mise is unreachable.
@@ -138,9 +138,17 @@ fi
 
 # Guarded on the same VM_SKIP decision as the strip: a run that held the
 # asdf/direnv removal back must not point ~/.zshrc at a mise that is absent.
-GUARD_LINE="$(grep -nF 'VM_SKIP' <<<"$RECIPE" | grep -F 'if [ -z' | head -1 | cut -d: -f1)"
+#
+# The recipe carries MORE THAN ONE `[ -z "$VM_SKIP" ]` guard -- the
+# versions-update/versions-cleanup pair is gated on the same decision, for
+# the same reason (both drive a mise that may not exist). So the guard this
+# assertion cares about is the ENCLOSING one: the last such `if` at or before
+# the ensure call, not the first one in the recipe. Taking `head -1` here
+# would test an unrelated block and fail on a recipe that is correct.
 STRIP_LINE="$(grep -nF 'strip_asdf_zshrc_lines.sh' <<<"$RECIPE" | head -1 | cut -d: -f1)"
 ENSURE_LINE="$(grep -nF 'ensure_mise_zshrc_lines.sh' <<<"$RECIPE" | head -1 | cut -d: -f1)"
+GUARD_LINE="$(grep -nF 'VM_SKIP' <<<"$RECIPE" | grep -F 'if [ -z' \
+  | awk -F: -v e="${ENSURE_LINE:-0}" '$1 < e { l = $1 } END { if (l) print l }')"
 FI_LINE="$(awk 'NR>'"${GUARD_LINE:-0}"' && /^\t*fi; \\$/ { print NR; exit }' <<<"$RECIPE")"
 
 if [ -n "$GUARD_LINE" ] && [ -n "$ENSURE_LINE" ] && [ -n "$FI_LINE" ] \

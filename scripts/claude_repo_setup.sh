@@ -133,7 +133,7 @@ switch_to_branch() {
 #
 # The pull itself is non-fatal: a transient network blip, an
 # unexpectedly non-fast-forward upstream, or auth failure prints a
-# warning but does NOT abort the script. This keeps `make ai` from
+# warning but does NOT abort the script. This keeps `make profile claude` from
 # failing the whole install over a recoverable hiccup, while still
 # making the failure visible.
 pull_with_stash() {
@@ -433,7 +433,7 @@ cmd_install() {
 
     # Sync plugins from the clone's settings.json. Non-fatal: a missing
     # `claude` binary / plugins.sh, or a plugins.sh failure, warns but
-    # must not abort `make ai` / `make install`.
+    # must not abort `make profile claude` / `make install`.
     sync_claude_plugins_nonfatal --install
 }
 

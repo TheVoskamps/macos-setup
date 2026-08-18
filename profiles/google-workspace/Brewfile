@@ -1,0 +1,4 @@
+# Brewfile for the 'google-workspace' profile
+
+# Casks
+cask 'google-drive'

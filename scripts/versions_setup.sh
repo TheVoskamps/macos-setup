@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # versions_setup.sh — drive mise for the `versions-*` Makefile targets and
-# the `04-Install.versionmanagers` post-install action.
+# the `version-managers` profile's `post_install` action.
 #
 # The target names are deliberately implementation-neutral (`versions-*`,
 # not `mise-*`): swapping the version manager again should be a change to

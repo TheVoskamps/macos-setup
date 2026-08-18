@@ -1,0 +1,4 @@
+# Brewfile for the 'gcp' profile
+
+# Casks
+cask 'gcloud-cli'

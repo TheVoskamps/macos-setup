@@ -1,4 +1,0 @@
-# 09-Install.development for the 'gcp' profile
-
-# Casks
-cask 'gcloud-cli'

@@ -1,0 +1,4 @@
+# Brewfile for the 'powershell' profile
+
+# Casks
+cask 'powershell'

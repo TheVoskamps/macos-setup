@@ -1,6 +1,0 @@
-# 12-Install.componentization for the 'claude-vm' profile
-
-# Homebrew formulae
-brew 'vfkit'
-brew 'podman'
-brew 'tinyproxy'

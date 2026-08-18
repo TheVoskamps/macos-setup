@@ -1,0 +1,4 @@
+# Brewfile for the 'virtualization' profile
+
+# Casks
+cask 'parallels'

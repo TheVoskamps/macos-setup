@@ -1,23 +1,24 @@
 #!/usr/bin/env bash
 
 # Tests for the mise-reachability guard on `make install`'s inline
-# slot-04 RemoveAndPurge (the asdf -> mise cutover).
+# version-managers purge (the asdf -> mise cutover).
 #
-# `make install` is the one place the install path removes anything: the
-# `04-Install.versionmanagers` case in the batch loop applies slot 04's
-# RemoveAndPurge inline, which uninstalls asdf and direnv. That removal
-# must never run on a host where mise is not actually reachable at that
-# moment -- a host left with neither is strictly worse off than a host
-# carrying both.
+# `make install` is the one place the install path removes anything: right
+# after it applies the `version-managers` tier, the batch loop applies that
+# same tier's `[profile] purge` array inline, which uninstalls asdf and
+# direnv. That removal must never run on a host where mise is not actually
+# reachable at that moment -- a host left with neither is strictly worse
+# off than a host carrying both.
 #
-# `set -e` alone is NOT the guard being tested here. The recipe does run
-# under .ONESHELL + `set -euo pipefail`, and versions_setup.sh does exit
-# non-zero when mise is missing, so the run would in practice abort before
-# the purge lines. That protection is incidental: it lives in another
-# file, and a refactor that moves the purge or reorders require_mise would
-# reopen the hazard silently. These tests pin the EXPLICIT guard --
-# $(MISE_REACHABLE), evaluated at the destructive call site -- so removing
-# it fails the suite.
+# `set -e` alone is NOT the guard being tested here, and the install loop
+# does not even run under it any more (it tracks failures explicitly so an
+# early tier's failure cannot skip the later tiers). The real
+# versions_setup.sh does exit non-zero when mise is missing, so a run would
+# in practice report that tier as failed. That protection is incidental: it
+# lives in another file, and a refactor that moves the purge or reorders
+# require_mise would reopen the hazard silently. These tests pin the
+# EXPLICIT guard -- $(MISE_REACHABLE), evaluated at the destructive call
+# site -- so removing it fails the suite.
 #
 # Two blocks:
 #
@@ -105,7 +106,7 @@ static_test() {
 
   # Both destructive paths gate on the SAME probe.
   ok_contains "$install_recipe" '$(MISE_REACHABLE)' \
-    "install gates the inline slot-04 purge on MISE_REACHABLE"
+    "install gates the inline version-managers purge on MISE_REACHABLE"
   ok_contains "$update_recipe" '$(MISE_REACHABLE)' \
     "update gates its removal loops on MISE_REACHABLE"
 
@@ -113,12 +114,15 @@ static_test() {
   ok_before "$install_recipe" '$(MISE_REACHABLE)' '--mode=purge' \
     "install evaluates the guard before any purge invocation"
 
-  # The purge slot is named through $(VM_PURGE), so a rename cannot leave
-  # the inline purge silently pointing at a file that no longer exists.
-  ok_contains "$install_recipe" 'vmp="$(VM_PURGE)"' \
-    "install names the purge slot through VM_PURGE"
-  ok "$(grep -q '^VM_PURGE  *:= *04-RemoveAndPurge\.versionmanagers$' "$MAKEFILE" && echo 0 || echo 1)" \
-    "VM_PURGE names the version-manager RemoveAndPurge slot"
+  # The tier is named through $(VM_TIER), so renaming the profile cannot
+  # leave the inline purge silently pointing at a directory that no longer
+  # exists.
+  ok_contains "$install_recipe" '$(VM_TIER)' \
+    "install names the purge tier through VM_TIER"
+  ok "$(grep -q '^VM_PROFILE  *:= *version-managers$' "$MAKEFILE" && echo 0 || echo 1)" \
+    "VM_PROFILE names the version-managers profile"
+  ok "$(grep -q '^VM_TIER  *:= *profiles/\$(VM_PROFILE)$' "$MAKEFILE" && echo 0 || echo 1)" \
+    "VM_TIER derives the tier root from VM_PROFILE"
 }
 
 # ---------------------------------------------------------------------
@@ -151,14 +155,17 @@ STUB
   chmod +x "$1"
 }
 
-# Synthetic repo: the real Makefile, the scripts `install` invokes, one
-# slot-04 Install file and one slot-04 RemoveAndPurge file with an active
-# directive (so the runner prints its banner and the test can see it).
+# Synthetic repo: the real Makefile, the scripts `install` invokes, and a
+# `version-managers` profile whose Brewfile installs mise, whose
+# post_install calls the stub versions_setup.sh, and whose `[profile]
+# purge` array removes asdf (so the runner prints its banner and the test
+# can see it).
 make_repo() {
   local root; root="$(mktemp -d)"
-  mkdir -p "$root/scripts" "$root/Install" "$root/Uninstall" "$root/RemoveAndPurge" "$root/bin"
+  mkdir -p "$root/scripts" "$root/default" "$root/profiles/version-managers" "$root/bin"
   cp "$MAKEFILE" "$root/Makefile"
   cp "$REPO_ROOT/scripts/config_common.sh" \
+     "$REPO_ROOT/scripts/apply_tier.sh" \
      "$REPO_ROOT/scripts/install_filter.sh" \
      "$REPO_ROOT/scripts/list_profiles.sh" \
      "$REPO_ROOT/scripts/seed_host_tier.sh" \
@@ -168,18 +175,25 @@ make_repo() {
      "$root/scripts/"
   write_stub_versions_setup "$root/scripts/versions_setup.sh"
   write_stub_brew "$root/bin/brew"
-  printf 'brew "mise"\n' > "$root/Install/04-Install.versionmanagers"
-  printf "# header\nbrew 'asdf'\n" > "$root/RemoveAndPurge/04-RemoveAndPurge.versionmanagers"
+  printf 'brew "mise"\n' > "$root/profiles/version-managers/Brewfile"
+  {
+    printf '[profile]\n'
+    printf 'post_install = ["scripts/versions_setup.sh full"]\n'
+    printf 'purge = ["brew:asdf"]\n'
+  } > "$root/profiles/version-managers/config.toml"
   echo "$root"
 }
 
-PURGE_BANNER="==> Applying global RemoveAndPurge: RemoveAndPurge/04-RemoveAndPurge.versionmanagers"
+PURGE_BANNER="==> Applying RemoveAndPurge: profiles/version-managers"
 
 run_install() {
   # run_install <mise-value> -> sets RUN_OUT / RUN_RC
   local mise="$1" root host_dir
   root="$(make_repo)"
-  host_dir="$(mktemp -d)"   # present but empty -> seeding/profiles no-op
+  # The host tier selects the version-managers profile, so the install
+  # loop reaches the tier that owns the cutover.
+  host_dir="$(mktemp -d)"
+  printf 'profiles = ["version-managers"]\n' > "$host_dir/config.toml"
   RUN_OUT="$(cd "$root" && PATH="$root/bin:$PATH" MACOS_SETUP_HOST_DIR="$host_dir" \
     make install BREW="$root/bin/brew" MISE="$mise" 2>&1)"; RUN_RC=$?
   rm -rf "$root" "$host_dir"
@@ -195,7 +209,7 @@ behavioral_test() {
     "mise unreachable: the run warns"
   ok_contains "$RUN_OUT" "Skipped the asdf/direnv removal" \
     "mise unreachable: the end-of-run summary names the skip"
-  ok_absent "$RUN_OUT" "All Install files applied." \
+  ok_absent "$RUN_OUT" "All tiers applied." \
     "mise unreachable: the success message is suppressed"
 
   # mise reachable -> purge runs, clean exit. `true` is a real binary on
@@ -206,7 +220,7 @@ behavioral_test() {
     "mise reachable: the asdf/direnv purge runs"
   ok_absent "$RUN_OUT" "WARNING: mise is not reachable" \
     "mise reachable: no skip warning"
-  ok_contains "$RUN_OUT" "All Install files applied." \
+  ok_contains "$RUN_OUT" "All tiers applied." \
     "mise reachable: prints the success message"
 }
 

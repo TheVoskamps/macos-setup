@@ -1,57 +1,64 @@
 #!/usr/bin/env bash
-# scripts/verify.sh — verify Install/ installations in numeric order (v2.4)
+# scripts/verify.sh — verify each tier's Brewfile installations, in tier
+# order (core -> each opted-in profile, in list order -> host).
 # - prints one line per entry (installed/missing/skipped + version if available)
 # - supports single or double quotes and trailing options
 # - shows full report; exits non-zero only if missing > 0
-# - also checks profile- and computer-specific Install/ files
 set -uo pipefail
 
-INSTALL_DIR="${INSTALL_DIR:-Install}"
-if [[ ! -d "$INSTALL_DIR" ]]; then
-  echo "[verify] Install directory not found: $INSTALL_DIR" >&2
-  exit 1
-fi
-
-# Computer-specific and profile configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 source "$SCRIPT_DIR/config_common.sh"
 
 COMPUTER_NAME_LOWER="$(get_hostname)"
-# The host tier lives OUTSIDE the repo now (see host_tier_dir in
-# config_common.sh). Its Install/ files are scanned in addition to the
-# in-repo default + profile tiers.
-COMPUTER_SPECIFIC_DIR="$(host_tier_dir)/Install"
 
-# Ordered profile list for this host (lowest priority first).
-PROFILES=()
-while IFS= read -r _p; do PROFILES+=("$_p"); done < <(get_profiles "$REPO_ROOT")
+# Ordered profile list for this host (lowest priority first), read in the
+# tagged form "<config.toml path>\t<profile name>" so every diagnostic
+# below can name the file that declares the offending entry. Either tier
+# can contribute a name — the host tier's config.toml or the
+# repo-tracked default/config.toml — so a fixed filename in the message
+# would send the user to the wrong file. Split on the FIRST tab only: a
+# rejected name may itself contain one.
+tagged_profiles=()
+while IFS= read -r _line; do
+  [[ -n "$_line" ]] || continue
+  tagged_profiles+=("$_line")
+done < <(get_profiles_tagged "$REPO_ROOT")
 
-# Hard error: every profile named in the host's `profiles` file must
-# have a matching profiles/<name>/ directory. An unknown profile name
-# is a configuration bug — verify fails loudly rather than silently
-# falling back. (install_filter.sh warns at install time instead.)
-unknown_profiles=()
-for _p in ${PROFILES[@]+"${PROFILES[@]}"}; do
-  if [[ ! -d "$REPO_ROOT/profiles/$_p" ]]; then
-    unknown_profiles+=("$_p")
-  fi
-done
-if [[ ${#unknown_profiles[@]} -gt 0 ]]; then
-  echo "[verify] ERROR: host '$COMPUTER_NAME_LOWER' lists unknown profile(s) in $(host_tier_dir)/profiles:" >&2
-  for _p in "${unknown_profiles[@]}"; do
-    echo "[verify]   - $_p  (no profiles/$_p/ directory)" >&2
+# Hard error: a profile name that get_profiles had to drop. Those names
+# only warn on the apply paths (an abort would fire at Makefile parse
+# time, before any prerequisite could report it), so verify is where the
+# rejection becomes fatal.
+invalid_profiles=()
+while IFS= read -r _line; do
+  [[ -n "$_line" ]] && invalid_profiles+=("$_line")
+done < <(get_invalid_profiles_tagged "$REPO_ROOT")
+if [[ ${#invalid_profiles[@]} -gt 0 ]]; then
+  echo "[verify] ERROR: host '$COMPUTER_NAME_LOWER' has unusable profile name(s) in a 'profiles' array; each is shown below with the config.toml that declares it." >&2
+  echo "[verify] A profile name may contain only letters, digits, '.', '_' and '-': it is both a directory name and a whitespace-delimited word in the Makefile's tier list." >&2
+  for _line in "${invalid_profiles[@]}"; do
+    echo "[verify]   - [${_line#*$'\t'}]  (in ${_line%%$'\t'*})" >&2
   done
   exit 1
 fi
 
-files=()
-while IFS= read -r line; do
-  files+=("$line")
-done < <(ls -1 "$INSTALL_DIR"/[0-9][0-9]-Install.* 2>/dev/null | sort -t/ -k2)
-if [[ ${#files[@]} -eq 0 ]]; then
-  echo "[verify] No Install files found under $INSTALL_DIR" >&2
-  exit 0
+# Hard error: every profile named in the host's `profiles` array must
+# have a matching profiles/<name>/ directory. An unknown profile name
+# is a configuration bug — verify fails loudly rather than silently
+# falling back. (install_filter.sh warns at install time instead.)
+unknown_profiles=()
+for _line in ${tagged_profiles[@]+"${tagged_profiles[@]}"}; do
+  if [[ ! -d "$REPO_ROOT/profiles/${_line#*$'\t'}" ]]; then
+    unknown_profiles+=("$_line")
+  fi
+done
+if [[ ${#unknown_profiles[@]} -gt 0 ]]; then
+  echo "[verify] ERROR: host '$COMPUTER_NAME_LOWER' names unknown profile(s) in a 'profiles' array; each is shown below with the config.toml that declares it:" >&2
+  for _line in "${unknown_profiles[@]}"; do
+    _p="${_line#*$'\t'}"
+    echo "[verify]   - $_p  (no profiles/$_p/ directory; in ${_line%%$'\t'*})" >&2
+  done
+  exit 1
 fi
 
 section() { echo "=== $1 ==="; }
@@ -178,7 +185,7 @@ counting_wrapper() {
   return 0
 }
 
-process_install_file() {
+process_brewfile() {
   local f="$1"
   while IFS= read -r raw || [[ -n "$raw" ]]; do
     line="${raw%%#*}"
@@ -203,26 +210,19 @@ process_install_file() {
   done < "$f"
 }
 
-for f in "${files[@]}"; do
-  section "$(basename "$f")"
-  process_install_file "$f"
+any_tier=0
+while IFS= read -r tier; do
+  brewfile="$tier/Brewfile"
+  [[ -f "$brewfile" ]] || continue
+  any_tier=1
+  section "$(tier_label "$REPO_ROOT" "$tier")"
+  process_brewfile "$brewfile"
+done < <(tier_roots "$REPO_ROOT")
 
-  # Check for profile-specific versions, in list order (low to high).
-  for _p in ${PROFILES[@]+"${PROFILES[@]}"}; do
-    profile_file="profiles/$_p/Install/$(basename "$f")"
-    if [[ -f "$profile_file" ]]; then
-      section "$(basename "$f") (profile: $_p)"
-      process_install_file "$profile_file"
-    fi
-  done
-
-  # Check for computer-specific version
-  computer_specific_file="$COMPUTER_SPECIFIC_DIR/$(basename "$f")"
-  if [[ -f "$computer_specific_file" ]]; then
-    section "$(basename "$f") (computer-specific: $COMPUTER_NAME_LOWER)"
-    process_install_file "$computer_specific_file"
-  fi
-done
+if [[ $any_tier -eq 0 ]]; then
+  echo "[verify] No Brewfile found in any tier (core, profiles, host)" >&2
+  exit 0
+fi
 
 section "summary"
 echo "installed: $installed"

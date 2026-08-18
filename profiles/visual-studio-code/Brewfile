@@ -1,0 +1,4 @@
+# Brewfile for the 'visual-studio-code' profile
+
+# Casks
+cask 'visual-studio-code'

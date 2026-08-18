@@ -1,0 +1,6 @@
+# Brewfile for the 'ms-office-core' profile
+
+# Mac App Store (mas)
+mas 'Microsoft Word', id: 462054704
+mas 'Microsoft Excel', id: 462058435
+mas 'Microsoft PowerPoint', id: 462062816

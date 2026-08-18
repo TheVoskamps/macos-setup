@@ -6,21 +6,26 @@
 # mise, uninstall asdf + direnv, strip the orphaned ~/.zshrc lines. The
 # install piece is what carries a host that never ran `make install` --
 # `brew upgrade` upgrades an installed formula but never installs an absent
-# one, so without an explicit slot-04 Install the removal loops would take
-# asdf and direnv out and leave no replacement.
+# one, so without explicitly applying the version-managers tier the removal
+# loops would take asdf and direnv out and leave no replacement.
 #
-# Two invariants, tested in two blocks:
+# The invariants, tested in blocks:
 #
-#   Block 1 (static): INSTALL BEFORE REMOVE. The slot-04 Install sub-make
-#   appears in the `update` recipe ahead of `versions-update` (which needs a
-#   mise to drive) and ahead of both removal loops, the removal loops are
-#   handed REMOVE_SKIP_BASENAMES, and the ~/.zshrc strip is guarded on the
-#   same skip decision.
+#   Block 1 (static): INSTALL BEFORE REMOVE. The version-managers tier
+#   apply appears in the `update` recipe ahead of `versions-update` (which
+#   needs a mise to drive) and ahead of both removal loops, the removal
+#   loops are handed REMOVE_SKIP_TIERS, and the ~/.zshrc strip is guarded
+#   on the same skip decision. It also pins that the success line sits
+#   after the failure summary's `exit 1`.
 #
-#   Block 2 (behavioral): the batch removal loops honor
-#   REMOVE_SKIP_BASENAMES -- the named slot is skipped at every tier while
-#   every other slot still applies, and an unset variable leaves the loops
-#   exactly as they were.
+#   Block 1b (behavioral): the batch removal loops surface a failed tier.
+#
+#   Block 1c (behavioral): `make update` names the steps that failed, and
+#   never claims success on a run that then exits non-zero.
+#
+#   Block 2 (behavioral): the batch removal loops honor REMOVE_SKIP_TIERS
+#   -- the named tier is skipped while every other tier still applies, and
+#   an unset variable leaves the loops exactly as they were.
 #
 # Block 1 reads the recipe text out of the Makefile rather than running
 # `make -n update` ON PURPOSE. GNU make executes a recipe line containing
@@ -29,6 +34,11 @@
 # `brew update`, `brew upgrade`, `mas upgrade` and the ~/.zshrc strip on the
 # host. A static read of the recipe is the only side-effect-free way to
 # assert its ordering.
+#
+# Block 1c does run the recipe, but only against a synthetic repo whose host
+# tier opts out of version-managers and whose `brew` and `mas` are stubs --
+# see that block's comment for why that combination touches nothing outside
+# its temp dirs.
 
 set -uo pipefail
 
@@ -81,36 +91,38 @@ order_test() {
 
   ok "$([[ -n "$recipe" ]] && echo 0 || echo 1)" "update recipe is non-empty"
 
-  # The recipe names the install target through $(call CANON,$(VM_INSTALL)),
-  # so the needle is that unexpanded form; the two greps below pin the
-  # expansion (VM_INSTALL's value, and the target that value canonicalizes
-  # to) so a rename cannot leave this recipe calling a target that is gone.
-  local vm_install='$(call CANON,$(VM_INSTALL))'
-  ok_contains "$recipe" "$vm_install" \
-    "update applies the slot-04 Install"
-  ok "$(grep -q '^VM_INSTALL *:= *04-Install\.versionmanagers$' "$MAKEFILE" && echo 0 || echo 1)" \
-    "VM_INSTALL names the version-manager Install slot"
-  ok "$(grep -q '^04_Install_versionmanagers:' "$MAKEFILE" && echo 0 || echo 1)" \
-    "the canonicalized slot-04 Install target exists"
+  # The recipe applies the version-managers TIER through
+  # `$(APPLY_TIER) "$(VM_TIER)"`, so the needle is that unexpanded form;
+  # the greps below pin the expansion so a rename cannot leave this recipe
+  # pointing at a tier that is gone.
+  local vm_apply='$(APPLY_TIER) "$(VM_TIER)"'
+  ok_contains "$recipe" "$vm_apply" \
+    "update applies the version-managers tier"
+  ok "$(grep -q '^VM_PROFILE  *:= *version-managers$' "$MAKEFILE" && echo 0 || echo 1)" \
+    "VM_PROFILE names the version-managers profile"
+  ok "$(grep -q '^VM_TIER  *:= *profiles/\$(VM_PROFILE)$' "$MAKEFILE" && echo 0 || echo 1)" \
+    "VM_TIER derives the tier root from VM_PROFILE"
+  ok "$(grep -q '^APPLY_TIER  *:= *scripts/apply_tier\.sh$' "$MAKEFILE" && echo 0 || echo 1)" \
+    "APPLY_TIER names the tier-apply script"
   ok_contains "$recipe" 'strip_asdf_zshrc_lines.sh' \
     "update strips the orphaned ~/.zshrc lines"
 
   # Install before the mise-driven update, and before both removal loops.
-  ok_before "$recipe" "$vm_install" 'versions-update' \
-    "slot-04 Install precedes versions-update"
-  ok_before "$recipe" "$vm_install" '-s uninstall' \
-    "slot-04 Install precedes the Uninstall loop"
-  ok_before "$recipe" "$vm_install" '-s remove-and-purge' \
-    "slot-04 Install precedes the RemoveAndPurge loop"
-  ok_before "$recipe" "$vm_install" 'strip_asdf_zshrc_lines.sh' \
-    "slot-04 Install precedes the ~/.zshrc strip"
+  ok_before "$recipe" "$vm_apply" 'versions-update' \
+    "the version-managers tier precedes versions-update"
+  ok_before "$recipe" "$vm_apply" '-s uninstall' \
+    "the version-managers tier precedes the uninstall loop"
+  ok_before "$recipe" "$vm_apply" '-s remove-and-purge' \
+    "the version-managers tier precedes the purge loop"
+  ok_before "$recipe" "$vm_apply" 'strip_asdf_zshrc_lines.sh' \
+    "the version-managers tier precedes the ~/.zshrc strip"
 
   # The removal loops are handed the skip list, and the strip is guarded on
   # the same decision, so a missing mise holds back all three.
-  ok_contains "$recipe" '-s uninstall REMOVE_SKIP_BASENAMES=' \
-    "Uninstall loop is handed REMOVE_SKIP_BASENAMES"
-  ok_contains "$recipe" '-s remove-and-purge REMOVE_SKIP_BASENAMES=' \
-    "RemoveAndPurge loop is handed REMOVE_SKIP_BASENAMES"
+  ok_contains "$recipe" '-s uninstall REMOVE_SKIP_TIERS=' \
+    "uninstall loop is handed REMOVE_SKIP_TIERS"
+  ok_contains "$recipe" '-s remove-and-purge REMOVE_SKIP_TIERS=' \
+    "purge loop is handed REMOVE_SKIP_TIERS"
   # The guard opens a block carrying BOTH ~/.zshrc rewrites -- the strip and
   # the mise-lines add (issue #38) -- so a held-back cutover performs neither.
   # scripts/test/ensure_mise_zshrc_lines_test.sh pins the containment; here we
@@ -123,13 +135,196 @@ order_test() {
   ok_contains "$recipe" '$(BASH_BIN) scripts/strip_asdf_zshrc_lines.sh' \
     "the strip is invoked through the absolute bash"
 
-  # The skip list names slot 04 only.
-  ok_contains "$recipe" 'VM_SKIP="$(VM_UNINSTALL) $(VM_PURGE)"' \
-    "the skip list is the slot-04 removal slots"
+  # The skip list names the version-managers tier only.
+  ok_contains "$recipe" 'VM_SKIP="$(VM_TIER)"' \
+    "the skip list is the version-managers tier"
+
+  # The cutover only runs on hosts that opted into the profile. `install`
+  # gets this for free -- it reaches the tier only as one iteration of its
+  # $(TIERS) walk -- but `update` applies the tier explicitly, so it has to
+  # spell the test out or it would install mise on every host.
+  ok "$(grep -q '^VM_OPTED_IN  *:= *\$(filter \$(VM_PROFILE),\$(PROFILES))$' "$MAKEFILE" && echo 0 || echo 1)" \
+    "VM_OPTED_IN tests this host's profiles list for the version-managers profile"
+  ok_contains "$recipe" 'if [ -n "$(VM_OPTED_IN)" ]; then' \
+    "the version-managers tier apply is gated on the host's opt-in"
+  ok_before "$recipe" 'if [ -n "$(VM_OPTED_IN)" ]; then' "$vm_apply" \
+    "the opt-in gate precedes the version-managers tier apply"
+
+  # versions-update / versions-cleanup drive mise directly, and
+  # scripts/versions_setup.sh calls `require_mise || exit 1` ahead of its
+  # mode dispatch. Run unconditionally they made every `make update` on a
+  # non-opted-in (and therefore mise-less) host exit non-zero forever, which
+  # is exactly what the opt-in path is supposed to leave alone. They share
+  # the VM_SKIP guard -- empty VM_SKIP is "opted in AND mise reachable".
+  local vu_line vc_line guard_line fi_line
+  vu_line="$(grep -nF -- '-s versions-update' <<<"$recipe" | head -1 | cut -d: -f1)"
+  vc_line="$(grep -nF -- '-s versions-cleanup' <<<"$recipe" | head -1 | cut -d: -f1)"
+  guard_line="$(grep -nF 'VM_SKIP' <<<"$recipe" | grep -F 'if [ -z' \
+    | awk -F: -v e="${vu_line:-0}" '$1 < e { l = $1 } END { if (l) print l }')"
+  fi_line="$(awk 'NR>'"${guard_line:-0}"' && /^\t*fi; \\$/ { print NR; exit }' <<<"$recipe")"
+  ok "$([[ -n $guard_line && -n $vu_line && -n $vc_line && -n $fi_line \
+      && $guard_line -lt $vu_line && $vc_line -lt $fi_line ]] && echo 0 || echo 1)" \
+    "versions-update and versions-cleanup sit inside a VM_SKIP guard (guard@${guard_line:-none} vu@${vu_line:-none} vc@${vc_line:-none} fi@${fi_line:-none})"
+
+  # The success line and the failure summary are mutually exclusive BY
+  # CONSTRUCTION: the summary ends in `exit 1`, and the success echo sits
+  # after it. The regression this pins is the shape the recipe used to have
+  # -- an unconditional `echo "==> All packages updated."` immediately ahead
+  # of `exit $$FAIL`, which announced success on a run that then errored.
+  ok_contains "$recipe" '==> The following update steps failed:' \
+    "update summarises the steps that failed"
+  ok_before "$recipe" '==> The following update steps failed:' \
+    '==> All packages updated.' \
+    "the failure summary precedes the success line"
+  ok_absent "$recipe" 'exit $$FAIL' \
+    "update no longer exits on an undifferentiated FAIL flag"
 }
 
 # ---------------------------------------------------------------------
-# Block 2: REMOVE_SKIP_BASENAMES in the real removal loops.
+# Block 1b: the removal loops surface a failed tier.
+#
+# Each loop walks every tier and must NOT abort on the first failure --
+# a later tier's removals are independent of an earlier tier's -- but it
+# must still exit non-zero, or `make uninstall`, `make remove-and-purge`
+# and `make update`'s `|| FAIL=1` all read a partially-failed run as
+# success. That is what remove_runner.sh's non-zero exit is for.
+# ---------------------------------------------------------------------
+loop_failure_test() {
+  local mode out rc root host_dir stub named
+  for mode in uninstall remove-and-purge; do
+    root="$(make_repo)"
+    host_dir="$(mktemp -d)"
+    printf 'profiles = ["version-managers", "tools"]\n' > "$host_dir/config.toml"
+    # A runner that fails for EVERY tier, so both the accumulation and the
+    # keep-walking behavior are observable in one run.
+    stub="$root/scripts/failing_runner.sh"
+    printf '#!/bin/bash\nexit 7\n' >"$stub"
+    chmod +x "$stub"
+
+    out="$(cd "$root" && MACOS_SETUP_HOST_DIR="$host_dir" \
+      make -s "$mode" REMOVE_RUNNER="scripts/failing_runner.sh" 2>/dev/null)"; rc=$?
+
+    ok "$([[ $rc -ne 0 ]] && echo 0 || echo 1)" \
+      "make $mode exits non-zero when a tier's runner fails (rc=$rc)"
+    ok_contains "$out" "failed:" \
+      "make $mode names the failed tiers in a summary"
+    # Failure-TOLERANT, not abort-on-first: every tier in the walk is
+    # attempted, so both profile tiers show up in the summary.
+    ok_contains "$out" "  - profiles/version-managers" \
+      "make $mode attempted the first failing tier"
+    ok_contains "$out" "  - profiles/tools" \
+      "make $mode kept walking to a later tier after the first failure"
+    named="$(grep -c '^  - ' <<<"$out")"
+    ok "$([[ ${named:-0} -gt 1 ]] && echo 0 || echo 1)" \
+      "make $mode summary names more than one tier (named=$named)"
+
+    rm -rf "$root" "$host_dir"
+  done
+
+  # A clean run still reports success, so the accumulator did not turn every
+  # run non-zero.
+  run_make "uninstall" ""
+  ok "$RUN_RC" "make uninstall still exits zero when no tier fails"
+  ok_contains "$RUN_OUT" "All tiers' uninstall arrays processed." \
+    "a clean uninstall run still prints its success line"
+}
+
+# ---------------------------------------------------------------------
+# Block 1c: `make update` names the steps that failed, and never claims
+# success on a run that then exits non-zero.
+#
+# Observed on a real host: two third-party cask upgrades failed, and the run
+# ended with `==> All packages updated.` followed by
+# `make: *** [update] Error 1`. Every step funnelled into one undifferentiated
+# flag, so the only way to learn WHICH step failed was to read ~200 lines of
+# brew output by eye.
+#
+# Unlike Block 1, this block RUNS the recipe -- against a synthetic repo with
+# stubbed `brew` and `mas`, and a host tier that does NOT opt into
+# version-managers. That opt-out is what makes running it safe: it holds back
+# the tier apply, versions-update/cleanup, and BOTH ~/.zshrc rewrites, so
+# nothing outside the temp dirs is touched. The removal loops still run, but
+# every package probe goes through the stubbed brew.
+# ---------------------------------------------------------------------
+
+# A brew stub whose behavior is chosen by the caller:
+#   fail -> every invocation exits 1, and `upgrade --cask` also prints an
+#           Error: line in Homebrew's format, so the recipe's cask-error
+#           branch fires the way it did on the real run.
+#   pass -> every invocation exits 0 and prints nothing.
+write_update_stub_brew() {
+  # write_update_stub_brew <path> <fail|pass>
+  if [[ "$2" == "fail" ]]; then
+    cat > "$1" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$1" == "upgrade" && "$2" == "--cask" ]]; then
+  echo "Error: Download failed on Cask 'whatsapp' with message: curl exited with 56"
+fi
+exit 1
+STUB
+  else
+    cat > "$1" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+  fi
+  chmod +x "$1"
+}
+
+run_update() {
+  # run_update <fail|pass> -> sets RUN_OUT / RUN_RC
+  local mode="$1" root host_dir brew_stub
+  root="$(make_repo)"
+  host_dir="$(mktemp -d)"
+  # NOT opted into version-managers: see the block comment.
+  printf 'profiles = ["tools"]\n' > "$host_dir/config.toml"
+  mkdir -p "$root/bin"
+  brew_stub="$root/bin/brew"
+  write_update_stub_brew "$brew_stub" "$mode"
+  # `mas` is invoked by bare name in the recipe, so the stub has to be a PATH
+  # shim. It shares the brew stub's exit status, which is what puts
+  # mas-upgrade in the failing run's summary.
+  cp "$brew_stub" "$root/bin/mas"
+  RUN_OUT="$(cd "$root" && PATH="$root/bin:$PATH" MACOS_SETUP_HOST_DIR="$host_dir" \
+    make update BREW="$brew_stub" 2>&1)"; RUN_RC=$?
+  rm -rf "$root" "$host_dir"
+}
+
+update_summary_test() {
+  run_update fail
+  ok "$([[ $RUN_RC -ne 0 ]] && echo 0 || echo 1)" \
+    "make update exits non-zero when steps fail (rc=$RUN_RC)"
+  ok_absent   "$RUN_OUT" "All packages updated." \
+    "a failed update does NOT claim that all packages updated"
+  ok_contains "$RUN_OUT" "==> The following update steps failed:" \
+    "a failed update prints a summary of the failed steps"
+  ok_contains "$RUN_OUT" "  - brew-update" \
+    "the summary names the brew update step"
+  ok_contains "$RUN_OUT" "  - brew-upgrade-formula" \
+    "the summary names the formula upgrade step"
+  ok_contains "$RUN_OUT" "  - brew-upgrade-cask" \
+    "the summary names the cask upgrade step"
+  ok_contains "$RUN_OUT" "  - mas-upgrade" \
+    "the summary names the Mac App Store step"
+  # Failure-TOLERANT: a failing first step does not abort the run, so later
+  # steps are attempted and land in the same summary.
+  ok_before "$RUN_OUT" "  - brew-update" "  - mas-upgrade" \
+    "the run kept going after the first failing step"
+  # The cask branch's failure is error TEXT, not an exit status, so the
+  # summary repeats the lines that carry the actionable part.
+  ok_contains "$RUN_OUT" "Download failed on Cask 'whatsapp'" \
+    "the summary repeats the cask error lines"
+
+  run_update pass
+  ok "$RUN_RC" "make update exits zero when every step succeeds"
+  ok_contains "$RUN_OUT" "==> All packages updated." \
+    "a clean update still prints its success line"
+  ok_absent   "$RUN_OUT" "The following update steps failed:" \
+    "a clean update prints no failure summary"
+}
+
+# ---------------------------------------------------------------------
+# Block 2: REMOVE_SKIP_TIERS in the real removal loops.
 # ---------------------------------------------------------------------
 
 # A stub `brew` that reports nothing installed, so the runner only ever
@@ -154,24 +349,27 @@ STUB
 }
 
 # Synthetic repo carrying the real Makefile plus the scripts its removal
-# loops invoke, with two active slots: the version-manager slot (the one
-# `update` holds back) and an unrelated slot (which must never be held
-# back). The host tier is pointed at an empty temp dir by run_make.
+# loops invoke, with two tiers that remove something: the version-managers
+# profile (the one `update` holds back) and an unrelated profile (which
+# must never be held back).
 make_repo() {
   local root; root="$(mktemp -d)"
-  mkdir -p "$root/scripts" "$root/Install" "$root/Uninstall" "$root/RemoveAndPurge"
+  mkdir -p "$root/scripts" "$root/default" \
+           "$root/profiles/version-managers" "$root/profiles/tools"
   cp "$MAKEFILE" "$root/Makefile"
   cp "$REPO_ROOT/scripts/remove_runner.sh" \
      "$REPO_ROOT/scripts/config_common.sh" \
+     "$REPO_ROOT/scripts/apply_tier.sh" \
      "$REPO_ROOT/scripts/list_profiles.sh" \
      "$REPO_ROOT/scripts/host_tier_dir.sh" \
      "$REPO_ROOT/scripts/seed_host_tier.sh" \
      "$REPO_ROOT/scripts/install_filter.sh" \
+     "$REPO_ROOT/scripts/require_dasel_on_path.sh" \
      "$root/scripts/"
-  printf "# header\nbrew 'asdf'\n"       > "$root/Uninstall/04-Uninstall.versionmanagers"
-  printf "# header\nbrew 'ripgrep'\n"    > "$root/Uninstall/05-Uninstall.tools"
-  printf "# header\nbrew 'asdf'\n"       > "$root/RemoveAndPurge/04-RemoveAndPurge.versionmanagers"
-  printf "# header\nbrew 'ripgrep'\n"    > "$root/RemoveAndPurge/05-RemoveAndPurge.tools"
+  printf '[profile]\nuninstall = ["brew:asdf"]\npurge = ["brew:asdf"]\n' \
+    > "$root/profiles/version-managers/config.toml"
+  printf '[profile]\nuninstall = ["brew:ripgrep"]\npurge = ["brew:ripgrep"]\n' \
+    > "$root/profiles/tools/config.toml"
   echo "$root"
 }
 
@@ -181,52 +379,59 @@ run_make() {
   local root host_dir brew_stub
   root="$(make_repo)"
   host_dir="$(mktemp -d)"
+  # The host opts into both profiles, so both tiers are in the removal
+  # loops' walk and the skip list has something to hold back.
+  printf 'profiles = ["version-managers", "tools"]\n' > "$host_dir/config.toml"
   mkdir -p "$root/bin"
   brew_stub="$root/bin/brew"
   write_stub_brew "$brew_stub"
   RUN_OUT="$(cd "$root" && PATH="$root/bin:$PATH" MACOS_SETUP_HOST_DIR="$host_dir" \
-    make "$target" BREW="$brew_stub" REMOVE_SKIP_BASENAMES="$skip" 2>&1)"; RUN_RC=$?
+    make "$target" BREW="$brew_stub" REMOVE_SKIP_TIERS="$skip" 2>&1)"; RUN_RC=$?
   rm -rf "$root" "$host_dir"
 }
 
-VM_BANNER_U="==> Applying global Uninstall: Uninstall/04-Uninstall.versionmanagers"
-TOOLS_BANNER_U="==> Applying global Uninstall: Uninstall/05-Uninstall.tools"
-VM_BANNER_P="==> Applying global RemoveAndPurge: RemoveAndPurge/04-RemoveAndPurge.versionmanagers"
-TOOLS_BANNER_P="==> Applying global RemoveAndPurge: RemoveAndPurge/05-RemoveAndPurge.tools"
+VM_BANNER_U="==> Applying Uninstall: profiles/version-managers"
+TOOLS_BANNER_U="==> Applying Uninstall: profiles/tools"
+VM_BANNER_P="==> Applying RemoveAndPurge: profiles/version-managers"
+TOOLS_BANNER_P="==> Applying RemoveAndPurge: profiles/tools"
 
 skip_test() {
-  # Unset (empty) -> both slots apply, exactly as before this knob existed.
+  # Unset (empty) -> both tiers apply, exactly as before this knob existed.
   run_make "uninstall" ""
   ok "$RUN_RC" "make uninstall with an empty skip list exits 0"
-  ok_contains "$RUN_OUT" "$VM_BANNER_U"    "empty skip list: slot 04 Uninstall applies"
-  ok_contains "$RUN_OUT" "$TOOLS_BANNER_U" "empty skip list: slot 05 Uninstall applies"
+  ok_contains "$RUN_OUT" "$VM_BANNER_U"    "empty skip list: version-managers uninstall applies"
+  ok_contains "$RUN_OUT" "$TOOLS_BANNER_U" "empty skip list: tools uninstall applies"
 
   run_make "remove-and-purge" ""
   ok "$RUN_RC" "make remove-and-purge with an empty skip list exits 0"
-  ok_contains "$RUN_OUT" "$VM_BANNER_P"    "empty skip list: slot 04 RemoveAndPurge applies"
-  ok_contains "$RUN_OUT" "$TOOLS_BANNER_P" "empty skip list: slot 05 RemoveAndPurge applies"
+  ok_contains "$RUN_OUT" "$VM_BANNER_P"    "empty skip list: version-managers purge applies"
+  ok_contains "$RUN_OUT" "$TOOLS_BANNER_P" "empty skip list: tools purge applies"
 
-  # Slot 04 named -> slot 04 skipped, slot 05 untouched.
-  run_make "uninstall" "04-Uninstall.versionmanagers 04-RemoveAndPurge.versionmanagers"
-  ok "$RUN_RC" "make uninstall with slot 04 skipped exits 0"
-  ok_absent   "$RUN_OUT" "$VM_BANNER_U"    "skip list: slot 04 Uninstall is held back"
-  ok_contains "$RUN_OUT" "$TOOLS_BANNER_U" "skip list: slot 05 Uninstall still applies"
+  # version-managers named -> that tier skipped, the other untouched.
+  run_make "uninstall" "profiles/version-managers"
+  ok "$RUN_RC" "make uninstall with version-managers skipped exits 0"
+  ok_absent   "$RUN_OUT" "$VM_BANNER_U"    "skip list: version-managers uninstall is held back"
+  ok_contains "$RUN_OUT" "$TOOLS_BANNER_U" "skip list: tools uninstall still applies"
 
-  run_make "remove-and-purge" "04-Uninstall.versionmanagers 04-RemoveAndPurge.versionmanagers"
-  ok "$RUN_RC" "make remove-and-purge with slot 04 skipped exits 0"
-  ok_absent   "$RUN_OUT" "$VM_BANNER_P"    "skip list: slot 04 RemoveAndPurge is held back"
-  ok_contains "$RUN_OUT" "$TOOLS_BANNER_P" "skip list: slot 05 RemoveAndPurge still applies"
+  run_make "remove-and-purge" "profiles/version-managers"
+  ok "$RUN_RC" "make remove-and-purge with version-managers skipped exits 0"
+  ok_absent   "$RUN_OUT" "$VM_BANNER_P"    "skip list: version-managers purge is held back"
+  ok_contains "$RUN_OUT" "$TOOLS_BANNER_P" "skip list: tools purge still applies"
 
   # The dry-run companions honor it too.
-  run_make "remove-and-purge-dry-run" "04-RemoveAndPurge.versionmanagers"
-  ok "$RUN_RC" "make remove-and-purge-dry-run with slot 04 skipped exits 0"
-  ok_absent   "$RUN_OUT" "$VM_BANNER_P"    "dry-run: slot 04 RemoveAndPurge is held back"
-  ok_contains "$RUN_OUT" "$TOOLS_BANNER_P" "dry-run: slot 05 RemoveAndPurge still applies"
+  run_make "remove-and-purge-dry-run" "profiles/version-managers"
+  ok "$RUN_RC" "make remove-and-purge-dry-run with version-managers skipped exits 0"
+  ok_absent   "$RUN_OUT" "$VM_BANNER_P"    "dry-run: version-managers purge is held back"
+  ok_contains "$RUN_OUT" "$TOOLS_BANNER_P" "dry-run: tools purge still applies"
 }
 
 echo "=== Block 1: update recipe ordering ==="
 order_test
-echo "=== Block 2: REMOVE_SKIP_BASENAMES in the removal loops ==="
+echo "=== Block 1b: the removal loops surface a failed tier ==="
+loop_failure_test
+echo "=== Block 1c: update names the steps that failed ==="
+update_summary_test
+echo "=== Block 2: REMOVE_SKIP_TIERS in the removal loops ==="
 skip_test
 
 echo

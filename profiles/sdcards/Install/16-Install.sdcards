@@ -1,6 +1,0 @@
-# 16-Install.sdcards for the 'sdcards' profile
-
-# Casks
-cask 'paragon-extfs'
-cask 'sdformatter'
-cask 'raspberry-pi-imager'

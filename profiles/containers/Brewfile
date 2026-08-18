@@ -1,0 +1,4 @@
+# Brewfile for the 'containers' profile
+
+# Casks
+cask 'orbstack'

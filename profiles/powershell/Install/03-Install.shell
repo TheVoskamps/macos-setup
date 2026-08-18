@@ -1,4 +1,0 @@
-# 03-Install.shell for the 'powershell' profile
-
-# Casks
-cask 'powershell'

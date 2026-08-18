@@ -1,0 +1,4 @@
+# Brewfile for the 'version-managers' profile
+
+# Homebrew formulae
+brew 'mise'

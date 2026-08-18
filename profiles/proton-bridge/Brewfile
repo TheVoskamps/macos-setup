@@ -1,0 +1,4 @@
+# Brewfile for the 'proton-bridge' profile
+
+# Casks
+cask 'protonmail-bridge'

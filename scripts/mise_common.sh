@@ -2,7 +2,7 @@
 # mise_common.sh — shared mise helpers.
 #
 # Sourced (never executed) by `scripts/versions_setup.sh` (the
-# `04-Install.versionmanagers` post-install action and the `versions-*`
+# `version-managers` profile's `post_install` action and the `versions-*`
 # Makefile targets) and by `scripts/asdf_to_mise.sh` (the one-shot
 # `make asdf-to-mise` migration). Both need to bring the global mise
 # config up to the state this repo expects, so that logic lives here once
@@ -24,7 +24,7 @@ MISE="${MISE:-mise}"
 # Abort unless mise is reachable by the configured name.
 require_mise() {
   if ! command -v "$MISE" >/dev/null 2>&1; then
-    mise_warn "mise not found on PATH. If mise is already installed, open a new shell so the shims/activation line from 'make shell' takes effect; otherwise install it first (e.g. 'brew install mise')."
+    mise_warn "mise not found on PATH. If mise is already installed, open a new shell so the shims/activation line from 'make shell_setup' takes effect; otherwise install it first (e.g. 'brew install mise')."
     return 1
   fi
 }

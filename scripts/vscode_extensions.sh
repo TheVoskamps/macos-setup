@@ -92,5 +92,5 @@ for ext in "${extensions[@]}"; do
 done
 
 echo "Summary for $target: OK=$ok SKIP=$skip FAIL=$fail"
-# **Always succeed** so 'make 09' doesn't stop on extension issues.
+# **Always succeed** so the profile's apply doesn't stop on extension issues.
 exit 0

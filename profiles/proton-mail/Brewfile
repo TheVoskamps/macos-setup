@@ -1,0 +1,4 @@
+# Brewfile for the 'proton-mail' profile
+
+# Casks
+cask 'proton-mail'

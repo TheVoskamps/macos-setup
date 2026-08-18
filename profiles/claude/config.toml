@@ -1,0 +1,16 @@
+# config.toml for the 'claude' profile.
+#
+# The `claude-latest` profile is the alternative to this one (it pins
+# `claude-code@latest` instead of `claude-code`) and carries the identical
+# [profile] section — a host opts into one or the other, not both.
+
+[profile]
+# claude_disable_autoupdater.sh turns off Claude Code's background
+# self-update; claude_repo_setup.sh clones or updates ~/.claude/ from the
+# global Claude config repo and then syncs plugins via the clone's own
+# plugins.sh. Both live here rather than in the core tier because they are
+# no-ops without the Claude Code cask this profile installs.
+post_install = [
+  "scripts/claude_disable_autoupdater.sh",
+  "scripts/claude_repo_setup.sh install",
+]

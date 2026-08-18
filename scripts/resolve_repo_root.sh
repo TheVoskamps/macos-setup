@@ -16,7 +16,7 @@
 # at that phantom path after the repo is renamed/moved (e.g. to
 # `~/Workspaces/TheVoskamps/macos-setup`). Resolving at run time via
 # the `~/.zsh-shared` symlink avoids that whole class of bug — when
-# `make shell` (or `make install`) reruns `scripts/shell_setup.sh`,
+# `make shell_setup` (or `make install`) reruns `scripts/shell_setup.sh`,
 # the symlink is updated to point at the current repo, and every
 # downstream runtime resolution follows.
 #
@@ -41,7 +41,7 @@ SYMLINK="${HOME}/.zsh-shared"
 if [ ! -L "$SYMLINK" ]; then
     echo "resolve_repo_root.sh: ~/.zsh-shared is not a symlink" >&2
     echo "  (expected: ~/.zsh-shared -> <repo>/shared/zsh)" >&2
-    echo "  fix: run 'make shell' from your macos-setup checkout" >&2
+    echo "  fix: run 'make shell_setup' from your macos-setup checkout" >&2
     exit 1
 fi
 

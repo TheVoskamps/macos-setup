@@ -1,35 +1,36 @@
 #!/usr/bin/env bash
 
-# Tests for quiet-by-default empty-slot suppression in the Uninstall /
-# RemoveAndPurge paths (issue #167).
+# Tests for quiet-by-default empty-TIER suppression in the uninstall /
+# purge paths (issue #167, carried across the profiles cutover in #33).
 #
-# A typical `make update` (-> the Uninstall and RemoveAndPurge loops)
-# used to print ~80 lines like:
+# A typical `make update` (-> the uninstall and purge loops) used to print
+# ~80 lines like:
 #
-#   ==> Applying global Uninstall: Uninstall/00-Uninstall.core
-#   [uninstall] Processing Uninstall/00-Uninstall.core
-#   [uninstall] Done: Uninstall/00-Uninstall.core
+#   ==> Applying Uninstall: profiles/foo
+#   [uninstall] Processing profile foo
+#   [uninstall] Done: profile foo
 #
-# for EVERY numbered slot (00-19), even though nearly every slot file is
-# just a comment header with no actual package to remove.
+# for EVERY tier, even though nearly every tier removes nothing at all.
 #
-# The fix gates output on whether the slot file has any ACTIVE directive
-# (an uncommented, non-blank brew/cask/mas line), decided as a static
-# check inside scripts/remove_runner.sh — the ONE place that reads the
-# file — so the Makefile's `==> Applying ...` banner (now passed via
-# --banner=<text>) and the runner's `Processing`/`Done` lines can never
-# disagree about whether a slot+tier is silent:
-#   - default (non-VERBOSE): a slot with ZERO active directives prints
+# The fix gates output on whether the tier's `[profile] uninstall` (or
+# `purge`) array has any entry, decided inside scripts/remove_runner.sh —
+# the ONE place that reads the array — so the Makefile's `==> Applying ...`
+# banner (passed via --banner=<text>) and the runner's `Processing`/`Done`
+# lines can never disagree about whether a tier is silent:
+#   - default (non-VERBOSE): a tier with an EMPTY or absent array prints
 #     NOTHING (no banner, no Processing/Done).
-#   - a slot with >=1 active directive prints fully, INCLUDING any
+#   - a tier with >=1 entry prints fully, INCLUDING any
 #     `skip: <pkg> not installed` lines (those are useful).
-#   - VERBOSE=1 restores ALL lines for EVERY slot, including empty ones.
+#   - VERBOSE=1 restores ALL lines for EVERY tier, including empty ones.
+#
+# The gate is PER MODE, not per tier: a tier that declares only a `purge`
+# array stays silent under --mode=uninstall.
 #
 # Block 1 drives the runner directly (banner + Processing/Done + skip).
 # Blocks 2-3 drive the real Makefile `make uninstall` /
 # `make remove-and-purge` loops against a synthetic repo with one empty
-# slot and one active slot, asserting the empty slot is silent by default
-# and fully shown under VERBOSE=1, while the active slot always prints.
+# tier and one active tier, asserting the empty tier is silent by default
+# and fully shown under VERBOSE=1, while the active tier always prints.
 
 set -uo pipefail
 
@@ -56,13 +57,13 @@ ok_empty() {
   if [[ -z "$1" ]]; then echo "PASS: $2"; ((pass++)); else echo "FAIL: $2 -- output not empty: [$1]"; ((fail++)); fi
 }
 
-# A stub `brew` that reports nothing installed (so the active slot's
-# directive becomes a `skip` line) and never fails.
+# A stub `brew` that reports nothing installed (so the active tier's
+# entry becomes a `skip` line) and never fails.
 #
 # EVERY block below routes the runner at this stub, via the BREW env var
 # (direct invocations) or the BREW make variable, which GNU make exports
 # into the recipe environment (Makefile-driven invocations) -- and also
-# shims it onto PATH as `brew` for defence in depth. The active slot names
+# shims it onto PATH as `brew` for defence in depth. The active tier names
 # a real cask, and blocks 2-3 drive the NON-dry-run `make uninstall` /
 # `make remove-and-purge`, so an unstubbed brew here would uninstall (and
 # under --mode=purge, --zap) that cask off the developer's machine.
@@ -82,10 +83,14 @@ STUB
 # Block 1: drive the runner directly.
 # ---------------------------------------------------------------------
 runner_direct_test() {
-  local dir empty active stub out rc
+  local dir stub out rc
   dir="$(mktemp -d)"
-  printf '# header only\n# Casks\n'              > "$dir/empty"
-  printf "# header\n# Casks\ncask 'vibe-notch'\n" > "$dir/active"
+  # Two tier directories: one whose [profile] section declares no removals
+  # at all, one that removes a cask in both modes.
+  mkdir -p "$dir/empty" "$dir/active"
+  printf '[profile]\npost_install = []\n' > "$dir/empty/config.toml"
+  printf '[profile]\nuninstall = ["cask:vibe-notch"]\npurge = ["cask:vibe-notch"]\n' \
+    > "$dir/active/config.toml"
   # BREW points every probe at the stub, so the `skip:` assertion below is
   # a property of the runner rather than of whether this developer happens
   # to have vibe-notch installed.
@@ -95,53 +100,60 @@ runner_direct_test() {
 
   # Empty slot, VERBOSE unset -> NOTHING on stdout, rc 0.
   out="$(bash "$RUNNER" "$dir/empty" --mode=uninstall --banner="==> BANNER empty" --dry-run 2>&1)"; rc=$?
-  ok_rc "$rc" 0 "runner: empty slot, VERBOSE unset exits 0"
-  ok_empty "$out" "runner: empty slot, VERBOSE unset prints nothing"
+  ok_rc "$rc" 0 "runner: empty tier, VERBOSE unset exits 0"
+  ok_empty "$out" "runner: empty tier, VERBOSE unset prints nothing"
 
   # Empty slot, VERBOSE=1 -> banner + Processing + Done.
   out="$(VERBOSE=1 bash "$RUNNER" "$dir/empty" --mode=uninstall --banner="==> BANNER empty" --dry-run 2>&1)"; rc=$?
-  ok_rc "$rc" 0 "runner: empty slot, VERBOSE=1 exits 0"
-  ok_contains "$out" "==> BANNER empty"           "runner: empty slot, VERBOSE=1 shows banner"
-  ok_contains "$out" "[uninstall] Processing"     "runner: empty slot, VERBOSE=1 shows Processing"
-  ok_contains "$out" "[uninstall] Done"           "runner: empty slot, VERBOSE=1 shows Done"
+  ok_rc "$rc" 0 "runner: empty tier, VERBOSE=1 exits 0"
+  ok_contains "$out" "==> BANNER empty"           "runner: empty tier, VERBOSE=1 shows banner"
+  ok_contains "$out" "[uninstall] Processing"     "runner: empty tier, VERBOSE=1 shows Processing"
+  ok_contains "$out" "[uninstall] Done"           "runner: empty tier, VERBOSE=1 shows Done"
 
   # Active slot, VERBOSE unset -> banner + Processing + skip + Done.
   out="$(bash "$RUNNER" "$dir/active" --mode=uninstall --banner="==> BANNER active" --dry-run 2>&1)"; rc=$?
-  ok_rc "$rc" 0 "runner: active slot, VERBOSE unset exits 0"
-  ok_contains "$out" "==> BANNER active"          "runner: active slot shows banner"
-  ok_contains "$out" "[uninstall] Processing"     "runner: active slot shows Processing"
-  ok_contains "$out" "skip: vibe-notch not installed" "runner: active slot keeps the skip line"
-  ok_contains "$out" "[uninstall] Done"           "runner: active slot shows Done"
+  ok_rc "$rc" 0 "runner: active tier, VERBOSE unset exits 0"
+  ok_contains "$out" "==> BANNER active"          "runner: active tier shows banner"
+  ok_contains "$out" "[uninstall] Processing"     "runner: active tier shows Processing"
+  ok_contains "$out" "skip: vibe-notch not installed" "runner: active tier keeps the skip line"
+  ok_contains "$out" "[uninstall] Done"           "runner: active tier shows Done"
 
-  # Active slot under --mode=purge: banner uses whatever caller passes.
+  # Active tier under --mode=purge: banner uses whatever caller passes.
   out="$(bash "$RUNNER" "$dir/active" --mode=purge --banner="==> BANNER purge" --dry-run 2>&1)"; rc=$?
-  ok_rc "$rc" 0 "runner: active slot, purge mode exits 0"
-  ok_contains "$out" "[purge] Processing"         "runner: active slot, purge mode uses [purge] prefix"
+  ok_rc "$rc" 0 "runner: active tier, purge mode exits 0"
+  ok_contains "$out" "[purge] Processing"         "runner: active tier, purge mode uses [purge] prefix"
+
+  # The gate is PER MODE: a tier declaring only a `purge` array must stay
+  # silent under --mode=uninstall, or every purge-only tier would print an
+  # empty uninstall pass.
+  printf '[profile]\npurge = ["cask:vibe-notch"]\n' > "$dir/active/config.toml"
+  out="$(bash "$RUNNER" "$dir/active" --mode=uninstall --banner="==> BANNER u" --dry-run 2>&1)"; rc=$?
+  ok_rc "$rc" 0 "runner: purge-only tier under --mode=uninstall exits 0"
+  ok_empty "$out" "runner: purge-only tier is silent under --mode=uninstall"
 
   unset BREW
   rm -rf "$dir"
 }
 
 # Build a synthetic repo carrying the real Makefile + the scripts its
-# removal loops invoke, with exactly two slots: one empty (comment-only)
-# and one active (a single cask). The host tier (pointed at a temp dir by
-# the caller) is left empty so only the global tier contributes.
+# removal loops invoke, with exactly two profile tiers: one that removes
+# nothing and one that removes a single cask (in both modes).
 make_repo() {
   local root; root="$(mktemp -d)"
-  mkdir -p "$root/scripts" "$root/Install" "$root/Uninstall" "$root/RemoveAndPurge"
+  mkdir -p "$root/scripts" "$root/default" \
+           "$root/profiles/emptyprof" "$root/profiles/activeprof"
   cp "$REPO_ROOT/Makefile" "$root/Makefile"
   cp "$REPO_ROOT/scripts/remove_runner.sh" \
      "$REPO_ROOT/scripts/config_common.sh" \
+     "$REPO_ROOT/scripts/apply_tier.sh" \
      "$REPO_ROOT/scripts/list_profiles.sh" \
      "$REPO_ROOT/scripts/host_tier_dir.sh" \
      "$REPO_ROOT/scripts/seed_host_tier.sh" \
      "$REPO_ROOT/scripts/install_filter.sh" \
      "$root/scripts/"
-  # Empty slot 00, active slot 01 — for both Uninstall and RemoveAndPurge.
-  printf '# header only\n'                        > "$root/Uninstall/00-Uninstall.empty"
-  printf "# header\ncask 'vibe-notch'\n"          > "$root/Uninstall/01-Uninstall.active"
-  printf '# header only\n'                        > "$root/RemoveAndPurge/00-RemoveAndPurge.empty"
-  printf "# header\ncask 'vibe-notch'\n"          > "$root/RemoveAndPurge/01-RemoveAndPurge.active"
+  printf '[profile]\npost_install = []\n' > "$root/profiles/emptyprof/config.toml"
+  printf '[profile]\nuninstall = ["cask:vibe-notch"]\npurge = ["cask:vibe-notch"]\n' \
+    > "$root/profiles/activeprof/config.toml"
   echo "$root"
 }
 
@@ -151,6 +163,8 @@ run_make() {
   local root host_dir brew_stub
   root="$(make_repo)"
   host_dir="$(mktemp -d)"
+  # The host opts into both profiles so both tiers are in the loops' walk.
+  printf 'profiles = ["emptyprof", "activeprof"]\n' > "$host_dir/config.toml"
   brew_stub="$root/scripts/stub_brew.sh"
   write_stub_brew "$brew_stub"
   # Same stub also shimmed onto PATH as bare `brew` (defence in depth --
@@ -167,10 +181,10 @@ run_make() {
   rm -rf "$root" "$host_dir"
 }
 
-EMPTY_BANNER_U="==> Applying global Uninstall: Uninstall/00-Uninstall.empty"
-ACTIVE_BANNER_U="==> Applying global Uninstall: Uninstall/01-Uninstall.active"
-EMPTY_BANNER_P="==> Applying global RemoveAndPurge: RemoveAndPurge/00-RemoveAndPurge.empty"
-ACTIVE_BANNER_P="==> Applying global RemoveAndPurge: RemoveAndPurge/01-RemoveAndPurge.active"
+EMPTY_BANNER_U="==> Applying Uninstall: profiles/emptyprof"
+ACTIVE_BANNER_U="==> Applying Uninstall: profiles/activeprof"
+EMPTY_BANNER_P="==> Applying RemoveAndPurge: profiles/emptyprof"
+ACTIVE_BANNER_P="==> Applying RemoveAndPurge: profiles/activeprof"
 
 # ---------------------------------------------------------------------
 # Block 2: `make uninstall` loop.
@@ -178,15 +192,15 @@ ACTIVE_BANNER_P="==> Applying global RemoveAndPurge: RemoveAndPurge/01-RemoveAnd
 uninstall_loop_test() {
   run_make "uninstall" ""
   ok_rc "$RUN_RC" 0 "make uninstall, VERBOSE unset exits 0"
-  ok_absent   "$RUN_OUT" "$EMPTY_BANNER_U"  "make uninstall: empty slot banner suppressed by default"
-  ok_absent   "$RUN_OUT" "00-Uninstall.empty (dry-run)" "make uninstall: empty slot Processing suppressed by default"
-  ok_contains "$RUN_OUT" "$ACTIVE_BANNER_U" "make uninstall: active slot banner always shown"
-  ok_contains "$RUN_OUT" "skip: vibe-notch not installed" "make uninstall: active slot skip line shown"
+  ok_absent   "$RUN_OUT" "$EMPTY_BANNER_U"  "make uninstall: empty tier banner suppressed by default"
+  ok_absent   "$RUN_OUT" "Processing profile emptyprof" "make uninstall: empty tier Processing suppressed by default"
+  ok_contains "$RUN_OUT" "$ACTIVE_BANNER_U" "make uninstall: active tier banner always shown"
+  ok_contains "$RUN_OUT" "skip: vibe-notch not installed" "make uninstall: active tier skip line shown"
 
   run_make "uninstall" "1"
   ok_rc "$RUN_RC" 0 "make uninstall, VERBOSE=1 exits 0"
-  ok_contains "$RUN_OUT" "$EMPTY_BANNER_U"  "make uninstall, VERBOSE=1: empty slot banner restored"
-  ok_contains "$RUN_OUT" "$ACTIVE_BANNER_U" "make uninstall, VERBOSE=1: active slot banner shown"
+  ok_contains "$RUN_OUT" "$EMPTY_BANNER_U"  "make uninstall, VERBOSE=1: empty tier banner restored"
+  ok_contains "$RUN_OUT" "$ACTIVE_BANNER_U" "make uninstall, VERBOSE=1: active tier banner shown"
 }
 
 # ---------------------------------------------------------------------
@@ -195,17 +209,17 @@ uninstall_loop_test() {
 purge_loop_test() {
   run_make "remove-and-purge" ""
   ok_rc "$RUN_RC" 0 "make remove-and-purge, VERBOSE unset exits 0"
-  ok_absent   "$RUN_OUT" "$EMPTY_BANNER_P"  "make remove-and-purge: empty slot banner suppressed by default"
-  ok_contains "$RUN_OUT" "$ACTIVE_BANNER_P" "make remove-and-purge: active slot banner always shown"
+  ok_absent   "$RUN_OUT" "$EMPTY_BANNER_P"  "make remove-and-purge: empty tier banner suppressed by default"
+  ok_contains "$RUN_OUT" "$ACTIVE_BANNER_P" "make remove-and-purge: active tier banner always shown"
 
   run_make "remove-and-purge" "1"
   ok_rc "$RUN_RC" 0 "make remove-and-purge, VERBOSE=1 exits 0"
-  ok_contains "$RUN_OUT" "$EMPTY_BANNER_P"  "make remove-and-purge, VERBOSE=1: empty slot banner restored"
+  ok_contains "$RUN_OUT" "$EMPTY_BANNER_P"  "make remove-and-purge, VERBOSE=1: empty tier banner restored"
 
   run_make "remove-and-purge-dry-run" ""
   ok_rc "$RUN_RC" 0 "make remove-and-purge-dry-run, VERBOSE unset exits 0"
-  ok_absent   "$RUN_OUT" "$EMPTY_BANNER_P"  "make remove-and-purge-dry-run: empty slot banner suppressed by default"
-  ok_contains "$RUN_OUT" "$ACTIVE_BANNER_P" "make remove-and-purge-dry-run: active slot banner shown"
+  ok_absent   "$RUN_OUT" "$EMPTY_BANNER_P"  "make remove-and-purge-dry-run: empty tier banner suppressed by default"
+  ok_contains "$RUN_OUT" "$ACTIVE_BANNER_P" "make remove-and-purge-dry-run: active tier banner shown"
 }
 
 echo "=== Block 1: runner direct ==="
