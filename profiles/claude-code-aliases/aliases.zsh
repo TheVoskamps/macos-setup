@@ -199,3 +199,176 @@ claude-vm() {
   }
   "$exe" "$@"
 }
+
+# Multiple Claude Code Max accounts on one machine (issue #49).
+#
+# Skills, plugins, settings and session history stay shared in ~/.claude;
+# only the two pieces that carry account identity get swapped:
+#   - the OAuth token in the macOS Keychain, service "Claude Code-credentials"
+#   - the .oauthAccount block in ~/.claude.json
+# Per-account backups live in the Keychain item
+# "Claude Code-credentials-<account>" and the sidecar file
+# ~/.claude.json.<account> (created 0400 -- only ever read back).
+#
+# Two kinds of profile: the BUILT-IN DEFAULT (used when --account is
+# omitted, stored under the suffix "default") and NAMED profiles
+# (explicit --account NAME). The name "default" can never be typed --
+# `--account default` is always rejected -- so the implicit profile and
+# an explicitly-named one can never be confused. Account names must
+# match ^[A-Za-z0-9._@-]+$ (the repo's PROFILE_NAME_RE charset plus @,
+# so an account email works verbatim as the name).
+#
+# CONCURRENCY LIMITATION (documented, not guarded): there is one live
+# identity at a time. Switching while another Claude session is running
+# repoints the Keychain item and ~/.claude.json underneath it. No
+# locking is implemented -- quit running Claude sessions before
+# switching. See docs/SHELL.md.
+
+save_claude_auth () {
+    local account="default" pw oauth explicit=0 force=0
+
+    while (( $# )); do
+        if [[ "$1" == "--account" ]]; then
+            if (( $# < 2 )); then
+                echo "save_claude_auth: --account requires a value" >&2
+                return 1
+            fi
+            account="$2"
+            explicit=1
+            shift 2
+        elif [[ "$1" == "--force" ]]; then
+            force=1
+            shift
+        else
+            echo "save_claude_auth: unknown argument: $1" >&2
+            return 1
+        fi
+    done
+
+    if (( explicit )); then
+        if [[ "$account" == "default" ]]; then
+            echo "save_claude_auth: 'default' cannot be specified explicitly -- omit --account to use the built-in default" >&2
+            return 1
+        fi
+        if [[ ! "$account" =~ '^[A-Za-z0-9._@-]+$' ]]; then
+            echo "save_claude_auth: invalid account name '${account}' -- allowed characters are A-Z a-z 0-9 . _ @ -" >&2
+            return 1
+        fi
+    fi
+
+    if [[ -f ~/.claude.json."${account}" ]] && (( ! force )); then
+        if [[ "$account" == "default" ]]; then
+            echo "save_claude_auth: the built-in default already has a saved account -- pass --force to overwrite it" >&2
+        else
+            echo "save_claude_auth: '${account}' already has a saved account -- pass --force to overwrite it" >&2
+        fi
+        return 1
+    fi
+
+    pw=$(security find-generic-password -s "Claude Code-credentials" -a "$USER" -w) || {
+        echo "save_claude_auth: not currently logged in" >&2
+        return 1
+    }
+
+    oauth=$(jq '.oauthAccount' ~/.claude.json 2>/dev/null)
+    if [[ -z "$oauth" || "$oauth" == "null" ]]; then
+        echo "save_claude_auth: no oauthAccount in ~/.claude.json -- not currently logged in" >&2
+        unset pw
+        return 1
+    fi
+
+    security add-generic-password -U -s "Claude Code-credentials-${account}" -a "$USER" -w "$pw" >/dev/null
+    unset pw
+
+    # The sidecar is created 0400 (read-only for the owner: it is only
+    # ever read back by load_claude_auth), so a --force overwrite must
+    # remove the old one before writing. `command rm` bypasses the
+    # `rm -i` safety alias from default/aliases.zsh.
+    command rm -f ~/.claude.json."${account}"
+    jq -n --argjson oauth "$oauth" '{oauthAccount: $oauth}' > ~/.claude.json."${account}"
+    chmod 0400 ~/.claude.json."${account}"
+    echo "save_claude_auth: saved '${account}'" >&2
+}
+
+load_claude_auth () {
+    local account="default" pw oauth tmp live sidecar explicit=0 force=0 matched=0
+
+    while (( $# )); do
+        if [[ "$1" == "--account" ]]; then
+            if (( $# < 2 )); then
+                echo "load_claude_auth: --account requires a value" >&2
+                return 1
+            fi
+            account="$2"
+            explicit=1
+            shift 2
+        elif [[ "$1" == "--force" ]]; then
+            force=1
+            shift
+        else
+            echo "load_claude_auth: unknown argument: $1" >&2
+            return 1
+        fi
+    done
+
+    if (( explicit )); then
+        if [[ "$account" == "default" ]]; then
+            echo "load_claude_auth: 'default' cannot be specified explicitly -- omit --account to use the built-in default" >&2
+            return 1
+        fi
+        if [[ ! "$account" =~ '^[A-Za-z0-9._@-]+$' ]]; then
+            echo "load_claude_auth: invalid account name '${account}' -- allowed characters are A-Z a-z 0-9 . _ @ -" >&2
+            return 1
+        fi
+    fi
+
+    [[ -f ~/.claude.json."${account}" ]] || {
+        if [[ "$account" == "default" ]]; then
+            echo "load_claude_auth: no built-in default saved yet -- run save_claude_auth (no --account) while logged into it" >&2
+        else
+            echo "load_claude_auth: no saved account '${account}' -- run save_claude_auth --account ${account} first" >&2
+        fi
+        return 1
+    }
+
+    # Refuse to clobber an unsaved identity: loading overwrites the live
+    # Keychain item and ~/.claude.json, and if the identity that was
+    # live was never saved it is gone (that account must be logged into
+    # again). Compare the live oauthAccount against every sidecar on
+    # .emailAddress and .accountUuid; abort unless one matches or
+    # --force is passed.
+    if (( ! force )); then
+        live=$(jq -c '.oauthAccount // empty' ~/.claude.json 2>/dev/null)
+        if [[ -n "$live" && "$live" != "null" ]]; then
+            for sidecar in ~/.claude.json.*(N); do
+                if jq -e --argjson live "$live" \
+                    '.oauthAccount as $s
+                     | $s.emailAddress == $live.emailAddress
+                       and $s.accountUuid == $live.accountUuid' \
+                    "$sidecar" >/dev/null 2>&1; then
+                    matched=1
+                    break
+                fi
+            done
+            if (( ! matched )); then
+                echo "load_claude_auth: the current login was never saved and would be lost -- run save_claude_auth first, or pass --force to discard it" >&2
+                return 1
+            fi
+        fi
+    fi
+
+    pw=$(security find-generic-password -s "Claude Code-credentials-${account}" -a "$USER" -w 2>/dev/null) || {
+        echo "load_claude_auth: no Keychain entry for '${account}'" >&2
+        return 1
+    }
+    security add-generic-password -U -s "Claude Code-credentials" -a "$USER" -w "$pw" >/dev/null
+    unset pw
+
+    oauth=$(jq '.oauthAccount' ~/.claude.json."${account}")
+    tmp=$(mktemp)
+    # `command mv -f` bypasses the `mv -i` safety alias that
+    # default/aliases.zsh defines for every host, which would prompt.
+    jq --argjson oauth "$oauth" '.oauthAccount = $oauth' ~/.claude.json > "$tmp" \
+        && command mv -f "$tmp" ~/.claude.json
+    echo "load_claude_auth: switched to '${account}'" >&2
+}
