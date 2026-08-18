@@ -403,8 +403,9 @@ profiles: ## List every profile in the repo, marking the ones this host opts int
 # loop exit non-zero. Without the accumulator the loop's trailing `echo` was
 # the last command and supplied the recipe's exit status, so a run in which
 # every tier failed still reported success to `make uninstall`,
-# `make remove-and-purge`, and to `make update`'s `|| FAIL=1` -- the exact
-# partially-failed run remove_runner.sh's non-zero exit exists to signal.
+# `make remove-and-purge`, and to the `||` step accumulator in `update` --
+# the exact partially-failed run remove_runner.sh's non-zero exit exists to
+# signal.
 
 uninstall: ## Apply every tier's [profile] uninstall array, in tier order
 	@set -euo pipefail
@@ -460,7 +461,25 @@ _remove_and_purge_loop:
 
 # Note: the sed pattern extracting cask names from "already an App" errors depends on
 # Homebrew's "Error: <cask>: ..." format. If it changes, unmatched errors safely fall
-# through to the generic error check which sets FAIL=1.
+# through to the generic error check, which records the `brew-upgrade-cask` step.
+#
+# `update` is failure-TOLERANT but not failure-SILENT, the same posture
+# `install` and the removal loops take. Every step runs even after an earlier
+# one fails -- the steps are independent, and a host that cannot reach the
+# Homebrew API still wants its Mac App Store apps upgraded -- but each failing
+# step appends its own NAME to `failed`, and the recipe ends by either naming
+# every one of them or claiming success, never both. The summary ends in
+# `exit 1` and the success line sits after it, so the two are mutually
+# exclusive by construction rather than by matching conditions. That shape
+# is deliberate: an unconditional
+# `echo "==> All packages updated."` ahead of `exit $$FAIL` announced success
+# on a run that then errored, and left `make: *** [update] Error 1` as the
+# only evidence that anything went wrong -- with the actual cause buried
+# hundreds of lines up in brew's output. The step names are single words with
+# no whitespace because the summary re-splits `failed` on it. The cask branch
+# also repeats its `Error:` lines under the summary: those come from
+# third-party download and app-state failures whose text is the actionable
+# part, and it is the one step whose failure is not a plain non-zero exit.
 #
 # `update` also completes the asdf -> mise cutover end to end: it applies the
 # version-managers tier (which is what puts `mise` on a host that has never
@@ -487,7 +506,9 @@ _remove_and_purge_loop:
 # version manager without a working replacement is strictly worse than
 # leaving both in place -- and pointing ~/.zshrc at a mise that is not there
 # would error on every shell startup, which is the failure the strip exists
-# to prevent. That path warns and sets FAIL, so the run exits non-zero.
+# to prevent. That path warns and records the
+# `mise-unreachable-cutover-held-back` step, so the run exits non-zero and
+# the summary names it.
 #
 # The whole cutover is gated on $(VM_OPTED_IN) first: a host that does not
 # list `version-managers` in its `profiles` array never had mise installed
@@ -495,7 +516,7 @@ _remove_and_purge_loop:
 # `update` must not install it either, must not rewrite that host's
 # ~/.zshrc, and must not touch its global mise config. On such a host the
 # step prints one line and moves on -- it is a normal configuration, not a
-# failure, so FAIL is untouched. VM_SKIP is set to the tier anyway on that
+# failure, so it records no step. VM_SKIP is set to the tier anyway on that
 # branch: the removal loops walk $(TIERS), which does not contain the tier
 # there, so naming it in the skip list is inert for them; what the
 # assignment actually buys is the `[ -z "$$VM_SKIP" ]` guard below holding
@@ -507,11 +528,11 @@ _remove_and_purge_loop:
 # empty is exactly "opted in AND mise reachable", which is the one state in
 # which driving mise is meaningful, so all four steps share that one guard.
 update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed tool versions, then apply every tier's uninstall and purge arrays
-	@FAIL=0; \
+	@failed=""; CASK_ERRORS=""; \
 	echo "==> Updating Homebrew..."; \
-	$(BREW) update || FAIL=1; \
+	$(BREW) update || failed="$$failed brew-update"; \
 	echo "==> Upgrading Homebrew formulae..."; \
-	$(BREW) upgrade --formula || FAIL=1; \
+	$(BREW) upgrade --formula || failed="$$failed brew-upgrade-formula"; \
 	echo "==> Upgrading Homebrew casks (including greedy)..."; \
 	CASK_OUTPUT=$$($(BREW) upgrade --cask --greedy 2>&1); CASK_EXIT=$$?; \
 	echo "$$CASK_OUTPUT"; \
@@ -520,18 +541,19 @@ update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed too
 		if [ -n "$$ALREADY_APP_CASKS" ]; then \
 			for cask in $$ALREADY_APP_CASKS; do \
 				echo "==> Retrying $$cask with reinstall (had 'already an App' conflict)..."; \
-				$(BREW) reinstall --cask "$$cask" || FAIL=1; \
+				$(BREW) reinstall --cask "$$cask" || failed="$$failed brew-reinstall-cask:$$cask"; \
 			done; \
 		fi; \
 		if echo "$$CASK_OUTPUT" | grep "^Error:" | grep -v "already an App" | grep -qv "installer manual"; then \
-			FAIL=1; \
+			failed="$$failed brew-upgrade-cask"; \
+			CASK_ERRORS=$$(echo "$$CASK_OUTPUT" | grep "^Error:" | grep -v "already an App" | grep -v "installer manual"); \
 		fi; \
 	fi; \
 	echo "==> Upgrading Mac App Store apps..."; \
-	if command -v mas >/dev/null 2>&1; then mas upgrade || FAIL=1; fi; \
+	if command -v mas >/dev/null 2>&1; then mas upgrade || failed="$$failed mas-upgrade"; fi; \
 	if [ -n "$(VM_OPTED_IN)" ]; then \
 		echo "==> Applying the $(VM_PROFILE) tier ($(VM_TIER))..."; \
-		$(BASH_BIN) $(APPLY_TIER) "$(VM_TIER)" || FAIL=1; \
+		$(BASH_BIN) $(APPLY_TIER) "$(VM_TIER)" || failed="$$failed apply-tier:$(VM_TIER)"; \
 		if $(MISE_REACHABLE); then \
 			VM_SKIP=""; \
 		else \
@@ -540,7 +562,7 @@ update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed too
 			echo "         Skipping the asdf/direnv removal ($(VM_TIER)) and the ~/.zshrc rewrites," >&2; \
 			echo "         so this host is not left with no version manager at all." >&2; \
 			echo "         Every other tier still applies. Fix the mise install and re-run 'make update'." >&2; \
-			FAIL=1; \
+			failed="$$failed mise-unreachable-cutover-held-back"; \
 		fi; \
 	else \
 		VM_SKIP="$(VM_TIER)"; \
@@ -548,22 +570,31 @@ update: require-dasel ## Update Homebrew, upgrade formulae/casks/MAS/managed too
 	fi; \
 	if [ -z "$$VM_SKIP" ]; then \
 		echo "==> Updating mise-managed tools..."; \
-		$(MAKE) -s versions-update || FAIL=1; \
+		$(MAKE) -s versions-update || failed="$$failed versions-update"; \
 		echo "==> Pruning unused mise-managed versions..."; \
-		$(MAKE) -s versions-cleanup || FAIL=1; \
+		$(MAKE) -s versions-cleanup || failed="$$failed versions-cleanup"; \
 	fi; \
 	echo "==> Updating ~/.claude/ from the global Claude config repo..."; \
-	if [ -x "scripts/claude_repo_setup.sh" ]; then $(BASH_BIN) scripts/claude_repo_setup.sh update || FAIL=1; else echo "scripts/claude_repo_setup.sh not found or not executable"; fi; \
+	if [ -x "scripts/claude_repo_setup.sh" ]; then $(BASH_BIN) scripts/claude_repo_setup.sh update || failed="$$failed claude-repo-update"; else echo "scripts/claude_repo_setup.sh not found or not executable"; fi; \
 	echo "==> Applying every tier's uninstall array..."; \
-	$(MAKE) -s uninstall REMOVE_SKIP_TIERS="$$VM_SKIP" || FAIL=1; \
+	$(MAKE) -s uninstall REMOVE_SKIP_TIERS="$$VM_SKIP" || failed="$$failed uninstall-arrays"; \
 	echo "==> Applying every tier's purge array..."; \
-	$(MAKE) -s remove-and-purge REMOVE_SKIP_TIERS="$$VM_SKIP" || FAIL=1; \
+	$(MAKE) -s remove-and-purge REMOVE_SKIP_TIERS="$$VM_SKIP" || failed="$$failed purge-arrays"; \
 	if [ -z "$$VM_SKIP" ]; then \
-		$(BASH_BIN) scripts/strip_asdf_zshrc_lines.sh || FAIL=1; \
-		$(BASH_BIN) scripts/ensure_mise_zshrc_lines.sh || FAIL=1; \
+		$(BASH_BIN) scripts/strip_asdf_zshrc_lines.sh || failed="$$failed strip-asdf-zshrc-lines"; \
+		$(BASH_BIN) scripts/ensure_mise_zshrc_lines.sh || failed="$$failed ensure-mise-zshrc-lines"; \
 	fi; \
-	echo "==> All packages updated."; \
-	exit $$FAIL
+	if [ -n "$$failed" ]; then \
+		echo "==> The following update steps failed:"; \
+		for s in $$failed; do echo "  - $$s"; done; \
+		if [ -n "$$CASK_ERRORS" ]; then \
+			echo "==> Cask errors, repeated from the run above:"; \
+			echo "$$CASK_ERRORS" | sed 's/^/  /'; \
+		fi; \
+		echo "Every other step ran. Re-run 'make update' after resolving the above."; \
+		exit 1; \
+	fi; \
+	echo "==> All packages updated."
 
 # `DRY_RUN=1` expands to `--dry-run` via DRY_RUN_FLAG (defined at the
 # top of this file) and is forwarded to scripts/self_update.sh so
@@ -615,13 +646,20 @@ diagnose: ## Run system diagnostics and check installation status
 .PHONY: diagnose
 
 .PHONY: verify sanitize
+# Same posture as `update`: both checks always run, and a non-zero exit names
+# which one failed rather than leaving the caller to infer it from a bare
+# `make: *** [verify] Error 1`.
 verify: require-dasel ## Verify installations and check for same-tier Brewfile/uninstall+purge collisions
-	@set -uo pipefail; FAIL=0; \
-	$(BASH_BIN) ./scripts/verify.sh || FAIL=1; \
+	@set -uo pipefail; failed=""; \
+	$(BASH_BIN) ./scripts/verify.sh || failed="$$failed verify"; \
 	echo; \
 	echo "=== same-tier collision check ==="; \
-	$(BASH_BIN) ./scripts/collision_check.sh || FAIL=1; \
-	exit $$FAIL
+	$(BASH_BIN) ./scripts/collision_check.sh || failed="$$failed collision-check"; \
+	if [ -n "$$failed" ]; then \
+		echo "==> The following checks failed:"; \
+		for s in $$failed; do echo "  - $$s"; done; \
+		exit 1; \
+	fi
 
 sanitize: ## Resolve same-tier Brewfile/uninstall+purge collisions by commenting out the Brewfile line (writes .bak)
 	@$(BASH_BIN) ./scripts/collision_check.sh --fix

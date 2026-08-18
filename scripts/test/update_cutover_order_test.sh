@@ -9,13 +9,19 @@
 # one, so without explicitly applying the version-managers tier the removal
 # loops would take asdf and direnv out and leave no replacement.
 #
-# Two invariants, tested in two blocks:
+# The invariants, tested in blocks:
 #
 #   Block 1 (static): INSTALL BEFORE REMOVE. The version-managers tier
 #   apply appears in the `update` recipe ahead of `versions-update` (which
 #   needs a mise to drive) and ahead of both removal loops, the removal
 #   loops are handed REMOVE_SKIP_TIERS, and the ~/.zshrc strip is guarded
-#   on the same skip decision.
+#   on the same skip decision. It also pins that the success line sits
+#   after the failure summary's `exit 1`.
+#
+#   Block 1b (behavioral): the batch removal loops surface a failed tier.
+#
+#   Block 1c (behavioral): `make update` names the steps that failed, and
+#   never claims success on a run that then exits non-zero.
 #
 #   Block 2 (behavioral): the batch removal loops honor REMOVE_SKIP_TIERS
 #   -- the named tier is skipped while every other tier still applies, and
@@ -28,6 +34,11 @@
 # `brew update`, `brew upgrade`, `mas upgrade` and the ~/.zshrc strip on the
 # host. A static read of the recipe is the only side-effect-free way to
 # assert its ordering.
+#
+# Block 1c does run the recipe, but only against a synthetic repo whose host
+# tier opts out of version-managers and whose `brew` and `mas` are stubs --
+# see that block's comment for why that combination touches nothing outside
+# its temp dirs.
 
 set -uo pipefail
 
@@ -154,6 +165,19 @@ order_test() {
   ok "$([[ -n $guard_line && -n $vu_line && -n $vc_line && -n $fi_line \
       && $guard_line -lt $vu_line && $vc_line -lt $fi_line ]] && echo 0 || echo 1)" \
     "versions-update and versions-cleanup sit inside a VM_SKIP guard (guard@${guard_line:-none} vu@${vu_line:-none} vc@${vc_line:-none} fi@${fi_line:-none})"
+
+  # The success line and the failure summary are mutually exclusive BY
+  # CONSTRUCTION: the summary ends in `exit 1`, and the success echo sits
+  # after it. The regression this pins is the shape the recipe used to have
+  # -- an unconditional `echo "==> All packages updated."` immediately ahead
+  # of `exit $$FAIL`, which announced success on a run that then errored.
+  ok_contains "$recipe" '==> The following update steps failed:' \
+    "update summarises the steps that failed"
+  ok_before "$recipe" '==> The following update steps failed:' \
+    '==> All packages updated.' \
+    "the failure summary precedes the success line"
+  ok_absent "$recipe" 'exit $$FAIL' \
+    "update no longer exits on an undifferentiated FAIL flag"
 }
 
 # ---------------------------------------------------------------------
@@ -206,6 +230,100 @@ loop_failure_test() {
 }
 
 # ---------------------------------------------------------------------
+# Block 1c: `make update` names the steps that failed, and never claims
+# success on a run that then exits non-zero.
+#
+# Observed on a real host: two third-party cask upgrades failed, and the run
+# ended with `==> All packages updated.` followed by
+# `make: *** [update] Error 1`. Every step funnelled into one undifferentiated
+# flag, so the only way to learn WHICH step failed was to read ~200 lines of
+# brew output by eye.
+#
+# Unlike Block 1, this block RUNS the recipe -- against a synthetic repo with
+# stubbed `brew` and `mas`, and a host tier that does NOT opt into
+# version-managers. That opt-out is what makes running it safe: it holds back
+# the tier apply, versions-update/cleanup, and BOTH ~/.zshrc rewrites, so
+# nothing outside the temp dirs is touched. The removal loops still run, but
+# every package probe goes through the stubbed brew.
+# ---------------------------------------------------------------------
+
+# A brew stub whose behavior is chosen by the caller:
+#   fail -> every invocation exits 1, and `upgrade --cask` also prints an
+#           Error: line in Homebrew's format, so the recipe's cask-error
+#           branch fires the way it did on the real run.
+#   pass -> every invocation exits 0 and prints nothing.
+write_update_stub_brew() {
+  # write_update_stub_brew <path> <fail|pass>
+  if [[ "$2" == "fail" ]]; then
+    cat > "$1" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$1" == "upgrade" && "$2" == "--cask" ]]; then
+  echo "Error: Download failed on Cask 'whatsapp' with message: curl exited with 56"
+fi
+exit 1
+STUB
+  else
+    cat > "$1" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+  fi
+  chmod +x "$1"
+}
+
+run_update() {
+  # run_update <fail|pass> -> sets RUN_OUT / RUN_RC
+  local mode="$1" root host_dir brew_stub
+  root="$(make_repo)"
+  host_dir="$(mktemp -d)"
+  # NOT opted into version-managers: see the block comment.
+  printf 'profiles = ["tools"]\n' > "$host_dir/config.toml"
+  mkdir -p "$root/bin"
+  brew_stub="$root/bin/brew"
+  write_update_stub_brew "$brew_stub" "$mode"
+  # `mas` is invoked by bare name in the recipe, so the stub has to be a PATH
+  # shim. It shares the brew stub's exit status, which is what puts
+  # mas-upgrade in the failing run's summary.
+  cp "$brew_stub" "$root/bin/mas"
+  RUN_OUT="$(cd "$root" && PATH="$root/bin:$PATH" MACOS_SETUP_HOST_DIR="$host_dir" \
+    make update BREW="$brew_stub" 2>&1)"; RUN_RC=$?
+  rm -rf "$root" "$host_dir"
+}
+
+update_summary_test() {
+  run_update fail
+  ok "$([[ $RUN_RC -ne 0 ]] && echo 0 || echo 1)" \
+    "make update exits non-zero when steps fail (rc=$RUN_RC)"
+  ok_absent   "$RUN_OUT" "All packages updated." \
+    "a failed update does NOT claim that all packages updated"
+  ok_contains "$RUN_OUT" "==> The following update steps failed:" \
+    "a failed update prints a summary of the failed steps"
+  ok_contains "$RUN_OUT" "  - brew-update" \
+    "the summary names the brew update step"
+  ok_contains "$RUN_OUT" "  - brew-upgrade-formula" \
+    "the summary names the formula upgrade step"
+  ok_contains "$RUN_OUT" "  - brew-upgrade-cask" \
+    "the summary names the cask upgrade step"
+  ok_contains "$RUN_OUT" "  - mas-upgrade" \
+    "the summary names the Mac App Store step"
+  # Failure-TOLERANT: a failing first step does not abort the run, so later
+  # steps are attempted and land in the same summary.
+  ok_before "$RUN_OUT" "  - brew-update" "  - mas-upgrade" \
+    "the run kept going after the first failing step"
+  # The cask branch's failure is error TEXT, not an exit status, so the
+  # summary repeats the lines that carry the actionable part.
+  ok_contains "$RUN_OUT" "Download failed on Cask 'whatsapp'" \
+    "the summary repeats the cask error lines"
+
+  run_update pass
+  ok "$RUN_RC" "make update exits zero when every step succeeds"
+  ok_contains "$RUN_OUT" "==> All packages updated." \
+    "a clean update still prints its success line"
+  ok_absent   "$RUN_OUT" "The following update steps failed:" \
+    "a clean update prints no failure summary"
+}
+
+# ---------------------------------------------------------------------
 # Block 2: REMOVE_SKIP_TIERS in the real removal loops.
 # ---------------------------------------------------------------------
 
@@ -246,6 +364,7 @@ make_repo() {
      "$REPO_ROOT/scripts/host_tier_dir.sh" \
      "$REPO_ROOT/scripts/seed_host_tier.sh" \
      "$REPO_ROOT/scripts/install_filter.sh" \
+     "$REPO_ROOT/scripts/require_dasel_on_path.sh" \
      "$root/scripts/"
   printf '[profile]\nuninstall = ["brew:asdf"]\npurge = ["brew:asdf"]\n' \
     > "$root/profiles/version-managers/config.toml"
@@ -310,6 +429,8 @@ echo "=== Block 1: update recipe ordering ==="
 order_test
 echo "=== Block 1b: the removal loops surface a failed tier ==="
 loop_failure_test
+echo "=== Block 1c: update names the steps that failed ==="
+update_summary_test
 echo "=== Block 2: REMOVE_SKIP_TIERS in the removal loops ==="
 skip_test
 

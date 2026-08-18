@@ -725,8 +725,32 @@ failure-silent**, the same posture `make install` takes: a
 tier whose `remove_runner.sh` returns non-zero does not
 abort the walk, but it is accumulated, named in an
 end-of-run summary, and makes the loop exit non-zero — so
-`make uninstall`, `make remove-and-purge`, and `make
-update`'s `|| FAIL=1` all see a partially-failed run.
+`make uninstall`, `make remove-and-purge`, and the step
+accumulator in `make update` all see a partially-failed run.
+
+`make update` takes that same posture over its own steps.
+Every step runs even after an earlier one
+fails, each failing step appends its NAME (`brew-update`,
+`brew-upgrade-cask`, `mas-upgrade`, `uninstall-arrays`,
+`ensure-mise-zshrc-lines`, …) to one accumulator, and the
+recipe ends by EITHER naming every failed step OR printing
+`==> All packages updated.` — never both, because the
+success line sits after the summary's `exit 1`. The cask
+step also repeats its `Error:` lines under the summary,
+since its failure is error text rather than an exit status
+and that text (a third-party download or app-state failure)
+is the actionable part.
+`scripts/test/update_cutover_order_test.sh` pins both
+halves: statically, that the success line follows the
+summary; behaviorally, that a stubbed failing run names its
+steps and never claims success, while a clean run still
+prints the success line and no summary.
+
+`make verify` accumulates the same way over its two checks
+(`verify`, `collision-check`): both always run, and a
+non-zero exit names the one that failed instead of leaving
+the caller to infer it from `make: *** [verify] Error 1`.
+It prints no success line, so it has no claim to withhold.
 
 The removal paths are also **quiet by default about tiers
 that remove nothing** (mirroring the install gating above).

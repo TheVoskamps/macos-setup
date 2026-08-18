@@ -249,6 +249,25 @@ interpreter its own later steps need; see
   `~/.zshrc` rewrites, warns, and exits non-zero, leaving every other
   tier to apply normally.
 
+  `update` is failure-tolerant but not failure-silent. Every step runs
+  even after an earlier one fails — the steps are independent — and each
+  failing step appends its own NAME to an accumulator. The run then ends
+  one of two ways, never both: with `==> The following update steps
+  failed:` and one line per named step (`brew-update`,
+  `brew-upgrade-formula`, `brew-upgrade-cask`,
+  `brew-reinstall-cask:<cask>`, `mas-upgrade`,
+  `apply-tier:profiles/version-managers`,
+  `mise-unreachable-cutover-held-back`, `versions-update`,
+  `versions-cleanup`, `claude-repo-update`, `uninstall-arrays`,
+  `purge-arrays`, `strip-asdf-zshrc-lines`, `ensure-mise-zshrc-lines`),
+  followed by exit 1; or with `==> All packages updated.` and exit 0.
+  The cask step also repeats its `Error:` lines under the summary,
+  because its failure is error text rather than an exit status and that
+  text — a third-party download or app-state failure — is the actionable
+  part. Without this, a run whose only visible ending was
+  `make: *** [update] Error 1` left the cause buried hundreds of lines
+  up in brew's output.
+
 - `make self-update`
   Pulls the latest `main` into this repo via `scripts/self_update.sh`.
   If you're on a branch other than `main`, it switches to `main`. If
@@ -282,7 +301,9 @@ interpreter its own later steps need; see
   are bugs (`make update` would just undo the install); cross-tier
   collisions are intentional ("opt out at a more-specific tier") and are
   not reported. Exits non-zero if any Brewfile entries are missing OR any
-  same-tier collisions are found.
+  same-tier collisions are found. Both checks always run, and a non-zero
+  exit ends with `==> The following checks failed:` naming which of
+  `verify` / `collision-check` failed.
 
 - `make sanitize`
   Resolves the same-tier collisions reported by `make verify` by
