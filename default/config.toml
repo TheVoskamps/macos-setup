@@ -26,7 +26,9 @@
 # profiles — the ordered profile list, lowest priority first.
 # A default-tier `profiles` array is prepended to each host's array. No
 # populated default list ships today; the prepend capability exists for a
-# future base list.
+# future base list. A name may contain only letters, digits, '.', '_' and
+# '-'; anything else is dropped with a warning during `make` and is a hard
+# error in `make verify`, which names this file as the source.
 #
 # IMPORTANT: `profiles` is a bare (top-level) key, so it MUST appear
 # ABOVE the first [section] table below. Placing it after a

@@ -298,9 +298,19 @@ the ones this host opts into: a same-tier collision inside a profile
 nobody has opted into yet is still a bug in the repo.
 
 `make verify` also fails loudly (hard error, before the per-tier checks)
-if the host's external-host-tier `config.toml` `profiles` array lists a
-profile with no matching `profiles/{name}/` directory. At install time the
-same condition is a warning, and the missing tier is skipped.
+on two kinds of bad entry in a `profiles` array:
+
+- A name with no matching `profiles/{name}/` directory. At install time
+  the same condition is a warning, and the missing tier is skipped.
+- A name outside the permitted charset (letters, digits, `.`, `_`, `-`).
+  At install time `get_profiles` drops such a name with a warning, because
+  it would word-split into phantom tiers in the Makefile's tier list; the
+  `make install` entry in [Makefile Usage](MAKEFILE.md#common-targets)
+  has the reasoning.
+
+Both errors print the offending name next to the `config.toml` that
+declares it — either the external host tier's file or the repo-tracked
+`default/config.toml`, whose array is prepended, can contribute a name.
 
 `make sanitize` resolves each reported collision by commenting out the
 offending line in the `Brewfile` (the removal array wins) with a marker

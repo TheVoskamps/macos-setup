@@ -30,6 +30,11 @@
 # just under this host's own config). Each name must match a directory
 # under profiles/<name>/.
 #
+# A name may contain only letters, digits, '.', '_' and '-'. Anything
+# else (a space above all) word-splits into phantom tiers in the
+# Makefile's tier list, so `make` drops the name with a warning and
+# `make verify` treats it as a hard error.
+#
 # A host with no `profiles` array (like this template) selects no
 # profiles and collapses to the two-tier model: default < host.
 #

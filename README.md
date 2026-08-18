@@ -697,7 +697,11 @@ name carrying a space would be applied as two phantom tiers
 by `make install` while the shell-side tier walk resolved
 the real one. A name that fails the pattern is dropped with
 a warning at install time and is a hard error in
-`make verify`.
+`make verify`. Every one of these messages — the unusable
+name, the unknown name — quotes the offending name next to
+the `config.toml` that declares it, since either your host
+tier's file or the repo's `default/config.toml` can
+contribute one.
 
 ## Advanced Usage
 
