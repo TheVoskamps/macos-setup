@@ -921,10 +921,6 @@ mise's native version-prefix matching replaces the old
 bespoke `filter` / `filter_exclude` DSL
 (`java = "temurin"` selects the newest Temurin JDK; jre
 builds are named `temurin-jre-*` and are not selected).
-There is no native equivalent of a `max_version`
-ceiling, and none is needed: the one ceiling this repo
-carried was lua's, whose recorded intent was "stay below
-Lua 5.5", so `lua = "5.4"` is the faithful translation.
 
 **The LuaRocks pin.** LuaRocks 3.13.0 ships a rockspec
 with a duplicate `tag` key. Under asdf's lua plugin that

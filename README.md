@@ -1334,8 +1334,8 @@ alternative setup methods including:
   Store
 - Special handling for UI (Finder defaults, Hammerspoon),
   shell (Oh My Zsh), development tools, and AI tools
-- Version management uses exact pinning for reproducible
-  environments
+- Version management pins tool versions in `mise.toml`
+  for reproducible environments
 - The `.claude/` directory is gitignored to prevent
   accidental commits of local configuration, with one
   tracked exception: `.claude/rules/repo-config.md`
