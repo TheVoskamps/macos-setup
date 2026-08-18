@@ -24,8 +24,10 @@ provisioning macOS with this repo.
 - `make profile version-managers` also ensures the global
   `mise` config and installs the declared tool versions
   automatically. It does **not** uninstall `asdf`/`direnv`
-  or clean `~/.zshrc` — `make install` and `make update`
-  do; see [Version Management](VERSION_MANAGEMENT.md).
+  or clean `~/.zshrc` — `make install` and `make update` do
+  that, and only on a host whose `profiles` array lists
+  `version-managers`; see
+  [Version Management](VERSION_MANAGEMENT.md).
 
 ## Repository Layout
 

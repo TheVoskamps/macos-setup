@@ -218,9 +218,12 @@ seed-host-tier: ## Seed the external host tier from the template if absent (no-o
 # missing-on-PATH dasel aborts loudly with an actionable PATH remediation
 # instead. It is a bare-name REACHABILITY check only; the exactly-v3
 # version assertion stays the job of require_dasel_v3 at the first real
-# read. Wired as a prerequisite on each config-dependent batch target
-# below (install, profile, core, update, verify, outdated); being .PHONY it
+# read. Wired as a prerequisite on the apply and check targets below
+# (install, profile, core, update, verify, outdated); being .PHONY it
 # always runs first, gating the target before any recipe config work begins.
+# The removal loops (uninstall, remove-and-purge, their dry-run companions)
+# and sanitize read config.toml too but carry no prerequisite: `update` is
+# the path that reaches the loops in a normal run, and it is gated.
 #
 # NB: the `PROFILES` variable above is read at make PARSE time, before any
 # prerequisite (including this gate) runs. A prerequisite cannot gate a

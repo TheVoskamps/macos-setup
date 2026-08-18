@@ -199,6 +199,15 @@ interpreter its own later steps need; see
   result. `version-managers` is the ONE tier `update` applies; no
   other tier's `Brewfile` is re-applied.
 
+  That tier step is gated on the host opting into the profile, via the
+  `VM_OPTED_IN` Makefile variable (`version-managers` present in the
+  `profiles` array). `install` needs no such test — it reaches the tier
+  only as one iteration of its tier walk — but `update` applies the tier
+  explicitly, so without the gate it would install mise on a host that
+  never asked for it. Not opted in means: no tier apply, no `~/.zshrc`
+  rewrites, no asdf/direnv removal, one printed line, and the run's exit
+  status untouched. The rest of this entry describes the opted-in host.
+
   It then rewrites `~/.zshrc` from both sides:
   `scripts/strip_asdf_zshrc_lines.sh` removes the asdf/direnv init
   lines, and `scripts/ensure_mise_zshrc_lines.sh` adds the mise shims

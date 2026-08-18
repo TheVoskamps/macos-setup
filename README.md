@@ -360,7 +360,11 @@ resurrects something via dependency resolution the
 removal step takes it out before the run completes.
 Applying the `version-managers` tier before the removal
 loops is what keeps the asdf -> mise cutover safe on a host
-that never ran `make install` — see
+that never ran `make install`. That step only happens when
+the host lists `version-managers` in its `profiles` array;
+a host that never opted in gets no mise install, no
+`~/.zshrc` rewrite, and no asdf/direnv removal from an
+update run. See
 [docs/VERSION_MANAGEMENT.md](docs/VERSION_MANAGEMENT.md).
 
 ### Detecting and fixing collisions
@@ -710,7 +714,8 @@ drive it, `scripts/diagnose.sh` reports on it,
 # Install mise and its global config (included in make install).
 # This is the INSTALL piece of the asdf -> mise cutover only; it does
 # not uninstall asdf/direnv or clean ~/.zshrc. `make install` and
-# `make update` do the whole cutover. See docs/VERSION_MANAGEMENT.md.
+# `make update` do the whole cutover, on a host that lists
+# version-managers in its profiles array. See docs/VERSION_MANAGEMENT.md.
 make profile version-managers
 
 # Install the versions the resolved config declares

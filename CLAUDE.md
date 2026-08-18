@@ -184,9 +184,13 @@ that line takes effect in a NEW login shell. A user who runs
 dasel installed but unreachable by bare name, which used to
 surface late and cryptically as a buried `dasel version exited
 127` from `require_dasel_v3` partway into the first tier.
-The `.PHONY: require-dasel` Makefile target (wired as a
-prerequisite on every config-dependent target: `install`,
-`core`, `profile`, `update`, `verify`, `outdated`) runs
+The `.PHONY: require-dasel` Makefile target is wired as a
+prerequisite on the apply and check targets — `install`,
+`core`, `profile`, `update`, `verify`, `outdated`. (The
+removal loops `uninstall`, `remove-and-purge`, and their
+dry-run companions, plus `sanitize`, also read `config.toml`
+but carry no such prerequisite; `update` is the path that
+reaches the loops in a normal run, and it is gated.) It runs
 `scripts/require_dasel_on_path.sh` BEFORE host-tier seeding,
 the recipe-level config reads, and any install work. On a miss
 it prints `dasel not in PATH` plus new-shell remediation and

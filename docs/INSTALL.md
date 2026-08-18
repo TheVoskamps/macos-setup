@@ -96,7 +96,7 @@ Entries are `"<kind>:<identifier>"` strings:
 A malformed entry is a hard error everywhere it is read — a silently
 ignored removal is exactly what that check exists to prevent.
 
-The two arrays differ only for casks:
+The arrays differ only for casks:
 
 - `"cask:foo"` in `uninstall` → `brew uninstall --cask foo`
 - `"cask:foo"` in `purge` → `brew uninstall --cask --zap foo`
@@ -256,20 +256,31 @@ and every failure line always print.
 ### `make update` applies both removal arrays
 
 `make update` runs `make uninstall` and `make remove-and-purge` *after*
-its upgrade chain (Homebrew, casks, MAS, the version-managers tier, then
-the mise update and prune), so routine maintenance keeps the in-scope
+its upgrade chain (Homebrew, casks, MAS, the version-managers tier when
+the host opts into it, then the mise update and prune), so routine
+maintenance keeps the in-scope
 removals enforced even when `brew upgrade` resurrects a package via
 dependency resolution. Adding a package to a removal array is enough — the
 next `make update` will take it out without a separate command.
 
 The one tier `make update` will hold back is `version-managers`. Its
 `purge` array takes asdf and direnv out, and the mise that replaces them
-is installed by that same tier earlier in the run, so when mise is still
-unreachable after the install step `update` skips that tier in both
-removal loops (via the `REMOVE_SKIP_TIERS` Makefile variable that
-`_uninstall_loop` and `_remove_and_purge_loop` honor), skips both
-`~/.zshrc` rewrites, warns, and exits non-zero. Every other tier applies
-normally. See [VERSION_MANAGEMENT.md](VERSION_MANAGEMENT.md).
+is installed by that same tier earlier in the run. It is held back when:
+
+- **The host did not opt into the profile** — `version-managers` is
+  absent from its `profiles` array, which is what the `VM_OPTED_IN`
+  Makefile variable tests. `update` skips the tier apply and both
+  `~/.zshrc` rewrites, prints one line, and leaves the exit status alone.
+  That is a normal configuration, not a failure. The removal loops need
+  no skipping here: they walk the host's tiers, which do not include this
+  one.
+- **mise is still unreachable after the install step.** `update` skips
+  that tier in both removal loops — via the `REMOVE_SKIP_TIERS` Makefile
+  variable that `_uninstall_loop` and `_remove_and_purge_loop` honor —
+  skips both `~/.zshrc` rewrites, warns, and exits non-zero.
+
+Every other tier applies normally in both cases.
+See [VERSION_MANAGEMENT.md](VERSION_MANAGEMENT.md).
 
 See [Makefile Usage](MAKEFILE.md#common-targets) for the full
 `make update` description.
@@ -337,7 +348,7 @@ by an env var of the same name, all in one form
 
 | Var    | Overrides                | Honored by                       |
 | ------ | ------------------------ | -------------------------------- |
-| `BREW` | the `brew` binary        | all three scripts below          |
+| `BREW` | the `brew` binary        | every script listed below        |
 | `MAS`  | the `mas` binary         | `remove_runner.sh`               |
 | `SUDO` | the `sudo` driving `mas` | `remove_runner.sh`               |
 

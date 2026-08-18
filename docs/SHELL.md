@@ -197,7 +197,10 @@ either of the paths below, and each must leave `~/.zshrc` clean:
 On the `make update` path both rewrites sit behind the same guard as
 the asdf/direnv removal: if mise is still not reachable after the
 `version-managers` tier is applied, `update` skips the removal and both
-`~/.zshrc` rewrites, warns, and exits non-zero. See
+`~/.zshrc` rewrites, warns, and exits non-zero. They are also skipped —
+quietly, exit status untouched — on a host that does not list
+`version-managers` in its `profiles` array, since `update` never applies
+that tier there and so has no mise to point `~/.zshrc` at. See
 [Version Management](VERSION_MANAGEMENT.md).
 
 `ZSHRC_PATH` overrides the file it edits (the test suite points it at
