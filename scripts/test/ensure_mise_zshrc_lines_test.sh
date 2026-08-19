@@ -102,12 +102,13 @@ check "case 6: exits zero" "$RC" "0"
 check "case 6: activation line added" "$(grep -cFx "$ACTIVATE_LINE" "$Z6")" "1"
 
 # === case 7: the gate matches the Makefile's MISE_REACHABLE probe ========
-# `update` decides to remove asdf and direnv with MISE_REACHABLE, which runs
-# under a LOGIN shell because a mise installed moments earlier in the same run
-# lands on a login shell's PATH, not necessarily on make's. If this script
-# checked only make's PATH the two gates could disagree within one run — the
-# removal happens, the activation line is withheld. So the script must fall
-# back to the same login-shell probe.
+# `update` decides to remove asdf and direnv with MISE_REACHABLE, whose
+# `/bin/bash -lc` probe sees the inherited PATH plus what a bash login
+# shell's startup files add (never ~/.zprofile — that miss is fail-safe on
+# both gates). What matters here is agreement: if this script decided
+# reachability any other way the two gates could disagree within one run —
+# the removal happens, the activation line is withheld. So the script must
+# fall back to the same login-shell probe.
 if grep -qE '/bin/bash -lc .*command -v' "$SUT"; then
   ok "case 7: the gate falls back to a login-shell probe"
 else

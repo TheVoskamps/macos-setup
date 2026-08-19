@@ -35,14 +35,21 @@
 #
 # That reachability decision must agree with the Makefile's MISE_REACHABLE
 # probe, which is what let `update` remove asdf and direnv in the first place.
-# MISE_REACHABLE runs under `/bin/bash -lc` precisely because a mise installed
-# moments earlier in the same run lands on a LOGIN shell's PATH, not
-# necessarily on make's. A plain `command -v` here would see only make's
-# non-login PATH, so the two gates could disagree within one run: the probe
-# passes, the old version manager goes, and the activation line is withheld —
-# exactly the fresh-install scenario issue #38 exists to fix. So the gate below
+# The point of sharing MISE_REACHABLE's `/bin/bash -lc` fallback is agreement,
+# not extra reach: if this script decided reachability any other way the two
+# gates could disagree within one run — the removal happens, the activation
+# line is withheld, and the host ends the cutover with no version manager
+# wired into the interactive shell, exactly the fresh-install scenario issue
+# #38 exists to fix. The fallback itself sees only the inherited PATH plus
+# what a bash login shell's startup files add; a bash login shell never reads
+# ~/.zprofile, where bootstrap.sh writes the Homebrew shellenv line on a
+# stock-zsh host that already has one, so a mise brew-installed in the same
+# shell session as bootstrap is not necessarily covered. That miss is
+# fail-safe on both gates: the activation line is withheld here and the
+# removal is held back there. The common case works because the invoking
+# shell already has Homebrew on PATH and `-lc` inherits it. So the gate below
 # checks this shell's PATH first and falls back to the same login-shell probe
-# the Makefile uses.
+# the Makefile uses. See the MISE_REACHABLE comment in the Makefile.
 #
 # ZSHRC_PATH is overridable so the test suite can point it at a fixture, and
 # MISE is overridable (the same knob scripts/mise_common.sh reads) so a test
