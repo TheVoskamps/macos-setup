@@ -92,10 +92,13 @@ ok_absent() {
 
 # Print every line of <file> that invokes <cmd> in COMMAND position.
 #
-# Comments are stripped first (the header talks about brew and mas
-# constantly), then double-quoted spans (log messages quote the command
+# Double-quoted spans are stripped first (log messages quote the command
 # lines they are about to run, and the `=~` patterns quote their
-# delimiters). What survives is code, and a <cmd> token there that sits at
+# delimiters), then comments (the header talks about brew and mas
+# constantly). Quotes must go first: a `#` inside a quoted string — say a
+# log line citing `issue #123` — would otherwise read as a comment start
+# and truncate the rest of the line, hiding a bare call after it. What
+# survives is code, and a <cmd> token there that sits at
 # the start of a simple command — after start-of-line, whitespace, `;`,
 # `&`, `|`, `(`, or a leading `!` — and is followed by a subcommand or a
 # flag, is a bare invocation.
@@ -111,7 +114,7 @@ ok_absent() {
 # `"$SUDO" mas uninstall` leaves a bare `mas`.
 bare_cmd_hits() {
   # bare_cmd_hits <file> <cmd>
-  sed -E 's/#.*//; s/"[^"]*"//g' "$1" \
+  sed -E 's/"[^"]*"//g; s/#.*//' "$1" \
     | grep -nE "(^|[[:space:]]|[;&|(])(!([[:space:]]+))?$2[[:space:]]+[a-z-]"
 }
 
@@ -148,6 +151,21 @@ static_test() {
     's/"\$MAS" list/mas list/' 'mas list'
   assert_no_bare_cmd sudo \
     's/"\$SUDO" "\$MAS" uninstall/sudo "$MAS" uninstall/' 'sudo "$MAS" uninstall'
+
+  # Pin the strip order inside bare_cmd_hits: a `#` inside a
+  # double-quoted string must not read as a comment start. With comments
+  # stripped before quotes, this appended line's `"commit #123: note"`
+  # would swallow the bare `brew list` after it and the detector would
+  # miss a real reintroduction.
+  local dir appended
+  dir="$(mktemp -d)"
+  appended="$dir/appended_runner.sh"
+  cp "$RUNNER" "$appended"
+  printf '%s\n' 'echo "commit #123: note" && brew list --formula "sentinel"' \
+    >> "$appended"
+  ok "$([[ -n "$(bare_cmd_hits "$appended" brew)" ]] && echo 0 || echo 1)" \
+    "the detector fires on a bare brew call after a #-bearing quoted string"
+  rm -rf "$dir"
 
   ok "$(grep -q '^BREW="\${BREW:-brew}"$' "$RUNNER" && echo 0 || echo 1)" \
     "remove_runner.sh defines the BREW override the way install_filter.sh does"

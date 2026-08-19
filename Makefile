@@ -150,8 +150,16 @@ VM_OPTED_IN := $(filter $(VM_PROFILE),$(PROFILES))
 # It is a macro, not two hand-written `command -v` calls, so the two
 # paths cannot drift and neither can lose the guard silently.
 #
-# `$(BASH_BIN) -lc` because a mise installed moments earlier in the same run
-# lands on a login shell's PATH, not necessarily on make's. `$${MISE:-mise}`
+# The probe sees the PATH it inherits from the invoking shell, plus
+# whatever a bash login shell's startup files (`/etc/profile`, then the
+# first of `~/.bash_profile` / `~/.bash_login` / `~/.profile`) add — a
+# bash login shell never reads `~/.zprofile`, which is where bootstrap.sh
+# writes the Homebrew shellenv line on a stock-zsh host that already has
+# one. So a mise installed in the same shell session as that bootstrap
+# run is NOT covered: the probe can report it unreachable and hold the
+# cutover back (fail-safe — the removal is skipped, never mis-run). The
+# common case works because the invoking shell already has Homebrew on
+# PATH and `-lc` inherits it. `$${MISE:-mise}`
 # honors the same override scripts/mise_common.sh reads, which is also
 # what lets scripts/test/install_cutover_guard_test.sh point it at an
 # absent binary.
