@@ -922,26 +922,6 @@ bespoke `filter` / `filter_exclude` DSL
 (`java = "temurin"` selects the newest Temurin JDK; jre
 builds are named `temurin-jre-*` and are not selected).
 
-**The LuaRocks pin.** LuaRocks 3.13.0 ships a rockspec
-with a duplicate `tag` key. Under asdf's lua plugin that
-broke the build, so this repo pinned 3.12.2 via
-`ASDF_LUA_LUAROCKS_VERSION` -- the variable name that
-plugin reads. `scripts/versions_setup.sh` still exports
-`ASDF_LUA_LUAROCKS_VERSION=3.12.2` so every
-`make versions-*` invocation carries it. On mise it is
-currently INERT: verified against mise 2026.8.6 on
-2026-08-16, `mise registry` resolves `lua` through
-`vfox:mise-plugins/vfox-lua` first, not the asdf plugin,
-and a sandboxed `mise install lua@5.4` built 5.4.8 and
-bootstrapped LuaRocks 3.13.0 successfully with the
-export set. It is kept because it costs nothing and
-still applies to an explicit asdf-backend pin, where the
-breakage is unchanged -- upstream
-`luarocks/luarocks#1851` was closed by a fix to the
-release tooling, and the shipped 3.13.0 tarball is
-PGP-signed with a pinned `source_digest` and was never
-re-rolled. Tracked in issue #6.
-
 **`make asdf-to-mise`** is the one-shot migration verb
 and a deliberate exception to the
 implementation-neutral naming (it names both endpoints

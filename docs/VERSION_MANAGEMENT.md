@@ -64,31 +64,6 @@ Temurin JDK (jre builds are named `temurin-jre-*` and are not
 selected), so the old `filter` / `filter_exclude` keys have native
 equivalents.
 
-### The LuaRocks pin
-
-LuaRocks 3.13.0 ships a rockspec with a duplicate `tag` key. Under
-asdf's lua plugin that broke the build, so this repo pinned 3.12.2 via
-`ASDF_LUA_LUAROCKS_VERSION` — the variable name that plugin reads.
-`scripts/versions_setup.sh` still exports
-`ASDF_LUA_LUAROCKS_VERSION=3.12.2`, so every `make versions-*`
-invocation carries it.
-
-**On mise the export is currently inert.** Verified against mise
-2026.8.6 on 2026-08-16: `mise registry` resolves `lua` through
-`vfox:mise-plugins/vfox-lua` first, not the asdf plugin, and a
-sandboxed `mise install lua@5.4` built 5.4.8 and bootstrapped LuaRocks
-**3.13.0** successfully with the export set. The variable neither took
-effect nor was needed.
-
-It is kept anyway, because it costs nothing and still applies if you
-pin lua to the asdf backend explicitly
-(`lua = "asdf:mise-plugins/mise-lua@5.4"`), where the original breakage
-is unchanged: upstream `luarocks/luarocks#1851` was closed by a fix to
-the *release tooling* (`luarocks/luarocks#1885`), and the shipped
-3.13.0 tarball is PGP-signed with a pinned `source_digest` and was
-never re-rolled. Tracked in
-[issue #6](https://github.com/TheVoskamps/macos-setup/issues/6).
-
 ## `.env` loading
 
 The global config sets:
