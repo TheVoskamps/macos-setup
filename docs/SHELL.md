@@ -193,15 +193,23 @@ it is correct the moment mise lands.
 
 "On `PATH`" is decided in two steps: the calling shell's `PATH` first,
 then a fallback to `/bin/bash -lc` — which is exactly what the
-Makefile's `MISE_REACHABLE` macro is. The login-shell half matters
-because a
-mise installed moments earlier in the same run lands on a login shell's
-`PATH`, not necessarily on make's — and `MISE_REACHABLE` is what lets
-`make update` remove asdf and direnv. If this script checked only make's
-`PATH`, the two gates could disagree within one run: the removal
-happens, the activation line is withheld, and the host ends the cutover
-with no version manager wired into the interactive shell — exactly the
-failure issue #38 exists to fix.
+Makefile's `MISE_REACHABLE` macro is. The point of sharing the
+login-shell fallback is agreement, not extra reach: `MISE_REACHABLE`
+is what lets `make update` remove asdf and direnv, and if this script
+decided reachability any other way the two gates could disagree within
+one run — the removal happens, the activation line is withheld, and
+the host ends the cutover with no version manager wired into the
+interactive shell, exactly the failure issue #38 exists to fix. (The
+fallback itself sees only the inherited `PATH` plus what a bash login
+shell's startup files add; a bash login shell never reads
+`~/.zprofile`, where `bootstrap.sh` writes the Homebrew shellenv line
+on a stock-zsh host that already has one, so a mise brew-installed in
+the same shell session as bootstrap is not
+necessarily covered. That miss is fail-safe on both gates: the
+activation line is withheld here and the removal is held back there.
+The common case works because the invoking shell already has Homebrew
+on `PATH` and `-lc` inherits it. See the `MISE_REACHABLE` comment in
+the Makefile.)
 
 Like the strip below, the script has more than one caller, and for the
 same reason:
