@@ -791,7 +791,7 @@ nothing, untracking nothing, and committing nothing.
 See
 [docs/VERSION_MANAGEMENT.md](docs/VERSION_MANAGEMENT.md)
 for the full runbook, the multi-version-line pre-flight,
-the LuaRocks pin, and the manual cleanup checklist.
+and the manual cleanup checklist.
 
 ### Workspace Management (Multi-Monitor Setup)
 
