@@ -143,7 +143,11 @@ _check_brew_cli() {
 
 _check_tap() {
   local tap="$1"
-  if brew tap | grep -qx "$tap"; then
+  # Homebrew accepts both user/name and user/homebrew-name as the same
+  # tap on input, but `brew tap` lists only the short form — compare in
+  # that form so a long-form Brewfile spelling is not reported missing.
+  local short="${tap/\/homebrew-//}"
+  if brew tap | grep -qx "$short"; then
     print_line "tap" "$tap" "present" ""
     return 0
   fi

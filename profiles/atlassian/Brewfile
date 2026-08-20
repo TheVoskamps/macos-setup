@@ -1,7 +1,7 @@
 # Brewfile for the 'atlassian' profile
 
 # Taps
-tap 'atlassian/homebrew-acli'
+tap 'atlassian/acli'
 
 # Homebrew formulae
 brew 'acli'
