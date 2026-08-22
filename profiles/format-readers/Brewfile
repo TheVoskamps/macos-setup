@@ -1,0 +1,15 @@
+# Brewfile for the 'format-readers' profile — query and convert structured
+# data files (JSON, YAML, TOML, XML, CSV) from the shell.
+#
+# Linting and schema validation live in the sibling 'linters' and
+# 'schema-validators' profiles, so a host can take the readers without the
+# checkers.
+
+# Homebrew formulae
+# dasel, jq and yq are installed in the core tier (scripts/config_common.sh
+# queries config.toml with dasel), but format-readers re-asserts them as the
+# profile that owns the reader role. Install is additive and idempotent, so
+# the re-assertion is a no-op on machines that already have them.
+brew 'dasel'        # JSON, YAML, TOML, XML, CSV — one selector syntax
+brew 'jq'           # JSON
+brew 'yq'           # mikefarah's Go yq: YAML, JSON, XML, CSV, properties

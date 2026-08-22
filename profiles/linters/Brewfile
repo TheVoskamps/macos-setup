@@ -1,0 +1,10 @@
+# Brewfile for the 'linters' profile — per-format linters and formatters.
+
+# Homebrew formulae
+brew 'shellcheck'          # shell script
+brew 'markdownlint-cli2'   # Markdown
+brew 'yamllint'            # YAML
+brew 'jsonlint'            # JSON (validator)
+brew 'biome'               # JSON/JSONC lint+format
+brew 'tombi'               # TOML
+brew 'cfn-lint'            # CloudFormation correctness

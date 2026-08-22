@@ -1,0 +1,9 @@
+# Brewfile for the 'schema-validators' profile — validate documents against
+# a schema or a policy, rather than against a format's grammar (that is the
+# sibling 'linters' profile).
+
+# Homebrew formulae
+brew 'checkov'                # IaC security
+brew 'check-jsonschema'       # JSON/YAML schema validation
+brew 'kube-linter'            # k8s YAML / Helm
+brew 'cloudformation-guard'   # CloudFormation policy-as-code
