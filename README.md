@@ -1053,7 +1053,7 @@ see what is active and which file set it.
 
 ### Per-repo config for `/issue:address`
 
-`.claude/rules/repo-config.md` at the repo root tells the
+`.issues/repo-config.md` at the repo root tells the
 `/issue:address` orchestrator and its subagents
 (`issue-developer`, `issue-fixer`, `doc-updater`,
 `pr-reviewer`) which VCS, issue tracker, and branching
@@ -1069,9 +1069,13 @@ branch prefix) live in the global Claude config repo at
 `repo-examples/<repo-name>/rules/repo-config.md`.
 
 To onboard another repo, copy one of those files into
-that repo's `.claude/rules/repo-config.md` and edit the
+that repo's `.issues/repo-config.md` and edit the
 front-matter values. The orchestrator and subagents do
 the rest.
+
+`repo-config.md` is tracked repo content. Its per-user
+sibling `.issues/user-config.md` is private and is
+gitignored, so it never reaches a commit.
 
 ### Claude Configuration Management
 
@@ -1230,9 +1234,9 @@ cwd untouched.
 #### Local Repository Configuration (`./.claude/`)
 
 `./.claude/` is gitignored except for the whitelisted
-entries listed in `.gitignore`. The most important
-tracked file is `.claude/rules/repo-config.md` (the
-per-repo config consumed by `/issue:address`). Use
+entries listed in `.gitignore`. The per-repo config
+consumed by `/issue:address` is not among them — it
+lives at `.issues/repo-config.md`. Use
 this directory for repo-scoped Claude state
 (memory, plans, sandboxes); don't confuse it with
 `~/.claude/`, which is the global config clone.
@@ -1337,9 +1341,9 @@ alternative setup methods including:
 - Version management pins tool versions in `mise.toml`
   for reproducible environments
 - The `.claude/` directory is gitignored to prevent
-  accidental commits of local configuration, with one
-  tracked exception: `.claude/rules/repo-config.md`
-  (the per-repo config consumed by `/issue:address`)
+  accidental commits of local configuration. The
+  per-repo config consumed by `/issue:address` lives
+  outside it, at `.issues/repo-config.md`
 - `make versions-update` installs the latest versions AND
   writes them into the config that declared them
   (`mise up --bump`), so the version it installs is the

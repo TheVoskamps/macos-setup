@@ -1210,11 +1210,12 @@ former in-repo `logs/` directory. This is macOS-native
   returns the verdict to Claude Code
 
 **Per-repo config for `/issue:address`
-(`.claude/rules/repo-config.md`)**:
+(`.issues/repo-config.md`)**:
 
-- The only file under `.claude/` that is tracked
-  in git (via a `.gitignore` negation). Everything
-  else under `.claude/` remains ignored.
+- Tracked repo content. `.issues/` is not ignored,
+  so the file needs no `.gitignore` negation; its
+  per-user sibling `.issues/user-config.md` IS
+  ignored and must never be committed.
 - Read by `/issue:address` and the issue-*
   subagents (`issue-developer`, `issue-fixer`,
   `doc-updater`, `pr-reviewer`) at the start of
@@ -1239,9 +1240,8 @@ former in-repo `logs/` directory. This is macOS-native
   `.claude/tmp/issue-67-self-update/`).
 - `.claude/` is gitignored except for the
   whitelisted entries in the repo-root
-  `.gitignore` (e.g. `.claude/rules/repo-config.md`,
-  shareable `agents/`, `commands/`, `hooks/`,
-  `rules/`, `skills/`, etc.); `tmp/` stays ignored,
+  `.gitignore` (shareable `agents/`, `commands/`,
+  `hooks/`, `rules/`, `skills/`, etc.); `tmp/` stays ignored,
   so artifacts won't get committed.
   `Read`/`Edit`/`Write` of `.claude/tmp/**` is
   allow-listed in the global Claude config repo's
@@ -1256,9 +1256,9 @@ former in-repo `logs/` directory. This is macOS-native
 
 - `./.claude/` is gitignored except for the
   whitelisted entries listed in `.gitignore`. The
-  most important tracked file is
-  `.claude/rules/repo-config.md` (the per-repo
-  config consumed by `/issue:address`).
+  per-repo config consumed by `/issue:address` is
+  NOT among them — it lives at
+  `.issues/repo-config.md`.
 - This directory is for repo-scoped Claude config,
   separate from `~/.claude/` (the global repo
   clone). Don't confuse the two.
@@ -1380,9 +1380,9 @@ cat mise.toml        # Pinned versions for project
    Shared changes go in `profiles/{name}/` or
    `default/` in the repo.
 5. The `.claude/` directory is gitignored to prevent
-   accidental commits of local configs (except
-   `.claude/rules/repo-config.md`, the per-repo
-   config consumed by `/issue:address`)
+   accidental commits of local configs. The per-repo
+   config consumed by `/issue:address` lives outside
+   it, at `.issues/repo-config.md`
 6. A host opts into N ordered profiles via the `profiles`
    array in the external host tier's `config.toml` (lowest
    priority first). Machines with no `profiles` array fall

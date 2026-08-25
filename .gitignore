@@ -104,6 +104,10 @@ docker-data/
 /.claude/**/tmp/
 /.claude/**/worktrees/
 
+# issues-plugin config. repo-config.md is tracked repo content; the
+# per-user user-config.md is private and must never be committed.
+/.issues/user-config.md
+
 # Repo-root CLAUDE override files (sibling to CLAUDE.md)
 /CLAUDE.local.*
 
