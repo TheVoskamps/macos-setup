@@ -6,6 +6,12 @@
 -- MODULE LOADING
 --------------------------------------------------------------------------------
 
+-- Kept ahead of the modules.* requires so every launcher path runs with it on:
+-- with Spotlight name searches off, hs.application.launchOrFocus / find match
+-- only the bundle-derived name, so an entry named by its display name
+-- ("Visual Studio Code" vs the bundle's "Code") fails to launch or focus.
+hs.application.enableSpotlightForNameSearches(true)
+
 local config = require("modules.config")
 local monitors = require("modules.monitors")
 local positions = require("modules.positions")
