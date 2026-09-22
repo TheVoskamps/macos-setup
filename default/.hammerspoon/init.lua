@@ -6,10 +6,11 @@
 -- MODULE LOADING
 --------------------------------------------------------------------------------
 
--- Kept ahead of the modules.* requires so every launcher path runs with it on:
--- with Spotlight name searches off, hs.application.launchOrFocus / find match
--- only the bundle-derived name, so an entry named by its display name
--- ("Visual Studio Code" vs the bundle's "Code") fails to launch or focus.
+-- Kept ahead of the modules.* requires so every module runs with it on. It
+-- has Spotlight build an alternate-name map that hs.application.find / get
+-- consult when matching a RUNNING app by name, so "Visual Studio Code" also
+-- resolves the process whose bundle name is "Code". It does not change
+-- hs.application.launchOrFocus, which matches the app's on-disk name only.
 hs.application.enableSpotlightForNameSearches(true)
 
 local config = require("modules.config")
