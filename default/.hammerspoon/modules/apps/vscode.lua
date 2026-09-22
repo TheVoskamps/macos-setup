@@ -43,7 +43,9 @@ function M.launch(launchConfig, screen, homeDir, callback)
         return
     end
 
-    -- Record existing VS Code window IDs
+    -- Record existing VS Code window IDs. The find is exact: without the flag
+    -- "Code" is a substring match and can bind another running app whose name
+    -- contains it, so the poll below would watch the wrong app's windows.
     local existingIds = {}
     local vscodeApp = hs.application.find("Code", true) or hs.application.find("Visual Studio Code", true)
     if vscodeApp then
