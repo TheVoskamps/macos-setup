@@ -885,6 +885,15 @@ dispatcher globals) if any collision is detected.
   assign), `fullscreen` (boolean), `description`,
   `position` (`left`|`right`|`up`|`down`) for
   directional focus via `Ctrl+Alt+Cmd+Arrow`
+- Each `apps` entry is the app's on-disk name (the
+  `.app` name without the suffix, e.g.
+  `Visual Studio Code`). Launching resolves that name
+  only. Finding the running app afterwards resolves it
+  too, even when the process reports a different name
+  (`Code` for Visual Studio Code), because `init.lua`
+  turns on Spotlight name searches before any module
+  loads; that is the flag Hammerspoon otherwise hints
+  about on every config load.
 - Two or more entries MAY share the same `pattern`
   (e.g. two identical external displays) as long as
   every entry with that pattern also has a distinct
