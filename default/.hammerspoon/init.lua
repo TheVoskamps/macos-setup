@@ -7,10 +7,11 @@
 --------------------------------------------------------------------------------
 
 -- Kept ahead of the modules.* requires so every module runs with it on. It
--- has Spotlight build an alternate-name map that hs.application.find / get
--- consult when matching a RUNNING app by name, so "Visual Studio Code" also
--- resolves the process whose bundle name is "Code". It does not change
--- hs.application.launchOrFocus, which matches the app's on-disk name only.
+-- lets hs.application.find / get also match the alternate names Spotlight
+-- records for an app. Those names do not map a display name onto a differing
+-- process name: with it on, hs.application.get("Visual Studio Code") is still
+-- nil while VS Code runs as "Code", since Spotlight's only alternate name for
+-- the app is "Visual Studio Code.app".
 hs.application.enableSpotlightForNameSearches(true)
 
 local config = require("modules.config")
