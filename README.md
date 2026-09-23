@@ -888,12 +888,13 @@ dispatcher globals) if any collision is detected.
 - Each `apps` entry is the app's on-disk name (the
   `.app` name without the suffix, e.g.
   `Visual Studio Code`). Launching resolves that name
-  only. Finding the running app afterwards resolves it
-  too, even when the process reports a different name
-  (`Code` for Visual Studio Code), because `init.lua`
-  turns on Spotlight name searches before any module
-  loads; that is the flag Hammerspoon otherwise hints
-  about on every config load.
+  only. Finding the running app afterwards also
+  matches the alternate names Spotlight records for
+  it, because `init.lua` turns on Spotlight name
+  searches before any module loads; those names do not
+  map a display name onto a differing process name, so
+  an app that runs as `Code` is not found as
+  `Visual Studio Code`.
 - Two or more entries MAY share the same `pattern`
   (e.g. two identical external displays) as long as
   every entry with that pattern also has a distinct
