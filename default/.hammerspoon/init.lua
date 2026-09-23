@@ -6,6 +6,14 @@
 -- MODULE LOADING
 --------------------------------------------------------------------------------
 
+-- Kept ahead of the modules.* requires so every module runs with it on. It
+-- lets hs.application.find / get also match the alternate names Spotlight
+-- records for an app. Those names do not map a display name onto a differing
+-- process name: with it on, hs.application.get("Visual Studio Code") is still
+-- nil while VS Code runs as "Code", since Spotlight's only alternate name for
+-- the app is "Visual Studio Code.app".
+hs.application.enableSpotlightForNameSearches(true)
+
 local config = require("modules.config")
 local monitors = require("modules.monitors")
 local positions = require("modules.positions")

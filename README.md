@@ -885,6 +885,16 @@ dispatcher globals) if any collision is detected.
   assign), `fullscreen` (boolean), `description`,
   `position` (`left`|`right`|`up`|`down`) for
   directional focus via `Ctrl+Alt+Cmd+Arrow`
+- Each `apps` entry is the app's on-disk name (the
+  `.app` name without the suffix, e.g.
+  `Visual Studio Code`). Launching resolves that name
+  only. Finding the running app afterwards also
+  matches the alternate names Spotlight records for
+  it, because `init.lua` turns on Spotlight name
+  searches before any module loads; those names do not
+  map a display name onto a differing process name, so
+  an app that runs as `Code` is not found as
+  `Visual Studio Code`.
 - Two or more entries MAY share the same `pattern`
   (e.g. two identical external displays) as long as
   every entry with that pattern also has a distinct
