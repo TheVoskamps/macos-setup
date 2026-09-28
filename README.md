@@ -481,6 +481,9 @@ repo only requires re-running `make shell_setup` to repoint
 #    (${XDG_CONFIG_HOME:-~/.config}/macos-setup/config.toml)
 #    with your relay's SMTP details under [mailer]:
 [mailer]
+# Optional — mailer backend. "msmtp" is the default and the only
+# supported value; send_mail.sh and resolve_mailto.sh reject any other.
+# backend = "msmtp"
 smtp_host = "smtp.example.com"
 smtp_port = 587
 smtp_from = "you@example.com"
