@@ -1,0 +1,7 @@
+# Brewfile for the 'aws' profile
+
+# Taps
+tap 'localstack/tap'
+
+# Homebrew formulae
+brew 'localstack/tap/localstack-cli'
