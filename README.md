@@ -1078,6 +1078,13 @@ on CodeCommit + Jira + `integ` source/target + initials
 branch prefix) live in the global Claude config repo at
 `repo-examples/<repo-name>/rules/repo-config.md`.
 
+The front-matter selects the VCS (`source-control`),
+the issue tracker (`issues`), the issue link prefix
+(`issue-link-prefix`), the source and target branches
+(`default-issue-source-branch`,
+`default-pr-target-branch`), and the branch-name style
+(`issue-branch-naming-prefix`).
+
 To onboard another repo, copy one of those files into
 that repo's `.issues/repo-config.md` and edit the
 front-matter values. The orchestrator and subagents do

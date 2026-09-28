@@ -2,16 +2,15 @@
 
 ## Target lookup
 
-`make help` lists every documented target and every profile.
-`make profiles` marks the profiles this host opts into and prints the
-tier order it applies.
+Look a target up with `make help`, and this host's profiles with
+`make profiles`.
 
 ## Only a read-only target runs unasked
 
 Every other target installs, removes, or rewrites something on this
 machine. Without a task that asks for that change here, run only
-`make help`, `make profiles`, `make verify`, `make outdated`, and the
-`*-dry-run` targets.
+`make help`, `make profiles`, `make verify`, and the `*-dry-run`
+targets.
 
 ## Tests run one file at a time
 

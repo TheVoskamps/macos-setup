@@ -21,12 +21,12 @@
   change with it.
 - `docs/rules/mailer.md` — read before writing code that sends mail or
   handles the relay password. Kernel: mail goes out only through
-  `scripts/send_mail.sh`, and the relay password lives only in the login
-  Keychain.
+  `scripts/send_mail.sh`, and code never writes the relay password to a
+  file.
 - `docs/rules/shell.md` — read before writing a path that reaches the
   repo through `~/.zsh-shared`, such as one a LaunchAgent plist embeds.
-  Kernel: a further step into the repo is a committed relative symlink
-  inside `shared/zsh/`, never `~/.zsh-shared/..`.
+  Kernel: what such a path runs is a committed entry inside
+  `shared/zsh/`, never `~/.zsh-shared/..`.
 - `docs/rules/claude-config.md` — read before touching Claude hooks,
   settings, or plugin sync, or before creating scratch files. Kernel:
   `~/.claude/` is a separate repository, so its hooks, settings, and

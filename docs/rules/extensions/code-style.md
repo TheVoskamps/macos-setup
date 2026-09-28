@@ -18,10 +18,11 @@ Every environment override the diff adds for a binary a script shells
 out to is written exactly `VAR="${VAR:-default}"`, with `default` the
 bare name `PATH` resolves.
 
-### Every git network call the diff adds uses `git_in_safe_cwd`
+### A git network call where `git_in_safe_cwd` is sourced uses it
 
-Every `git ls-remote`, `clone`, `fetch`, or `pull` the diff adds to a
-script runs through `git_in_safe_cwd` in `scripts/claude_repo_common.sh`,
-which runs git from a fresh temp directory. On macOS those operations
+In a script that sources `scripts/claude_repo_common.sh`, every
+`git ls-remote`, `clone`, `fetch`, or `pull` the diff adds runs through
+that file's `git_in_safe_cwd`, which runs git from a fresh temp
+directory. On macOS those operations
 can hang for about two minutes when the working directory has a
 descendant that another symlink on disk targets.

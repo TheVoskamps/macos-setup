@@ -6,14 +6,11 @@ A new sender pipes its message to `scripts/send_mail.sh` rather than
 calling `msmtp`, and takes its From address from
 `scripts/resolve_from.sh`.
 
-## The relay password lives only in the login Keychain
+## Code never writes the relay password to a file
 
-No file in the repo or the host tier, `~/.msmtprc` included, ever holds
-the password; msmtp reads it at send time through the `passwordeval`
-line `scripts/msmtp_setup.sh` generates. Every place that names the
-Keychain entry — generated config, `config.toml` comments, setup
-messages, examples — names it by the same service (`keychain_service`)
-and account (`smtp_user`).
+Code that needs the relay password reads it from the login Keychain
+entry named by `keychain_service` and `smtp_user`, and writes it
+nowhere.
 
 ## A missing Keychain entry is a warning
 
