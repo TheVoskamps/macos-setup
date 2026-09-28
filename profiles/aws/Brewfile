@@ -1,7 +1,6 @@
 # Brewfile for the 'aws' profile
 
 # Taps
-tap 'localstack/tap'
 tap 'aws/tap'
 
 # Homebrew formulae
@@ -11,4 +10,3 @@ brew 'aws-vault'
 brew 'awscurl'
 brew 'aws-sam-cli'
 brew 'cfn-lint'
-brew 'localstack/tap/lstk'

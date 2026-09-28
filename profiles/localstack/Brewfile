@@ -1,4 +1,4 @@
-# Brewfile for the 'aws' profile
+# Brewfile for the 'localstack' profile
 
 # Taps
 tap 'localstack/tap'
