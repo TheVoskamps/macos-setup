@@ -1,0 +1,7 @@
+# Brewfile for the 'localstack' profile
+
+# Taps
+tap 'localstack/tap'
+
+# Homebrew formulae
+brew 'localstack/tap/lstk'
