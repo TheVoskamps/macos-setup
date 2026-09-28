@@ -1,9 +1,12 @@
 # Hammerspoon
 
-## The relaunch is confirmed with a read-only probe
+## Reloading cannot rely on IPC alone
 
-After `reload_hammerspoon` in `scripts/hammerspoon_setup.sh` falls back
-to relaunching the app, it confirms the relaunch with `hs -c "true"`,
+`hs -c "hs.reload()"` travels over IPC, and the IPC port comes up only
+when `init.lua` runs `require("hs.ipc")`. When `init.lua` is broken or
+has never loaded from the current checkout, the port is down, so
+`reload_hammerspoon` in `scripts/hammerspoon_setup.sh` falls back to
+relaunching the app. It confirms the relaunch with `hs -c "true"`,
 never a second `hs.reload()`: the relaunch already re-ran `init.lua`,
 and the probe only checks that the IPC port came back up.
 
