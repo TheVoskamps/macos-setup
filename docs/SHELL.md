@@ -32,7 +32,12 @@ stay consistent across machines. The layers are:
     point. Generated plists embed
     `$HOME/.zsh-shared/launchagent_runner` as `ProgramArguments[0]`
     so the runner is reachable through the same symlink chain
-    `m()` already uses, with no repo path baked into the plist.
+    `m()` already uses, with no repo path baked into the plist. It
+    is a symlink and never a copy of the script: a copy at this path
+    is what every scheduled job runs, and it goes on running the
+    version it was copied from while `scripts/launchagent_runner.sh`
+    gains exports (`HOMEBREW_NO_ASK=1`, the mise shims on `PATH`)
+    that never reach it.
 - During `make shell_setup`, `scripts/shell_setup.sh` will:
   - symlink `shared/zsh/` to `~/.zsh-shared`
   - ensure `~/.zshrc` contains a single line that sources every snippet:
