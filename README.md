@@ -231,7 +231,11 @@ its consolidated `config.toml` in the external host tier,
   it: it tries the IPC reload first and, if that fails
   (e.g. a stale `init.lua` symlink left the `hs.ipc`
   message port down), falls back to relaunching the app
-  so init.lua re-loads from the corrected symlink. If
+  so init.lua re-loads from the corrected symlink. The
+  relaunch is confirmed by polling every
+  `HS_RELAUNCH_INTERVAL` seconds (default 1) for up to
+  `HS_RELAUNCH_TIMEOUT` seconds (default 15); raise the
+  timeout on a machine whose cold launch is slow. If
   the reload still can't be confirmed it prints a loud
   warning telling you to reload manually from the
   menubar (Hammerspoon icon → Reload Config) and the
