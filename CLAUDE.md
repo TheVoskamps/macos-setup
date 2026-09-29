@@ -19,9 +19,8 @@
   `.gitignore` block that `make asdf-to-mise` writes. Kernel: the heredoc
   in `scripts/asdf_to_mise.sh` is authoritative, and both verbatim copies
   change with it.
-- `docs/rules/mailer.md` — read before writing code that sends mail or
-  handles the relay password. Kernel: mail goes out only through
-  `scripts/send_mail.sh`.
+- `docs/rules/mailer.md` — read before writing code that sends mail.
+  Kernel: mail goes out only through `scripts/send_mail.sh`.
 - `docs/rules/shell.md` — read before writing a path that reaches the
   repo through `~/.zsh-shared`, such as one a LaunchAgent plist embeds.
   Kernel: what such a path runs is a committed symlink inside
