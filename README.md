@@ -231,7 +231,11 @@ its consolidated `config.toml` in the external host tier,
   it: it tries the IPC reload first and, if that fails
   (e.g. a stale `init.lua` symlink left the `hs.ipc`
   message port down), falls back to relaunching the app
-  so init.lua re-loads from the corrected symlink. If
+  so init.lua re-loads from the corrected symlink. The
+  relaunch is confirmed by polling every
+  `HS_RELAUNCH_INTERVAL` seconds (default 1) for up to
+  `HS_RELAUNCH_TIMEOUT` seconds (default 15); raise the
+  timeout on a machine whose cold launch is slow. If
   the reload still can't be confirmed it prints a loud
   warning telling you to reload manually from the
   menubar (Hammerspoon icon → Reload Config) and the
@@ -481,6 +485,9 @@ repo only requires re-running `make shell_setup` to repoint
 #    (${XDG_CONFIG_HOME:-~/.config}/macos-setup/config.toml)
 #    with your relay's SMTP details under [mailer]:
 [mailer]
+# Optional — mailer backend. "msmtp" is the default and the only
+# supported value; send_mail.sh and resolve_mailto.sh reject any other.
+# backend = "msmtp"
 smtp_host = "smtp.example.com"
 smtp_port = 587
 smtp_from = "you@example.com"
@@ -1077,6 +1084,13 @@ no branch-name prefix). Alternate examples (e.g. a repo
 on CodeCommit + Jira + `integ` source/target + initials
 branch prefix) live in the global Claude config repo at
 `repo-examples/<repo-name>/rules/repo-config.md`.
+
+The front-matter selects the VCS (`source-control`),
+the issue tracker (`issues`), the issue link prefix
+(`issue-link-prefix`), the source and target branches
+(`default-issue-source-branch`,
+`default-pr-target-branch`), and the branch-name style
+(`issue-branch-naming-prefix`).
 
 To onboard another repo, copy one of those files into
 that repo's `.issues/repo-config.md` and edit the
