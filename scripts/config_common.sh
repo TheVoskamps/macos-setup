@@ -43,9 +43,12 @@ AGGREGATE_FILES=(
 # `config/claude`, and `cron/mailto` are now consolidated into a single
 # `config.toml` per tier (issue #156). The `[mailer]`, `[claude]`, and
 # `[cron]` sections of `config.toml` are single-winner; the `profiles`
-# array is the one aggregate key (see resolve_config_value and
-# get_profiles below); and the `[profile]` section is PER-TIER — never
-# resolved across tiers at all (see read_post_install / read_removals).
+# array is an aggregate key read from default and host only (see
+# resolve_config_value and get_profiles below); the `[autostart]`
+# section is aggregate across every tier (see
+# resolve_config_array_aggregate and resolve_autostart_apps); and the
+# `[profile]` section is PER-TIER — never resolved across tiers at all
+# (see read_post_install / read_removals).
 # `config.toml` itself is single-winner per section, so it is not in
 # AGGREGATE_FILES.
 SINGLE_WINNER_FILES=(
@@ -329,6 +332,60 @@ resolve_config_value() {
     if [[ -n "$v" ]]; then echo "$v"; return 0; fi
 
     echo ""
+}
+
+# Resolve an AGGREGATE config.toml array across tiers: the union of the
+# selector's array in every tier, walked in tier_roots order (default ->
+# profiles in list order -> host), deduplicated keeping the FIRST
+# occurrence. Emits one element per line, nothing when no tier sets it.
+# Args: repo_root, selector (e.g. "autostart.apps").
+resolve_config_array_aggregate() {
+    local repo_root="$1"
+    local selector="$2"
+    local tier
+    while IFS= read -r tier; do
+        read_toml_array "$(config_toml_path "$tier")" "$selector"
+    done < <(tier_roots "$repo_root") | dedup_keep_first
+}
+
+# --- [autostart] --------------------------------------------------------
+#
+# `[autostart]` lists the apps a LaunchAgent starts at login. Both of its
+# arrays aggregate across every tier, so a profile can contribute apps
+# that a host tier setting `apps` does not drop: `apps` is the union in
+# tier order, and a name in ANY tier's `exclude` is removed from it,
+# whichever tier lists it in `apps`. Names match exactly and
+# case-sensitively.
+
+# Emit the resolved autostart app names, one per line, in first-seen
+# order. Args: repo_root
+resolve_autostart_apps() {
+    local repo_root="$1"
+    local excluded app
+    excluded="$(resolve_config_array_aggregate "$repo_root" "autostart.exclude")"
+    while IFS= read -r app; do
+        [[ -n "$app" ]] || continue
+        grep -qxF -- "$app" <<<"$excluded" && continue
+        printf '%s\n' "$app"
+    done < <(resolve_config_array_aggregate "$repo_root" "autostart.apps")
+}
+
+# Print the path of the first `<name>.app` found in /Applications,
+# /System/Applications, then ~/Applications, or nothing when none has
+# it. Args: app name
+autostart_app_path() {
+    local name="$1" dir
+    for dir in /Applications /System/Applications "$HOME/Applications"; do
+        if [[ -d "$dir/$name.app" ]]; then
+            echo "$dir/$name.app"
+            return 0
+        fi
+    done
+}
+
+# The LaunchAgent plist scripts/autostart_setup.sh writes.
+autostart_plist_path() {
+    echo "$HOME/Library/LaunchAgents/com.macos-setup.autostart.plist"
 }
 
 # --- Profile-name validation -------------------------------------------
@@ -671,6 +728,12 @@ parse_removal_entry() {
 dedup_keep_last() {
     awk 'NF { line[NR]=$0; last[$0]=NR }
          END { for (i=1;i<=NR;i++) if (last[line[i]]==i) print line[i] }'
+}
+
+# Read newline-separated names on stdin and emit them deduplicated,
+# keeping the FIRST occurrence of each name. Blank lines are dropped.
+dedup_keep_first() {
+    awk 'NF && !seen[$0]++'
 }
 
 # The tagged counterpart of dedup_keep_last, for "<file>\t<name>" lines:

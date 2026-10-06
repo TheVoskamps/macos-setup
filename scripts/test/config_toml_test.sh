@@ -14,6 +14,8 @@
 #   - get_profiles(): host array, default-prepend, dedup-keeping-last
 #   - dedup_keep_last(): order-preserving dedup keeping the last
 #     occurrence
+#   - resolve_config_array_aggregate() / resolve_autostart_apps(): the
+#     [autostart] arrays unioned across every tier, minus every exclude
 #
 # config.toml is queried with `dasel`, a guaranteed bootstrap primitive
 # (bootstrap.sh install_dasel). These tests exercise the REAL dasel
@@ -215,6 +217,75 @@ get_profiles_tests() {
   rm -rf "$ROOT" "$HOSTDIR"
 }
 
+# ---------------------------------------------------------------------
+# Block 5: [autostart] — resolve_config_array_aggregate and
+# resolve_autostart_apps aggregate across default, profile, and host
+# ---------------------------------------------------------------------
+autostart_tests() {
+  local ROOT HOSTDIR
+  ROOT="$(mktemp -d)"
+  HOSTDIR="$(mktemp -d)"
+  export MACOS_SETUP_HOST_DIR="$HOSTDIR"
+  # shellcheck disable=SC1090
+  source "$CONFIG_LIB"
+  get_hostname() { echo "atesthost"; }
+
+  mkdir -p "$ROOT/default" "$ROOT/profiles/aws" "$ROOT/profiles/dev-core"
+
+  ok "$(resolve_config_array_aggregate "$ROOT" "autostart.apps")" "" \
+    "resolve_config_array_aggregate: no tier sets the array -> empty"
+  ok "$(resolve_autostart_apps "$ROOT")" "" \
+    "resolve_autostart_apps: no [autostart] anywhere -> empty"
+
+  printf '[autostart]\napps = ["Hammerspoon", "iTerm"]\n' \
+    > "$ROOT/default/config.toml"
+  printf '[autostart]\napps = ["Slack", "iTerm"]\n' \
+    > "$ROOT/profiles/aws/config.toml"
+  printf '[autostart]\napps = ["Docker"]\n' \
+    > "$ROOT/profiles/dev-core/config.toml"
+  cat > "$HOSTDIR/config.toml" <<'EOF'
+profiles = ["aws", "dev-core"]
+
+[autostart]
+apps = ["Raycast", "Hammerspoon"]
+EOF
+
+  ok "$(resolve_config_array_aggregate "$ROOT" "autostart.apps" | paste -sd, -)" \
+    "Hammerspoon,iTerm,Slack,Docker,Raycast" \
+    "resolve_config_array_aggregate: union in tier order, first-seen dedup"
+  ok "$(resolve_autostart_apps "$ROOT" | paste -sd, -)" \
+    "Hammerspoon,iTerm,Slack,Docker,Raycast" \
+    "resolve_autostart_apps: no exclude -> the union"
+
+  # A lower tier's exclude removes a name a higher tier lists in apps.
+  printf '[autostart]\napps = ["Hammerspoon", "iTerm"]\nexclude = ["Raycast"]\n' \
+    > "$ROOT/default/config.toml"
+  # The host excludes a name a profile contributes.
+  cat > "$HOSTDIR/config.toml" <<'EOF'
+profiles = ["aws", "dev-core"]
+
+[autostart]
+apps = ["Raycast", "Hammerspoon"]
+exclude = ["Slack"]
+EOF
+  ok "$(resolve_config_array_aggregate "$ROOT" "autostart.exclude" | paste -sd, -)" \
+    "Raycast,Slack" \
+    "resolve_config_array_aggregate: exclude unions across tiers"
+  ok "$(resolve_autostart_apps "$ROOT" | paste -sd, -)" \
+    "Hammerspoon,iTerm,Docker" \
+    "resolve_autostart_apps: an exclude in any tier removes the name"
+
+  # Names match exactly and case-sensitively.
+  printf '[autostart]\napps = ["Docker"]\nexclude = ["docker"]\n' \
+    > "$ROOT/profiles/dev-core/config.toml"
+  ok "$(resolve_autostart_apps "$ROOT" | paste -sd, -)" \
+    "Hammerspoon,iTerm,Docker" \
+    "resolve_autostart_apps: exclude matches case-sensitively"
+
+  unset MACOS_SETUP_HOST_DIR
+  rm -rf "$ROOT" "$HOSTDIR"
+}
+
 echo "=== primitive (read_toml_value/array) tests ==="
 primitive_tests
 echo "=== dedup_keep_last tests ==="
@@ -223,6 +294,8 @@ echo "=== resolve_config_value tests ==="
 resolve_value_tests
 echo "=== get_profiles tests ==="
 get_profiles_tests
+echo "=== [autostart] aggregate tests ==="
+autostart_tests
 
 echo
 echo "---"

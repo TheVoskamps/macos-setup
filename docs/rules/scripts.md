@@ -27,6 +27,8 @@
 | `hammerspoon_setup.sh`          | Symlink Hammerspoon config; reload it     |
 | `spaces_shortcuts_setup.sh`     | Configure Ctrl+1-9 desktop shortcuts      |
 | `msmtp_setup.sh`                | Generate `~/.msmtprc` from `[mailer]`     |
+| `autostart_setup.sh`            | Write the autostart LaunchAgent plist     |
+| `autostart_launch.sh`           | Start the `[autostart]` apps at login     |
 | `claude_repo_setup.sh`          | Clone/update `~/.claude/`; sync plugins   |
 | `claude_repo_common.sh`         | `~/.claude/` branch and stash helpers     |
 | `claude_disable_autoupdater.sh` | Turn off Claude self-update               |

@@ -18,8 +18,8 @@
 # The [claude], [mailer], and [cron] sections are SINGLE-WINNER: the
 # highest tier with a non-empty value wins (no per-key merge), and this
 # host-tier file outranks both the profiles and the default tier. The
-# `profiles` array is the one AGGREGATE key — see the `profiles` block
-# at the bottom.
+# `profiles` array is AGGREGATE — see the `profiles` block below — and
+# so is the [autostart] section.
 #
 # Every field below is commented out. Uncomment and set only what this
 # machine needs.
@@ -92,6 +92,27 @@
 # Email address that scheduled LaunchAgent jobs send their output to.
 # When unset, jobs write to a per-job log file instead.
 # mailto = "you@example.com"
+
+# ---------------------------------------------------------------------
+# [autostart] — apps a LaunchAgent starts at every login.
+#
+# Unlike the sections above, both arrays AGGREGATE across every tier
+# (default -> each profile in the `profiles` array -> this host tier):
+#
+#   apps     the union of every tier's list, deduplicated, first-seen
+#            order. Setting `apps` here adds to the default and profile
+#            apps; it does not replace them.
+#   exclude  removes a name from the result, whichever tier lists it in
+#            `apps` — the way to drop one app a profile starts.
+#
+# A name is an app bundle name without `.app`, matched exactly and
+# case-sensitively against /Applications, /System/Applications, and
+# ~/Applications, in that order. The config is read at login, so an edit
+# takes effect at the next login without a `make` run.
+# ---------------------------------------------------------------------
+# [autostart]
+# apps = ["Hammerspoon", "iTerm"]
+# exclude = ["Slack"]
 
 # ---------------------------------------------------------------------
 # [profile] — what THIS tier contributes to an install run, beyond its

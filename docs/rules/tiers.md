@@ -14,12 +14,15 @@ and the Brewfiles is single-winner and resolves through `resolve_file`
 or `resolve_dir`. Changing a file's kind means editing that table, never
 special-casing a caller.
 
-## `config.toml` has three read paths
+## Each part of `config.toml` has its own read path
 
 `resolve_config_value` reads the single-winner scalar sections. The
 `profiles` array is read only through `get_profiles` and its variants.
-A tier's `[profile]` section is read only through `read_post_install`
-and `read_removals`, which never consult another tier.
+`[autostart]` is an aggregate section: `resolve_config_array_aggregate`
+unions each of its arrays across every tier, and `resolve_autostart_apps`
+removes every excluded name from the union of `apps`. A tier's
+`[profile]` section is read only through `read_post_install` and
+`read_removals`, which never consult another tier.
 
 ## `host_tier_dir` is the only source of the host tier's path
 
