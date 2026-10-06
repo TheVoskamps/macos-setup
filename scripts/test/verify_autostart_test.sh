@@ -52,7 +52,7 @@ PLIST="$HOME/Library/LaunchAgents/com.macos-setup.autostart.plist"
 
 run_verify() {
   RC=0
-  OUT="$(cd "$ROOT" && PATH="$BINDIR:$PATH" bash scripts/verify.sh 2>&1)" || RC=$?
+  OUT="$(cd "$ROOT" && PATH="$BINDIR:$PATH" /bin/bash scripts/verify.sh 2>&1)" || RC=$?
 }
 
 # Names no real Mac carries, so /Applications and /System/Applications
