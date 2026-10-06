@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Tests for verify.sh's autostart checks (issue #73).
+# Tests for verify.sh's autostart checks.
 #
 # These stand up a synthetic repo tree in a temp dir, stub `brew` on PATH
 # so the one-line Brewfile's tap reads present, and point HOME and

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Tests for scripts/autostart_launch.sh (issue #73).
+# Tests for scripts/autostart_launch.sh.
 #
 # The script runs from a synthetic repo tree in a temp dir, so the real
 # default/config.toml never feeds the resolved list. HOME and

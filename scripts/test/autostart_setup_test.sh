@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Tests for scripts/autostart_setup.sh (issue #73).
+# Tests for scripts/autostart_setup.sh.
 #
 # HOME and MACOS_SETUP_HOST_DIR point at temp dirs, and a `launchctl`
 # stub that records every call sits first on PATH. They assert:

@@ -11,7 +11,8 @@
 # Each name is looked up as `<name>.app` in /Applications,
 # /System/Applications, then ~/Applications, and the first match is
 # opened in the background. A name with no match is warned about and
-# skipped.
+# skipped without affecting the exit status; the script exits 1 when any
+# `open` fails, and 0 otherwise.
 
 set -uo pipefail
 

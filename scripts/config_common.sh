@@ -383,7 +383,8 @@ autostart_app_path() {
     done
 }
 
-# The LaunchAgent plist scripts/autostart_setup.sh writes.
+# Print the path of the LaunchAgent plist scripts/autostart_setup.sh
+# writes and scripts/verify.sh checks for.
 autostart_plist_path() {
     echo "$HOME/Library/LaunchAgents/com.macos-setup.autostart.plist"
 }
