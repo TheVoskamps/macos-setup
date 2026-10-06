@@ -3,7 +3,7 @@
 # Tests for scripts/autostart_setup.sh.
 #
 # HOME and MACOS_SETUP_HOST_DIR point at temp dirs, and a `launchctl`
-# stub that records every call sits first on PATH. They assert:
+# stub that records every call sits first on PATH. The tests assert:
 #   - the plist lands at ~/Library/LaunchAgents/com.macos-setup.autostart.plist
 #     with the label, RunAtLoad true, the launchagent_runner
 #     ProgramArguments, and the PATH environment variable

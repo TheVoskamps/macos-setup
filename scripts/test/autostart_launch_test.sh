@@ -6,7 +6,7 @@
 # default/config.toml never feeds the resolved list. HOME and
 # MACOS_SETUP_HOST_DIR point at temp dirs, and OPEN points at a stub that
 # records its arguments. Apps are planted under ~/Applications, the one
-# search directory a test can populate. They assert:
+# search directory a test can populate. The tests assert:
 #   - `open -g -a <path>` runs once per resolved app that is found
 #   - an excluded app is not opened
 #   - a name with no matching .app is warned about and skipped, exit 0
