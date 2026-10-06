@@ -29,6 +29,7 @@
 | `msmtp_setup.sh`                | Generate `~/.msmtprc` from `[mailer]`     |
 | `autostart_setup.sh`            | Write the autostart LaunchAgent plist     |
 | `autostart_launch.sh`           | Start the `[autostart]` apps at login     |
+| `autostart_common.sh`           | Autostart `.app` lookup and plist path    |
 | `claude_repo_setup.sh`          | Clone/update `~/.claude/`; sync plugins   |
 | `claude_repo_common.sh`         | `~/.claude/` branch and stash helpers     |
 | `claude_disable_autoupdater.sh` | Turn off Claude self-update               |

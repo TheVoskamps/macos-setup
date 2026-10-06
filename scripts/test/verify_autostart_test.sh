@@ -35,7 +35,8 @@ export HOME="$SANDBOX/home"
 export MACOS_SETUP_HOST_DIR="$SANDBOX/host"
 mkdir -p "$ROOT/scripts" "$ROOT/default" "$BINDIR" "$HOME/Applications" "$MACOS_SETUP_HOST_DIR"
 
-cp "$REPO_ROOT/scripts/config_common.sh" "$REPO_ROOT/scripts/verify.sh" "$ROOT/scripts/"
+cp "$REPO_ROOT/scripts/config_common.sh" "$REPO_ROOT/scripts/autostart_common.sh" \
+   "$REPO_ROOT/scripts/verify.sh" "$ROOT/scripts/"
 printf 'get_hostname() { echo "vautotesthost"; }\n' >> "$ROOT/scripts/config_common.sh"
 
 cat > "$BINDIR/brew" <<'STUB'

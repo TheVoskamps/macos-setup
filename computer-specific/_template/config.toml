@@ -40,8 +40,8 @@
 #
 # IMPORTANT: `profiles` is a bare (top-level) key, so it MUST appear
 # ABOVE the first [section] table below. If you uncomment it, leave it
-# here at the top — placing it after a [claude]/[mailer]/[cron] header
-# makes TOML nest it under that table (e.g. cron.profiles), and the
+# here at the top — placing it after a [claude]/[mailer]/[cron]/[autostart]
+# header makes TOML nest it under that table (e.g. cron.profiles), and the
 # profile list silently disappears.
 #
 # Example — opt into `version-managers` first, then `dev-core` on top:

@@ -16,7 +16,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-source "$SCRIPT_DIR/config_common.sh"
+source "$SCRIPT_DIR/autostart_common.sh"
 
 PLIST_BUDDY=/usr/libexec/PlistBuddy
 PLIST="$(autostart_plist_path)"

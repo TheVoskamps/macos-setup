@@ -450,6 +450,7 @@ verify_unknown_profile_test() {
 
   mkdir -p "$ROOT/scripts" "$ROOT/default" "$ROOT/profiles/known"
   cp "$REPO_ROOT/scripts/config_common.sh" \
+     "$REPO_ROOT/scripts/autostart_common.sh" \
      "$REPO_ROOT/scripts/verify.sh" "$ROOT/scripts/"
   printf 'get_hostname() { echo "%s"; }\n' "$HOST" >> "$ROOT/scripts/config_common.sh"
 

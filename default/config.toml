@@ -33,8 +33,9 @@
 #
 # IMPORTANT: `profiles` is a bare (top-level) key, so it MUST appear
 # ABOVE the first [section] table below. Placing it after a
-# [claude]/[mailer]/[cron] header makes TOML nest it under that table
-# (e.g. cron.profiles), and the profile list silently disappears.
+# [claude]/[mailer]/[cron]/[autostart] header makes TOML nest it under
+# that table (e.g. cron.profiles), and the profile list silently
+# disappears.
 # Example:
 # profiles = ["version-managers", "desktop-ui"]
 

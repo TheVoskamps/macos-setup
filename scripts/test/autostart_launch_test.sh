@@ -11,6 +11,8 @@
 #   - an excluded app is not opened
 #   - a name with no matching .app is warned about and skipped, exit 0
 #   - an empty resolved list exits 0 without invoking open
+#   - a name cased differently from the bundle is not found, even on a
+#     case-insensitive volume
 
 set -uo pipefail
 
@@ -39,7 +41,8 @@ OPEN_LOG="$SANDBOX/open.log"
 export OPEN="$SANDBOX/open-stub"
 mkdir -p "$ROOT/scripts" "$ROOT/default" "$HOME/Applications" "$MACOS_SETUP_HOST_DIR"
 
-cp "$REPO_ROOT/scripts/config_common.sh" "$REPO_ROOT/scripts/autostart_launch.sh" "$ROOT/scripts/"
+cp "$REPO_ROOT/scripts/config_common.sh" "$REPO_ROOT/scripts/autostart_common.sh" \
+   "$REPO_ROOT/scripts/autostart_launch.sh" "$ROOT/scripts/"
 
 cat > "$OPEN" <<STUB
 #!/usr/bin/env bash
@@ -76,6 +79,14 @@ ok "$RC" "0" "a missing app still exits 0"
 ok "$(cat "$OPEN_LOG" 2>/dev/null)" "-g -a $HOME/Applications/MacosSetupTestAlpha.app" \
   "open -g -a runs once, for the found app only"
 ok_contains "$OUT" "MacosSetupTestMissing" "the missing app is warned about"
+
+# A name cased differently from the bundle does not match it.
+printf '[autostart]\napps = ["macossetuptestalpha"]\n' > "$ROOT/default/config.toml"
+rm -f "$MACOS_SETUP_HOST_DIR/config.toml"
+run_launch
+ok "$RC" "0" "a wrongly cased name still exits 0"
+ok "$([[ -e "$OPEN_LOG" ]] && echo called)" "" "a wrongly cased name is not opened"
+ok_contains "$OUT" "no macossetuptestalpha.app" "the wrongly cased name is warned about"
 
 echo
 echo "pass=$pass fail=$fail"

@@ -370,25 +370,6 @@ resolve_autostart_apps() {
     done < <(resolve_config_array_aggregate "$repo_root" "autostart.apps")
 }
 
-# Print the path of the first `<name>.app` found in /Applications,
-# /System/Applications, then ~/Applications, or nothing when none has
-# it. Args: app name
-autostart_app_path() {
-    local name="$1" dir
-    for dir in /Applications /System/Applications "$HOME/Applications"; do
-        if [[ -d "$dir/$name.app" ]]; then
-            echo "$dir/$name.app"
-            return 0
-        fi
-    done
-}
-
-# Print the path of the LaunchAgent plist scripts/autostart_setup.sh
-# writes and scripts/verify.sh checks for.
-autostart_plist_path() {
-    echo "$HOME/Library/LaunchAgents/com.macos-setup.autostart.plist"
-}
-
 # --- Profile-name validation -------------------------------------------
 #
 # A profile name is BOTH a directory component (`profiles/<name>/`) and a
@@ -418,9 +399,10 @@ profile_name_is_valid() {
 
 # Read the host's profile list from config.toml WITHOUT validating it.
 #
-# The profile list is the one AGGREGATE key in config.toml: it cannot be
-# resolved *through* profiles (it defines the stack), so it is read from
-# `default` and `host` only. The host tier's `profiles` array is the
+# The profile list is an AGGREGATE key in config.toml, read from
+# `default` and `host` only — unlike `[autostart]`, which aggregates
+# across every tier. It cannot be resolved *through* profiles (it
+# defines the stack). The host tier's `profiles` array is the
 # base; if `default`'s config.toml carries a `profiles` array it is
 # PREPENDED (default-first, host-second priority order — same direction
 # as aliases.zsh aggregation). When a default entry and a host entry name

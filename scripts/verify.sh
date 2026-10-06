@@ -10,6 +10,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 source "$SCRIPT_DIR/config_common.sh"
+source "$SCRIPT_DIR/autostart_common.sh"
 
 COMPUTER_NAME_LOWER="$(get_hostname)"
 
