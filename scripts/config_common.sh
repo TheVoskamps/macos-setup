@@ -82,7 +82,7 @@ get_hostname() {
 # The per-host tier no longer lives in the repo (it mixed personal,
 # per-machine config into tracked files). It now lives on local disk,
 # OUTSIDE the repo, carrying config.toml (the consolidated profiles
-# array + [claude]/[mailer]/[cron] sections), aliases.zsh,
+# array and the config sections), aliases.zsh,
 # .hammerspoon/*, .vscode/settings.json, Brewfile, and .cdk.json.
 # Backup/sync of this directory is the user's responsibility.
 #
@@ -893,7 +893,7 @@ get_symlink_target() {
 #
 # The template tree lives at `computer-specific/_template/` and is the
 # single source of the seed. It carries config.toml (the consolidated
-# profiles array + [claude]/[mailer]/[cron] sections), aliases.zsh,
+# profiles array and the config sections), aliases.zsh,
 # .vscode/settings.json, and .cdk.json with safe, commented-out
 # defaults.
 #

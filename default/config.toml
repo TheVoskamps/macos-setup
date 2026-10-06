@@ -32,10 +32,9 @@
 # error in `make verify`, which names this file as the source.
 #
 # IMPORTANT: `profiles` is a bare (top-level) key, so it MUST appear
-# ABOVE the first [section] table below. Placing it after a
-# [claude]/[mailer]/[cron]/[autostart] header makes TOML nest it under
-# that table (e.g. cron.profiles), and the profile list silently
-# disappears.
+# ABOVE the first [section] table below. Placing it after any [section]
+# header makes TOML nest it under that table (e.g. cron.profiles), and
+# the profile list silently disappears.
 # Example:
 # profiles = ["version-managers", "desktop-ui"]
 
