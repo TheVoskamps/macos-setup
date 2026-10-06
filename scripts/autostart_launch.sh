@@ -22,6 +22,7 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 source "$SCRIPT_DIR/config_common.sh"
 source "$SCRIPT_DIR/autostart_common.sh"
 
+# Overridable so tests can stub it.
 OPEN="${OPEN:-open}"
 
 rc=0
