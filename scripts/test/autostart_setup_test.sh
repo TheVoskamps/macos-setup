@@ -8,6 +8,7 @@
 #     with the label, RunAtLoad true, the launchagent_runner
 #     ProgramArguments, and the PATH environment variable
 #   - a second run leaves the plist byte-identical and does not rewrite it
+#   - a plist whose content differs is rewritten
 #   - launchctl is never invoked
 
 set -uo pipefail

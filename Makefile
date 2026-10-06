@@ -837,7 +837,7 @@ schedule-weekly: ## Schedule weekly automatic update on Sundays at 11am via Laun
 	echo "Weekly LaunchAgent installed and loaded: $$PLIST"; \
 	echo "Logs: $(LAUNCHAGENT_LOG_DIR)/weekly-update.log"
 
-unschedule-all: ## Remove all macos-setup LaunchAgents (daily, weekly, one-time, autostart)
+unschedule-all: ## Remove all macos-setup LaunchAgents (daily, weekly, one-time, email-test, autostart)
 	@for PLIST_NAME in "$(DAILY_PLIST)" "$(WEEKLY_PLIST)" "com.macos-setup.now-update.plist" "$(EMAIL_TEST_PLIST)" "com.macos-setup.autostart.plist"; do \
 		PLIST_PATH="$(LAUNCH_AGENTS_DIR)/$$PLIST_NAME"; \
 		LABEL="$${PLIST_NAME%.plist}"; \
