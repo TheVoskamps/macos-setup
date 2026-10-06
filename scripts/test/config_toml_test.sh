@@ -226,7 +226,7 @@ autostart_tests() {
   ROOT="$(mktemp -d)"
   HOSTDIR="$(mktemp -d)"
   export MACOS_SETUP_HOST_DIR="$HOSTDIR"
-  # shellcheck disable=SC1090
+  # shellcheck source=scripts/config_common.sh
   source "$CONFIG_LIB"
   get_hostname() { echo "atesthost"; }
 

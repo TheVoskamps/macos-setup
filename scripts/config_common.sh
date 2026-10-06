@@ -49,8 +49,9 @@ AGGREGATE_FILES=(
 # resolve_config_array_aggregate and resolve_autostart_apps); and the
 # `[profile]` section is PER-TIER — never resolved across tiers at all
 # (see read_post_install / read_removals).
-# `config.toml` itself is single-winner per section, so it is not in
-# AGGREGATE_FILES.
+# Each section carries its own cross-tier rule, so `config.toml` is read
+# section by section through those readers and never concatenated as a
+# file; it is not in AGGREGATE_FILES.
 SINGLE_WINNER_FILES=(
     ".vscode/settings.json"
     ".hammerspoon/init.lua"
