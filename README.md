@@ -228,6 +228,12 @@ its consolidated `config.toml` in the external host tier,
   `modules/` directory (including `apps/` launchers)
   symlinked via `resolve_dir`; desktop switching
   shortcuts configured via `spaces_shortcuts_setup.sh`.
+  Before any of that, `mru_spaces_setup.sh` turns off
+  the Dock's `mru-spaces` setting when the resolved
+  `monitors.json` has a `fullscreen: true` monitor, so
+  the setting is already off when the reload below runs
+  the first sort; it never turns the setting on, and
+  with no fullscreen monitor it changes nothing.
   If Hammerspoon is already running, the setup reloads
   it: it tries the IPC reload first and, if that fails
   (e.g. a stale `init.lua` symlink left the `hs.ipc`
@@ -973,6 +979,24 @@ dispatcher globals) if any collision is detected.
   there. Monitors are visited one after another in
   name order. Absent or `false`, the field changes
   nothing; any other value fails validation on load.
+- `fullscreen: true` gives each of the monitor's `apps`
+  its own fullscreen Space, and every sort leaves those
+  Spaces running left to right in `apps` order, with
+  the fullscreen windows of apps not in `apps` after
+  them in their current order. An app with several
+  fullscreen windows keeps them together in its slot.
+  macOS appends a new fullscreen Space at the right, so
+  the sort rebuilds from the first out-of-order Space
+  onward: it leaves fullscreen on every window from
+  there on, then re-enters it one window at a time in
+  the wanted order. Spaces left of the first mismatch
+  are never touched, a monitor already in order is left
+  alone, and a monitor whose Space cannot be matched to
+  a window is skipped with a line in the Hammerspoon
+  console. Because macOS otherwise reorders Spaces by
+  recent use, provisioning turns the Dock's
+  `mru-spaces` setting off on a host whose resolved
+  `monitors.json` has such a monitor.
 - Each `apps` entry is the app's on-disk name (the
   `.app` name without the suffix, e.g.
   `Visual Studio Code`). Launching resolves that name
@@ -1040,7 +1064,9 @@ and are symlinked to `~/.hammerspoon/modules/`:
   rects and arrays (staggered windows)
 - **screen_focus.lua** - Shared screen focus utility
   (moves mouse to screen center and clicks to focus)
-- **spaces.lua** - Space creation, navigation, and
+- **spaces.lua** - Space creation, navigation, the
+  left-to-right order of a screen's fullscreen Spaces
+  with the window IDs each one holds, and the
   title-bar-drag workaround for macOS 15+ (Sequoia)
 - **launcher.lua** - Workspace launch orchestrator;
   coordinates Space navigation, app launching via
@@ -1048,13 +1074,20 @@ and are symlinked to `~/.hammerspoon/modules/`:
 - **sorter.lua** - Position-aware window re-sorting;
   moves windows to correct monitors and Spaces based
   on monitor assignments and workspace title patterns,
-  applies position presets from workspace launch configs
+  applies position presets from workspace launch
+  configs, and once every move has settled puts each
+  `fullscreen: true` monitor's fullscreen Spaces back
+  in `apps` order, one fullscreen transition at a time
 - **windows.lua** - Cross-Space window enumeration
   via `hs.application.runningApplications()` (skips
   WebKit XPC bundles that stall AX queries for 6s
   each) plus a per-app fallback that survives
   fullscreen-in-other-Space cases (`mainWindow` ->
-  `focusedWindow` -> `visibleWindows` -> `allWindows`)
+  `focusedWindow` -> `visibleWindows` -> `allWindows`),
+  and `windowsById()`, a window-ID lookup that indexes
+  each app's `mainWindow` and `focusedWindow` alongside
+  its `allWindows` so a fullscreen window in another
+  Space resolves from the ID a Space reports for it
 - **utils.lua** - Shared helpers; currently
   `escapeAppleScript()` for safe string interpolation
   into AppleScript double-quoted strings
@@ -1132,7 +1165,10 @@ open "hammerspoon://launchWorkspace?name=macos-setup"
 - **Automatic sorting** when monitors reconnect
   (e.g., after KVM switch)
 - **Fullscreen management** for secondary monitors
-  (enables Ctrl+Left/Right cycling)
+  (enables Ctrl+Left/Right cycling), with the
+  fullscreen Spaces kept in `apps` order and the Dock's
+  rearrange-by-recent-use setting turned off by
+  `mru_spaces_setup.sh`
 - **Title-based routing** moves windows to correct Space
   based on project context
 - **Configuration-driven** via JSON files

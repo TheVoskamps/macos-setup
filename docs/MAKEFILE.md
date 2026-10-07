@@ -400,6 +400,7 @@ now:
 | `shell_setup.sh` | core (`default/`) |
 | `msmtp_setup.sh` (generates `~/.msmtprc`) | core (`default/`) |
 | `autostart_setup.sh` (writes the `[autostart]` LaunchAgent) | core (`default/`) |
+| `mru_spaces_setup.sh` (turns off `mru-spaces` for a fullscreen monitor) | `desktop-ui`, before `hammerspoon_setup.sh` |
 | `hammerspoon_setup.sh` | `desktop-ui` |
 | `versions_setup.sh full` | `version-managers` |
 | `vscode_extensions.sh code` + `vscode_setup.sh` | `visual-studio-code` |
