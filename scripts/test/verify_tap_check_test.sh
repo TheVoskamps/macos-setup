@@ -41,6 +41,7 @@ trap 'rm -rf "$ROOT" "$HOSTDIR" "$BINDIR"' EXIT
 
 mkdir -p "$ROOT/scripts" "$ROOT/default"
 cp "$REPO_ROOT/scripts/config_common.sh" \
+   "$REPO_ROOT/scripts/autostart_common.sh" \
    "$REPO_ROOT/scripts/verify.sh" "$ROOT/scripts/"
 printf 'get_hostname() { echo "vtaptesthost"; }\n' >> "$ROOT/scripts/config_common.sh"
 

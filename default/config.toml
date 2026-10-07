@@ -11,9 +11,10 @@
 #
 # The [claude], [mailer], and [cron] sections are SINGLE-WINNER: the
 # highest tier with a non-empty value for a given key wins (no per-key
-# merge). The `profiles` array is the one AGGREGATE key — a default-tier
-# `profiles` array is PREPENDED to the host's, and dedup keeps the last
-# occurrence. See scripts/config_common.sh.
+# merge). The `profiles` array is AGGREGATE — a default-tier `profiles`
+# array is PREPENDED to the host's, and dedup keeps the last occurrence.
+# The [autostart] section is AGGREGATE across every tier. See
+# scripts/config_common.sh.
 #
 # The [mailer] section ships with active shared relay defaults (the
 # default tier resolves at runtime); [claude], [cron], and the profiles
@@ -31,9 +32,9 @@
 # error in `make verify`, which names this file as the source.
 #
 # IMPORTANT: `profiles` is a bare (top-level) key, so it MUST appear
-# ABOVE the first [section] table below. Placing it after a
-# [claude]/[mailer]/[cron] header makes TOML nest it under that table
-# (e.g. cron.profiles), and the profile list silently disappears.
+# ABOVE the first [section] table below. Placing it after any [section]
+# header makes TOML nest it under that table (e.g. cron.profiles), and
+# the profile list silently disappears.
 # Example:
 # profiles = ["version-managers", "desktop-ui"]
 
@@ -83,6 +84,22 @@ keychain_service = "msmtp"
 # When unset, jobs write to a per-job log file instead.
 # mailto = "you@example.com"
 
+# [autostart] — apps a LaunchAgent starts at every login.
+# Unlike [claude]/[mailer]/[cron], both arrays AGGREGATE across every tier
+# (core -> each opted-in profile, in list order -> host):
+#
+#   apps     the union of every tier's list, deduplicated, first-seen order.
+#   exclude  every tier's names, removed from the result whichever tier
+#            lists them in `apps`.
+#
+# A name is an app bundle name without `.app`, matched exactly and
+# case-sensitively against /Applications, /System/Applications, and
+# ~/Applications, in that order. The config is read at login, so an edit
+# takes effect at the next login without a `make` run.
+# [autostart]
+# apps = ["Hammerspoon", "iTerm"]
+# exclude = ["Slack"]
+
 # [profile] — what this TIER contributes to an install run, beyond its
 # Brewfile. Unlike [claude]/[mailer]/[cron], this section is NOT resolved
 # across tiers: every tier's [profile] applies on its own, in tier order
@@ -115,10 +132,13 @@ keychain_service = "msmtp"
 #   shell_setup.sh  zsh, Oh My Zsh, ~/.zsh-shared, the aggregated
 #                   ~/.aliases.zsh, and the mise ~/.zshrc line pair
 #   msmtp_setup.sh  generates ~/.msmtprc from the resolved [mailer] values
+#   autostart_setup.sh  writes the LaunchAgent that starts the [autostart]
+#                       apps at login
 post_install = [
   "scripts/core_setup.sh",
   "scripts/shell_setup.sh",
   "scripts/msmtp_setup.sh",
+  "scripts/autostart_setup.sh",
 ]
 uninstall = []
 # qblocker is superseded by 1Blocker (the `web` profile). Purge rather than

@@ -5,8 +5,9 @@
 # `scripts/resolve_repo_root.sh`), `cd`s into it, redirects stdout
 # and stderr to `~/Library/Logs/macos-setup/<job>.log`, then `exec`s
 # the requested command. Used by `make schedule-daily`,
-# `make schedule-weekly`, `make schedule-now`, and
-# `make schedule-email-test`.
+# `make schedule-weekly`, `make schedule-now`,
+# `make schedule-email-test`, and the autostart LaunchAgent that
+# `scripts/autostart_setup.sh` writes.
 #
 # Why this runner exists (issue #133):
 #   The Makefile `schedule-*` targets used to snapshot `$(pwd)` into
@@ -66,7 +67,8 @@
 #       the log.
 #
 # <job> is a short identifier used as the log filename (e.g.
-# `daily-update`, `weekly-update`, `now-update`, `email-test`).
+# `daily-update`, `weekly-update`, `now-update`, `email-test`,
+# `autostart`).
 
 set -euo pipefail
 

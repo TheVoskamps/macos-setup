@@ -43,11 +43,15 @@ AGGREGATE_FILES=(
 # `config/claude`, and `cron/mailto` are now consolidated into a single
 # `config.toml` per tier (issue #156). The `[mailer]`, `[claude]`, and
 # `[cron]` sections of `config.toml` are single-winner; the `profiles`
-# array is the one aggregate key (see resolve_config_value and
-# get_profiles below); and the `[profile]` section is PER-TIER — never
-# resolved across tiers at all (see read_post_install / read_removals).
-# `config.toml` itself is single-winner per section, so it is not in
-# AGGREGATE_FILES.
+# array is an aggregate key read from default and host only (see
+# resolve_config_value and get_profiles below); the `[autostart]`
+# section is aggregate across every tier (see
+# resolve_config_array_aggregate and resolve_autostart_apps); and the
+# `[profile]` section is PER-TIER — never resolved across tiers at all
+# (see read_post_install / read_removals).
+# Each section carries its own cross-tier rule, so `config.toml` is read
+# section by section through those readers and never concatenated as a
+# file; it is not in AGGREGATE_FILES.
 SINGLE_WINNER_FILES=(
     ".vscode/settings.json"
     ".hammerspoon/init.lua"
@@ -79,7 +83,7 @@ get_hostname() {
 # The per-host tier no longer lives in the repo (it mixed personal,
 # per-machine config into tracked files). It now lives on local disk,
 # OUTSIDE the repo, carrying config.toml (the consolidated profiles
-# array + [claude]/[mailer]/[cron] sections), aliases.zsh,
+# array and the config sections), aliases.zsh,
 # .hammerspoon/*, .vscode/settings.json, Brewfile, and .cdk.json.
 # Backup/sync of this directory is the user's responsibility.
 #
@@ -331,6 +335,42 @@ resolve_config_value() {
     echo ""
 }
 
+# Resolve an AGGREGATE config.toml array across tiers: the union of the
+# selector's array in every tier, walked in tier_roots order (default ->
+# profiles in list order -> host), deduplicated keeping the FIRST
+# occurrence. Emits one element per line, nothing when no tier sets it.
+# Args: repo_root, selector (e.g. "autostart.apps").
+resolve_config_array_aggregate() {
+    local repo_root="$1"
+    local selector="$2"
+    local tier
+    while IFS= read -r tier; do
+        read_toml_array "$(config_toml_path "$tier")" "$selector"
+    done < <(tier_roots "$repo_root") | dedup_keep_first
+}
+
+# --- [autostart] --------------------------------------------------------
+#
+# `[autostart]` lists the apps a LaunchAgent starts at login. Both of its
+# arrays aggregate across every tier, so a profile can contribute apps
+# that a host tier setting `apps` does not drop: `apps` is the union in
+# tier order, and a name in ANY tier's `exclude` is removed from it,
+# whichever tier lists it in `apps`. Names match exactly and
+# case-sensitively.
+
+# Emit the resolved autostart app names, one per line, in first-seen
+# order. Args: repo_root
+resolve_autostart_apps() {
+    local repo_root="$1"
+    local excluded app
+    excluded="$(resolve_config_array_aggregate "$repo_root" "autostart.exclude")"
+    while IFS= read -r app; do
+        [[ -n "$app" ]] || continue
+        grep -qxF -- "$app" <<<"$excluded" && continue
+        printf '%s\n' "$app"
+    done < <(resolve_config_array_aggregate "$repo_root" "autostart.apps")
+}
+
 # --- Profile-name validation -------------------------------------------
 #
 # A profile name is BOTH a directory component (`profiles/<name>/`) and a
@@ -360,9 +400,10 @@ profile_name_is_valid() {
 
 # Read the host's profile list from config.toml WITHOUT validating it.
 #
-# The profile list is the one AGGREGATE key in config.toml: it cannot be
-# resolved *through* profiles (it defines the stack), so it is read from
-# `default` and `host` only. The host tier's `profiles` array is the
+# The profile list is an AGGREGATE key in config.toml, read from
+# `default` and `host` only — unlike `[autostart]`, which aggregates
+# across every tier. It cannot be resolved *through* profiles (it
+# defines the stack). The host tier's `profiles` array is the
 # base; if `default`'s config.toml carries a `profiles` array it is
 # PREPENDED (default-first, host-second priority order — same direction
 # as aliases.zsh aggregation). When a default entry and a host entry name
@@ -673,6 +714,12 @@ dedup_keep_last() {
          END { for (i=1;i<=NR;i++) if (last[line[i]]==i) print line[i] }'
 }
 
+# Read newline-separated names on stdin and emit them deduplicated,
+# keeping the FIRST occurrence of each name. Blank lines are dropped.
+dedup_keep_first() {
+    awk 'NF && !seen[$0]++'
+}
+
 # The tagged counterpart of dedup_keep_last, for "<file>\t<name>" lines:
 # dedup on the NAME (everything after the first tab) while emitting the
 # whole line, keeping the LAST occurrence of each name. Blank lines are
@@ -847,7 +894,7 @@ get_symlink_target() {
 #
 # The template tree lives at `computer-specific/_template/` and is the
 # single source of the seed. It carries config.toml (the consolidated
-# profiles array + [claude]/[mailer]/[cron] sections), aliases.zsh,
+# profiles array and the config sections), aliases.zsh,
 # .vscode/settings.json, and .cdk.json with safe, commented-out
 # defaults.
 #

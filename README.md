@@ -192,7 +192,8 @@ to highest:
   shell environment (zsh + plugins, iTerm2, fzf/bat/ripgrep
   and friends), universal CLI utilities, and Chrome. Its
   `post_install` sets the computer names, runs the zsh
-  setup, and generates `~/.msmtprc`. Deliberately lean: a
+  setup, generates `~/.msmtprc`, and writes the LaunchAgent
+  that starts the `[autostart]` apps at login. Deliberately lean: a
   package belongs here only if macos-setup depends on it or
   it is genuinely universal.
 - **Each profile the host opts into** (`profiles/<name>/`),
@@ -418,10 +419,14 @@ make schedule-daily
 # Weekly updates on Sundays at 11am
 make schedule-weekly
 
-# Remove every macos-setup LaunchAgent (daily, weekly,
-# one-time, email-test)
+# Remove every macos-setup LaunchAgent, the login
+# autostart agent included
 make unschedule-all
 ```
+
+`make schedule-list` shows every macos-setup LaunchAgent
+with its schedule; the autostart agent shows as
+`At login`.
 
 LaunchAgents run in the user's login session, providing
 access to the macOS Keychain for email credentials.
@@ -545,6 +550,58 @@ examples (`smtp_host` / `smtp_port`):
 `smtp_user` and the Keychain password are whatever your
 chosen provider issues for SMTP submission.
 
+### Apps at Login
+
+The `[autostart]` section of `config.toml` declares the
+apps a host starts at login, so a rebuilt or new machine
+comes up with them and the list is on record:
+
+```toml
+[autostart]
+apps = ["Hammerspoon", "iTerm"]
+exclude = ["Slack"]
+```
+
+A name is an app bundle name without `.app`, looked up in
+`/Applications`, `/System/Applications`, then
+`~/Applications`; the first match is opened in the
+background with `open -g -a`. Names match exactly and
+case-sensitively, even though the default macOS volume is
+case-insensitive, so a name cased differently from the
+bundle is treated as missing. A name with no match is
+warned about and skipped.
+
+Unlike the single-winner sections, `[autostart]` is
+**aggregate across every tier**, so a profile can
+contribute the apps that go with the software it installs
+and a host tier that sets `apps` adds to them rather than
+replacing them:
+
+- `apps` is the union across `default -> profiles (list
+  order) -> host`, deduplicated keeping the first
+  occurrence.
+- `exclude` is also the union across every tier, and every
+  excluded name is removed from the result whichever tier
+  lists it in `apps`. That is how a host drops one app a
+  profile starts.
+
+The apps start from one LaunchAgent,
+`~/Library/LaunchAgents/com.macos-setup.autostart.plist`,
+which the core tier's `autostart_setup.sh` post-install
+action writes (so `make core` and `make install` install
+it) and launchd loads at the next login. The agent reads
+the config at every login, so an edit to any tier's
+`config.toml` takes effect at the next login without a
+`make` run, and the agent is installed even while the
+resolved list is empty. Writing the plist never calls
+`launchctl`, so an install run never launches apps; the
+plist is rewritten only when its content changed. No
+macOS login item is created, read, or removed. The agent's
+output lands in `~/Library/Logs/macos-setup/autostart.log`.
+
+`make verify` warns, without failing, when the plist is
+missing or a resolved app has no matching `.app`.
+
 ## Layered Configuration System
 
 A host opts into **N ordered profiles**. Configuration
@@ -570,9 +627,11 @@ config knobs (`[claude]`, `[mailer]`, `[cron]`) live in a
 single per-tier `config.toml`, queried with `dasel` (a hard
 runtime dependency that must be **exactly major version 3**;
 the read layer asserts this and hard-aborts loudly on a
-non-v3 dasel), and resolve **single-winner** per section. The `profiles`
-array in `config.toml` is the one aggregate key (a
-default-tier array is prepended to the host's). All other
+non-v3 dasel), and resolve **single-winner** per section. Two parts of
+`config.toml` are **aggregate** instead: the `profiles`
+array (a default-tier array is prepended to the host's)
+and the `[autostart]` section (its `apps` and `exclude`
+arrays union across every tier). All other
 config files use **single-winner** (highest-priority tier
 that has the file wins).
 
@@ -598,9 +657,11 @@ profiles/
 │   │                           # profile adopts (aggregate tier; git
 │   │                           # shortcuts + gbc/gbd/gsr live here)
 │   └── config.toml             # Optional. [profile] post_install /
-│                               # uninstall / purge (per-tier), plus any
+│                               # uninstall / purge (per-tier), any
 │                               # [claude]/[mailer]/[cron] overrides
-│                               # (single-winner per section)
+│                               # (single-winner per section), and the
+│                               # [autostart] apps this profile adds
+│                               # (aggregate)
 ├── claude-code-aliases/        # Mostly an aliases.zsh: the cr +
 │   ├── aliases.zsh             # cr-repo Claude wrappers and the
 │   └── Brewfile                # save/load_claude_auth account
@@ -612,12 +673,13 @@ default/                            # The CORE tier (lowest), in repo root
 ├── Brewfile                    # Core packages: macos-setup's own
 │                               # dependencies + the universal set
 ├── aliases.zsh
-├── config.toml                 # Core scalar config: [claude]
+├── config.toml                 # Core config: [claude]
 │                               # (branch/hostname), [mailer], [cron],
-│                               # and the profiles array. [mailer] ships
-│                               # with active shared relay defaults (the
-│                               # default tier resolves at runtime);
-│                               # [claude], [cron], and profiles stay
+│                               # [autostart], and the profiles array.
+│                               # [mailer] ships with active shared relay
+│                               # defaults (the default tier resolves at
+│                               # runtime); [claude], [cron], [autostart],
+│                               # and profiles stay
 │                               # commented out as in-place docs. Also
 │                               # carries the core tier's [profile]
 │                               # section (post_install / uninstall /
@@ -646,7 +708,7 @@ computer-specific/                  # IN REPO: only _template/
 └── _template/                  # Seed for the EXTERNAL host tier
     ├── README.md               # Documents the host tier
     ├── config.toml             # profiles array + [claude]/[mailer]/
-    │                           # [cron] (all commented out)
+    │                           # [cron]/[autostart] (all commented out)
     ├── aliases.zsh
     ├── .vscode/settings.json
     └── .cdk.json
@@ -654,9 +716,11 @@ computer-specific/                  # IN REPO: only _template/
 # The HOST TIER lives OUTSIDE the repo (highest priority), seeded
 # from computer-specific/_template/ by `make install` if absent:
 ${XDG_CONFIG_HOME:-~/.config}/macos-setup/   # override: MACOS_SETUP_HOST_DIR
-├── config.toml                 # Consolidated scalar config: the
-│                               # profiles array (lowest first) plus
-│                               # [claude], [mailer], [cron] sections
+├── config.toml                 # Consolidated config: the profiles
+│                               # array (lowest first), the [claude],
+│                               # [mailer], [cron] sections, and the
+│                               # [autostart] apps this host adds or
+│                               # excludes
 ├── .vscode/settings.json
 ├── .hammerspoon/
 │   ├── init.lua

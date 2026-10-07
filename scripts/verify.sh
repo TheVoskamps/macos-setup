@@ -4,11 +4,13 @@
 # - prints one line per entry (installed/missing/skipped + version if available)
 # - supports single or double quotes and trailing options
 # - shows full report; exits non-zero only if missing > 0
+# - warns, without failing, about the autostart LaunchAgent and its apps
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 source "$SCRIPT_DIR/config_common.sh"
+source "$SCRIPT_DIR/autostart_common.sh"
 
 COMPUTER_NAME_LOWER="$(get_hostname)"
 
@@ -222,6 +224,24 @@ while IFS= read -r tier; do
   section "$(tier_label "$REPO_ROOT" "$tier")"
   process_brewfile "$brewfile"
 done < <(tier_roots "$REPO_ROOT")
+
+# The autostart LaunchAgent and the apps it starts only warn: neither
+# counts toward `missing`, so neither fails verify.
+section "autostart"
+autostart_plist="$(autostart_plist_path)"
+if [[ -f "$autostart_plist" ]]; then
+  print_line "launchagent" "com.macos-setup.autostart" "installed" "$autostart_plist"
+else
+  echo "[verify] WARNING: autostart LaunchAgent missing at $autostart_plist; run 'make core' to write it" >&2
+fi
+while IFS= read -r _app; do
+  _app_path="$(autostart_app_path "$_app")"
+  if [[ -n "$_app_path" ]]; then
+    print_line "autostart" "$_app" "found" "$_app_path"
+  else
+    echo "[verify] WARNING: autostart app '$_app' has no $_app.app in /Applications, /System/Applications, or ~/Applications" >&2
+  fi
+done < <(resolve_autostart_apps "$REPO_ROOT")
 
 if [[ $any_tier -eq 0 ]]; then
   echo "[verify] No Brewfile found in any tier (core, profiles, host)" >&2

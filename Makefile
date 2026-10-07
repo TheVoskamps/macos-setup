@@ -724,8 +724,8 @@ LAUNCHAGENT_LOG_DIR := $(HOME)/Library/Logs/macos-setup
 
 .PHONY: schedule-daily schedule-weekly schedule-now unschedule-all schedule-list email-test schedule-email-test
 
-schedule-list: ## Show currently installed update LaunchAgents and their status
-	@for PLIST_NAME in "$(DAILY_PLIST)" "$(WEEKLY_PLIST)" "com.macos-setup.now-update.plist" "$(EMAIL_TEST_PLIST)"; do \
+schedule-list: ## Show currently installed macos-setup LaunchAgents and their status
+	@for PLIST_NAME in "$(DAILY_PLIST)" "$(WEEKLY_PLIST)" "com.macos-setup.now-update.plist" "$(EMAIL_TEST_PLIST)" "com.macos-setup.autostart.plist"; do \
 		LABEL="$${PLIST_NAME%.plist}"; \
 		PLIST_PATH="$(LAUNCH_AGENTS_DIR)/$$PLIST_NAME"; \
 		if [ -f "$$PLIST_PATH" ]; then \
@@ -737,7 +737,9 @@ schedule-list: ## Show currently installed update LaunchAgents and their status
 			HOUR=$$(/usr/libexec/PlistBuddy -c "Print :StartCalendarInterval:Hour" "$$PLIST_PATH" 2>/dev/null); \
 			MINUTE=$$(/usr/libexec/PlistBuddy -c "Print :StartCalendarInterval:Minute" "$$PLIST_PATH" 2>/dev/null); \
 			WEEKDAY=$$(/usr/libexec/PlistBuddy -c "Print :StartCalendarInterval:Weekday" "$$PLIST_PATH" 2>/dev/null); \
-			if [ -n "$$WEEKDAY" ]; then \
+			if [ -z "$$HOUR" ]; then \
+				SCHEDULE="At login"; \
+			elif [ -n "$$WEEKDAY" ]; then \
 				SCHEDULE="Sundays at $$(printf '%02d:%02d' "$$HOUR" "$$MINUTE")"; \
 			else \
 				SCHEDULE="Daily at $$(printf '%02d:%02d' "$$HOUR" "$$MINUTE")"; \
@@ -835,8 +837,8 @@ schedule-weekly: ## Schedule weekly automatic update on Sundays at 11am via Laun
 	echo "Weekly LaunchAgent installed and loaded: $$PLIST"; \
 	echo "Logs: $(LAUNCHAGENT_LOG_DIR)/weekly-update.log"
 
-unschedule-all: ## Remove all macos-setup LaunchAgents (daily, weekly, one-time)
-	@for PLIST_NAME in "$(DAILY_PLIST)" "$(WEEKLY_PLIST)" "com.macos-setup.now-update.plist" "$(EMAIL_TEST_PLIST)"; do \
+unschedule-all: ## Remove all macos-setup LaunchAgents (daily, weekly, one-time, email-test, autostart)
+	@for PLIST_NAME in "$(DAILY_PLIST)" "$(WEEKLY_PLIST)" "com.macos-setup.now-update.plist" "$(EMAIL_TEST_PLIST)" "com.macos-setup.autostart.plist"; do \
 		PLIST_PATH="$(LAUNCH_AGENTS_DIR)/$$PLIST_NAME"; \
 		LABEL="$${PLIST_NAME%.plist}"; \
 		if [ -f "$$PLIST_PATH" ]; then \

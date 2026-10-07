@@ -122,7 +122,7 @@ interpreter its own later steps need; see
 - `make core`
   Applies just the core tier: `default/Brewfile` through the filter, then
   the `post_install` commands in `default/config.toml` (computer names,
-  shell setup, the `~/.msmtprc` generator).
+  shell setup, the `~/.msmtprc` generator, the autostart LaunchAgent).
 
 - `make profile <name> [<name>...]`
   Applies just the named profiles, in the order given — not sorted, not
@@ -301,7 +301,9 @@ interpreter its own later steps need; see
   are bugs (`make update` would just undo the install); cross-tier
   collisions are intentional ("opt out at a more-specific tier") and are
   not reported. Exits non-zero if any Brewfile entries are missing OR any
-  same-tier collisions are found. Both checks always run, and a non-zero
+  same-tier collisions are found. A missing autostart LaunchAgent plist,
+  or a resolved `[autostart]` app with no matching `.app`, is only warned
+  about and never fails the run. Both checks always run, and a non-zero
   exit ends with `==> The following checks failed:` naming which of
   `verify` / `collision-check` failed.
 
@@ -397,6 +399,7 @@ now:
 | `core_setup.sh` (computer names, brew env) | core (`default/`) |
 | `shell_setup.sh` | core (`default/`) |
 | `msmtp_setup.sh` (generates `~/.msmtprc`) | core (`default/`) |
+| `autostart_setup.sh` (writes the `[autostart]` LaunchAgent) | core (`default/`) |
 | `hammerspoon_setup.sh` | `desktop-ui` |
 | `versions_setup.sh full` | `version-managers` |
 | `vscode_extensions.sh code` + `vscode_setup.sh` | `visual-studio-code` |
