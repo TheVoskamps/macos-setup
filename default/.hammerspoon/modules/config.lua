@@ -47,7 +47,8 @@ function M.loadConfig(filename, required)
 end
 
 --- Validate monitors.json config structure.
---- Checks required fields, role/position enums, at most one 'primary',
+--- Checks required fields, role/position enums, that `autostart` is a
+--- boolean when present, at most one 'primary',
 --- and the pattern-uniqueness rule: if two or more entries share a
 --- `pattern`, every entry with that pattern must have a `position` and
 --- all those positions must be distinct (so pattern+position resolves

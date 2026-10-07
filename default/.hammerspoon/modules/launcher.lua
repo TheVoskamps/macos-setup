@@ -333,7 +333,7 @@ end
 --- Launch and position the apps for a single secondary descriptor.
 --- A "secondary descriptor" is `{name=..., screen=..., config=...}` as
 --- returned by `monitors.findSecondaries` (or synthesized by
---- `M.launchMonitor`).
+--- `M.launchMonitor` and `M.autostartMonitors`).
 --- @param secondary table  { name, screen, config }
 --- @param callback function|nil  callback() called when done
 local function launchAppsForSecondary(secondary, callback)

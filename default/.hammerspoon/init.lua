@@ -232,7 +232,8 @@ end):start()
 
 hs.alert.show("Hammerspoon config loaded", 1)
 
--- Show monitor info on startup
+-- Show monitor info on startup, then launch the missing apps of every
+-- monitor whose `autostart` is true
 hs.timer.doAfter(2, function()
     local screens = hs.screen.allScreens()
     local message = "Monitors detected: " .. #screens
