@@ -337,12 +337,15 @@ end
 --- Un-fullscreens every window from the first out-of-order position
 --- onward, then re-fullscreens them in desired order. macOS appends each
 --- new fullscreen Space at the right, so the rebuilt tail lands in order
---- and Spaces left of the first mismatch are never touched.
+--- and Spaces left of the first mismatch are never touched. A monitor that
+--- resolves to no screen, or that has a Space from the first mismatch
+--- onward whose window `byId` cannot resolve, is left untouched.
 --- @param monitorName string
 --- @param monitorDef table  The monitor's config entry
 --- @param monitorsConfig table  The monitors config
 --- @param byId table  Map of window ID -> hs.window
---- @param done fun(rebuilt: number)  Called once every transition has settled
+--- @param done fun(rebuilt: number)  Called once every transition has settled,
+---                                   with 0 when nothing was rebuilt
 local function reorderMonitorFullscreen(monitorName, monitorDef, monitorsConfig, byId, done)
     local screen = monitors.getScreenForMonitor(monitorName, monitorsConfig)
     if not screen then return done(0) end
