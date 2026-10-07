@@ -33,14 +33,14 @@ end
 
 --- Get a screen's fullscreen Spaces, left to right
 --- @param screen hs.screen  The screen to query
---- @return table  Array of { space = spaceID, window = windowID|nil },
----                empty when the screen's Spaces cannot be read
+--- @return table  Array of { space = spaceID, windows = { windowID, ... } },
+---                each Space's window IDs as `hs.spaces.windowsForSpace`
+---                reports them, empty when the screen's Spaces cannot be read
 function M.fullscreenSpaceOrder(screen)
     local order = {}
     for _, spaceID in ipairs(M.getSpacesForScreen(screen) or {}) do
         if hs.spaces.spaceType(spaceID) == "fullscreen" then
-            local windowIDs = hs.spaces.windowsForSpace(spaceID) or {}
-            table.insert(order, { space = spaceID, window = windowIDs[1] })
+            table.insert(order, { space = spaceID, windows = hs.spaces.windowsForSpace(spaceID) or {} })
         end
     end
     return order

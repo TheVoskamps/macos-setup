@@ -8,9 +8,12 @@ local winutil = require("modules.windows")
 
 local M = {}
 
--- Delay between un-fullscreen and move, and between move and re-fullscreen.
--- macOS needs a beat to process fullscreen state changes before
--- `moveToScreen` will actually relocate a window.
+-- Delay after each fullscreen state change or move before the next step:
+-- between un-fullscreen and move, between move and re-fullscreen, and
+-- between back-to-back fullscreen transitions in the fullscreen reorder.
+-- macOS needs a beat to process a fullscreen state change before
+-- `moveToScreen` will actually relocate a window, or before the next
+-- transition starts.
 M.UNFULLSCREEN_DELAY = 0.3
 
 -- Track windows being processed to avoid duplicate fullscreen attempts
@@ -310,23 +313,27 @@ end
 --- Order a monitor's fullscreen Space entries the way its `apps` list asks:
 --- each listed app's windows in `apps` order, an app's windows keeping their
 --- current relative order, then the windows of unlisted apps in their
---- current relative order.
---- @param current table  Entries { space, win, appName }, left to right
+--- current relative order. Each `apps` entry resolves through
+--- `hs.application.get`, as Pass 1 of `M.resortAll` resolves it, and
+--- matches a window by its application's PID.
+--- @param current table  Entries { space, win, pid }, left to right
 --- @param apps table  The monitor's apps list
 --- @return table  The same entries in desired order
 local function desiredFullscreenOrder(current, apps)
     local listed = {}
     local desired = {}
     for _, appName in ipairs(apps) do
-        if not listed[appName] then
-            listed[appName] = true
+        local app = hs.application.get(appName)
+        local pid = app and app:pid()
+        if pid and not listed[pid] then
+            listed[pid] = true
             for _, entry in ipairs(current) do
-                if entry.appName == appName then table.insert(desired, entry) end
+                if entry.pid == pid then table.insert(desired, entry) end
             end
         end
     end
     for _, entry in ipairs(current) do
-        if entry.appName == nil or not listed[entry.appName] then
+        if entry.pid == nil or not listed[entry.pid] then
             table.insert(desired, entry)
         end
     end
@@ -337,9 +344,10 @@ end
 --- Un-fullscreens every window from the first out-of-order position
 --- onward, then re-fullscreens them in desired order. macOS appends each
 --- new fullscreen Space at the right, so the rebuilt tail lands in order
---- and Spaces left of the first mismatch are never touched. A monitor that
---- resolves to no screen, or that has a Space from the first mismatch
---- onward whose window `byId` cannot resolve, is left untouched.
+--- and Spaces left of the first mismatch are never touched. Each Space
+--- pairs with the first of its window IDs that `byId` resolves. A monitor
+--- that resolves to no screen, or that has a Space from the first mismatch
+--- onward with no window ID `byId` resolves, is left untouched.
 --- @param monitorName string
 --- @param monitorDef table  The monitor's config entry
 --- @param monitorsConfig table  The monitors config
@@ -352,9 +360,13 @@ local function reorderMonitorFullscreen(monitorName, monitorDef, monitorsConfig,
 
     local current = {}
     for _, s in ipairs(spaces.fullscreenSpaceOrder(screen)) do
-        local win = s.window and byId[s.window]
+        local win
+        for _, id in ipairs(s.windows) do
+            win = byId[id]
+            if win then break end
+        end
         local app = win and win:application()
-        table.insert(current, { space = s.space, win = win, appName = app and app:name() })
+        table.insert(current, { space = s.space, win = win, pid = app and app:pid() })
     end
 
     local desired = desiredFullscreenOrder(current, monitorDef.apps or {})
@@ -378,15 +390,7 @@ local function reorderMonitorFullscreen(monitorName, monitorDef, monitorsConfig,
 
     local function refullscreen(i)
         if i > #desired then return done(#desired - first + 1) end
-        local win = desired[i].win
-        local function enterFullscreen()
-            win:setFullScreen(true)
-            hs.timer.doAfter(M.UNFULLSCREEN_DELAY, function() refullscreen(i + 1) end)
-        end
-        local winScreen = win:screen()
-        if winScreen and winScreen:id() == screen:id() then return enterFullscreen() end
-        win:moveToScreen(screen, true, true)
-        hs.timer.doAfter(M.UNFULLSCREEN_DELAY, enterFullscreen)
+        M.moveWindowToScreenAsync(desired[i].win, screen, true, function() refullscreen(i + 1) end)
     end
 
     local function unfullscreen(i)

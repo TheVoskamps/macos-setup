@@ -45,7 +45,8 @@ function M.allWindowsAcrossSpaces()
     return windows
 end
 
---- Index every reachable standard window by its window ID.
+--- Index every reachable standard window by its window ID, skipping one
+--- whose ID is nil.
 --- Adds each app's mainWindow and focusedWindow to its allWindows, so a
 --- fullscreen window in another Space resolves when it is one of those.
 --- Skips WebKit XPC processes that stall AX queries for 6 seconds each.
@@ -59,7 +60,8 @@ function M.windowsById()
             if mw then table.insert(candidates, mw) end
             if fw then table.insert(candidates, fw) end
             for _, w in ipairs(candidates) do
-                if w:isStandard() then byId[w:id()] = w end
+                local id = w:isStandard() and w:id()
+                if id then byId[id] = w end
             end
         end
     end
