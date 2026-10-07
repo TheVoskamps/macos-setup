@@ -953,9 +953,26 @@ dispatcher globals) if any collision is detected.
 - `primary` role falls back to largest screen if
   pattern does not match
 - Optional per-monitor fields: `apps` (list of apps to
-  assign), `fullscreen` (boolean), `description`,
-  `position` (`left`|`right`|`up`|`down`) for
-  directional focus via `Ctrl+Alt+Cmd+Arrow`
+  assign), `fullscreen` (boolean), `autostart`
+  (boolean), `description`, `position`
+  (`left`|`right`|`up`|`down`) for directional focus
+  via `Ctrl+Alt+Cmd+Arrow`
+- `autostart: true` launches the monitor's `apps` on
+  every Hammerspoon start and reload, not only on
+  `ws <monitor>`. Only the apps not already running are
+  launched and placed, through the same path
+  `ws <monitor>` takes, so `fullscreen` applies as it
+  does there; an app already running is neither
+  focused, moved, nor resized. A `secondary` monitor
+  that is not connected is skipped with a line in the
+  Hammerspoon console and is not revisited when it
+  connects later. The `primary` monitor is never
+  skipped: when its pattern matches no screen it
+  resolves to the largest connected screen, as it does
+  for `ws <monitor>`, and its missing apps launch
+  there. Monitors are visited one after another in
+  name order. Absent or `false`, the field changes
+  nothing; any other value fails validation on load.
 - Each `apps` entry is the app's on-disk name (the
   `.app` name without the suffix, e.g.
   `Visual Studio Code`). Launching resolves that name

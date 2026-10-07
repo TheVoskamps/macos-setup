@@ -333,7 +333,7 @@ end
 --- Launch and position the apps for a single secondary descriptor.
 --- A "secondary descriptor" is `{name=..., screen=..., config=...}` as
 --- returned by `monitors.findSecondaries` (or synthesized by
---- `M.launchMonitor`).
+--- `M.launchMonitor` and `M.autostartMonitors`).
 --- @param secondary table  { name, screen, config }
 --- @param callback function|nil  callback() called when done
 local function launchAppsForSecondary(secondary, callback)
@@ -430,6 +430,56 @@ function M.launchMonitor(monitorName, monitorsConfig)
     launchAppsForSecondary({ name = monitorName, screen = screen, config = monitorCfg }, function()
         print("Monitor '" .. monitorName .. "' launched")
     end)
+end
+
+--- Launch the missing apps of every monitor whose `autostart` is true, one
+--- monitor after another in name order. An app `hs.application.get` already
+--- finds running is left alone; only the rest are launched and placed, through
+--- the same path `ws <monitor>` takes. A monitor that is not connected, or
+--- that has no app missing, is skipped.
+--- @param monitorsConfig table
+function M.autostartMonitors(monitorsConfig)
+    local names = {}
+    for name, monitorCfg in pairs((monitorsConfig and monitorsConfig.monitors) or {}) do
+        if type(monitorCfg) == "table" and monitorCfg.autostart == true then
+            table.insert(names, name)
+        end
+    end
+    table.sort(names)
+
+    local function processMonitor(index)
+        if index > #names then return end
+        local monitorName = names[index]
+        local monitorCfg = monitorsConfig.monitors[monitorName]
+
+        local screen = monitors.getScreenForMonitor(monitorName, monitorsConfig)
+        if not screen then
+            print("[launcher] autostart: monitor '" .. monitorName .. "' not connected; skipping")
+            processMonitor(index + 1)
+            return
+        end
+
+        local missing = {}
+        for _, appName in ipairs(monitorCfg.apps or {}) do
+            if not hs.application.get(appName) then
+                table.insert(missing, appName)
+            end
+        end
+        if #missing == 0 then
+            processMonitor(index + 1)
+            return
+        end
+
+        local cfgCopy = {}
+        for k, v in pairs(monitorCfg) do cfgCopy[k] = v end
+        cfgCopy.apps = missing
+
+        print("[launcher] autostart: launching on '" .. monitorName .. "': " .. table.concat(missing, ", "))
+        launchAppsForSecondary({ name = monitorName, screen = screen, config = cfgCopy }, function()
+            processMonitor(index + 1)
+        end)
+    end
+    processMonitor(1)
 end
 
 --- Close windows of apps assigned to a monitor.
