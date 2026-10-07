@@ -5,10 +5,13 @@
 # HOME and MACOS_SETUP_HOST_DIR point at temp dirs, and `defaults` and
 # `killall` stubs that record every call sit first on PATH. The
 # `defaults read` stub reports the value in $MRU_STATE, or fails when that
-# file is absent, as an unset key does. The tests assert:
+# file is absent, as an unset key does. The `killall` stub exits 1 when
+# $NO_DOCK exists, as killall does with no Dock running. The tests assert:
 #   - a fullscreen monitor with mru-spaces on writes it false and
 #     restarts the Dock
 #   - a fullscreen monitor with mru-spaces unset does the same
+#   - a fullscreen monitor with mru-spaces on and no Dock running still
+#     writes it false and exits 0
 #   - a fullscreen monitor with mru-spaces already 0 changes nothing
 #   - no fullscreen monitor, in the host tier or the repo default,
 #     changes nothing
@@ -37,6 +40,7 @@ export MACOS_SETUP_HOST_DIR="$SANDBOX/host"
 BINDIR="$SANDBOX/bin"
 CALLS="$SANDBOX/calls.log"
 MRU_STATE="$SANDBOX/mru"
+NO_DOCK="$SANDBOX/no-dock"
 mkdir -p "$HOME" "$MACOS_SETUP_HOST_DIR/.hammerspoon" "$BINDIR"
 
 cat > "$BINDIR/defaults" <<STUB
@@ -50,6 +54,8 @@ STUB
 cat > "$BINDIR/killall" <<STUB
 #!/usr/bin/env bash
 echo "killall \$*" >> "$CALLS"
+[[ -f "$NO_DOCK" ]] && exit 1
+exit 0
 STUB
 chmod +x "$BINDIR/defaults" "$BINDIR/killall"
 
@@ -78,6 +84,12 @@ run_setup "$FULLSCREEN_JSON" ""
 ok "$?" "0" "fullscreen, mru unset: exits 0"
 ok "$(writes)" "1" "fullscreen, mru unset: writes mru-spaces"
 ok "$(kills)" "1" "fullscreen, mru unset: restarts the Dock"
+
+touch "$NO_DOCK"
+run_setup "$FULLSCREEN_JSON" "1"
+ok "$?" "0" "fullscreen, mru on, no Dock running: exits 0"
+ok "$(writes)" "1" "fullscreen, mru on, no Dock running: writes mru-spaces"
+rm -f "$NO_DOCK"
 
 run_setup "$FULLSCREEN_JSON" "0"
 ok "$?" "0" "fullscreen, mru off: exits 0"

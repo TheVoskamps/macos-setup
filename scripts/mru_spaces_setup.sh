@@ -27,5 +27,10 @@ fi
 
 echo "Turning off mru-spaces so fullscreen Spaces keep their order..."
 defaults write com.apple.dock mru-spaces -bool false
-killall Dock
-echo "mru-spaces turned off; Dock restarted"
+# The setting is written either way; with no Dock running, the next Dock
+# start reads it.
+if killall Dock 2>/dev/null; then
+    echo "mru-spaces turned off; Dock restarted"
+else
+    echo "mru-spaces turned off; no Dock running to restart"
+fi
