@@ -2,8 +2,9 @@
 # Tests for sorter.reorderFullscreen, spaces.fullscreenSpaceOrder and
 # windows.windowsById, loaded under the mise-pinned lua against a model of
 # one screen's Spaces: leaving fullscreen removes a window's Space, and
-# entering fullscreen appends a new Space at the right. Timers queue rather than fire, so the harness can tell
-# whether a fullscreen transition starts while another is still in flight.
+# entering fullscreen appends a new Space at the right. Timers queue rather
+# than fire, so the harness can tell whether a fullscreen transition starts
+# while another is still in flight.
 
 set -u
 
