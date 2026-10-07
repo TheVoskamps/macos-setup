@@ -45,6 +45,27 @@ function M.allWindowsAcrossSpaces()
     return windows
 end
 
+--- Index every reachable standard window by its window ID.
+--- Adds each app's mainWindow and focusedWindow to its allWindows, so a
+--- fullscreen window in another Space resolves when it is one of those.
+--- Skips WebKit XPC processes that stall AX queries for 6 seconds each.
+--- @return table  Map of window ID -> hs.window
+function M.windowsById()
+    local byId = {}
+    for _, app in ipairs(hs.application.runningApplications()) do
+        if not SKIP_BUNDLES[app:bundleID() or ""] then
+            local candidates = app:allWindows() or {}
+            local mw, fw = app:mainWindow(), app:focusedWindow()
+            if mw then table.insert(candidates, mw) end
+            if fw then table.insert(candidates, fw) end
+            for _, w in ipairs(candidates) do
+                if w:isStandard() then byId[w:id()] = w end
+            end
+        end
+    end
+    return byId
+end
+
 --- Look up a single window for a specific running application, using
 --- multiple fallback strategies because Hammerspoon's filter and
 --- app:allWindows() don't reliably return fullscreen windows that live

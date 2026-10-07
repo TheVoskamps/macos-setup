@@ -5,4 +5,6 @@
 # the modules/ directory into ~/.hammerspoon/, configures the Ctrl+1-9 desktop
 # shortcuts, and reloads a running Hammerspoon. It lives here rather than in
 # the core tier because Hammerspoon itself is a cask this profile installs.
-post_install = ["scripts/hammerspoon_setup.sh"]
+# mru_spaces_setup.sh runs first so mru-spaces is off before that reload runs
+# the first sort.
+post_install = ["scripts/mru_spaces_setup.sh", "scripts/hammerspoon_setup.sh"]

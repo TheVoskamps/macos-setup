@@ -371,6 +371,32 @@ resolve_autostart_apps() {
     done < <(resolve_config_array_aggregate "$repo_root" "autostart.apps")
 }
 
+# --- monitors.json ------------------------------------------------------
+
+# Return 0 when any entry under `monitors` in the given monitors.json has
+# `fullscreen: true`, non-zero otherwise (including an absent file).
+# Args: json_file
+monitors_want_fullscreen() {
+    local json_file="$1"
+    [[ -f "$json_file" ]] || return 1
+
+    # Any dasel read asserts the v3 contract exactly once per process.
+    require_dasel_v3
+
+    local count i key value
+    count="$("$DASEL" -i json 'len(get("monitors").keys())' <"$json_file" 2>/dev/null)" || count=""
+    [[ "$count" =~ ^[0-9]+$ ]] || return 1
+
+    for (( i = 0; i < count; i++ )); do
+        key="$("$DASEL" -i json "get(\"monitors\").keys().get($i)" <"$json_file" 2>/dev/null)" || continue
+        key="$(dequote_scalar "$key")"
+        value="$("$DASEL" -i json "get(\"monitors\").get(\"$key\").get(\"fullscreen\")" \
+            <"$json_file" 2>/dev/null)" || continue
+        [[ "$value" == "true" ]] && return 0
+    done
+    return 1
+}
+
 # --- Profile-name validation -------------------------------------------
 #
 # A profile name is BOTH a directory component (`profiles/<name>/`) and a

@@ -303,11 +303,132 @@ function M.moveWindowToScreenAsync(win, targetScreen, wantFullscreen, done)
     end
 end
 
+--------------------------------------------------------------------------------
+-- FULLSCREEN SPACE ORDER
+--------------------------------------------------------------------------------
+
+--- Order a monitor's fullscreen Space entries the way its `apps` list asks:
+--- each listed app's windows in `apps` order, an app's windows keeping their
+--- current relative order, then the windows of unlisted apps in their
+--- current relative order.
+--- @param current table  Entries { space, win, appName }, left to right
+--- @param apps table  The monitor's apps list
+--- @return table  The same entries in desired order
+local function desiredFullscreenOrder(current, apps)
+    local listed = {}
+    local desired = {}
+    for _, appName in ipairs(apps) do
+        if not listed[appName] then
+            listed[appName] = true
+            for _, entry in ipairs(current) do
+                if entry.appName == appName then table.insert(desired, entry) end
+            end
+        end
+    end
+    for _, entry in ipairs(current) do
+        if entry.appName == nil or not listed[entry.appName] then
+            table.insert(desired, entry)
+        end
+    end
+    return desired
+end
+
+--- Rebuild one monitor's fullscreen Spaces into `apps` order.
+--- Un-fullscreens every window from the first out-of-order position
+--- onward, then re-fullscreens them in desired order. macOS appends each
+--- new fullscreen Space at the right, so the rebuilt tail lands in order
+--- and Spaces left of the first mismatch are never touched.
+--- @param monitorName string
+--- @param monitorDef table  The monitor's config entry
+--- @param monitorsConfig table  The monitors config
+--- @param byId table  Map of window ID -> hs.window
+--- @param done fun(rebuilt: number)  Called once every transition has settled
+local function reorderMonitorFullscreen(monitorName, monitorDef, monitorsConfig, byId, done)
+    local screen = monitors.getScreenForMonitor(monitorName, monitorsConfig)
+    if not screen then return done(0) end
+
+    local current = {}
+    for _, s in ipairs(spaces.fullscreenSpaceOrder(screen)) do
+        local win = s.window and byId[s.window]
+        local app = win and win:application()
+        table.insert(current, { space = s.space, win = win, appName = app and app:name() })
+    end
+
+    local desired = desiredFullscreenOrder(current, monitorDef.apps or {})
+    local first
+    for i = 1, #current do
+        if current[i] ~= desired[i] then first = i; break end
+    end
+    if not first then
+        print("[serial sorter] fullscreen order ok monitor=" .. monitorName)
+        return done(0)
+    end
+    for i = first, #current do
+        if not current[i].win then
+            print("[serial sorter] fullscreen reorder skipped monitor=" .. monitorName ..
+                  " (no window found for space " .. tostring(current[i].space) .. ")")
+            return done(0)
+        end
+    end
+    print("[serial sorter] fullscreen reorder monitor=" .. monitorName ..
+          " from position " .. first .. "/" .. #current)
+
+    local function refullscreen(i)
+        if i > #desired then return done(#desired - first + 1) end
+        local win = desired[i].win
+        local function enterFullscreen()
+            win:setFullScreen(true)
+            hs.timer.doAfter(M.UNFULLSCREEN_DELAY, function() refullscreen(i + 1) end)
+        end
+        local winScreen = win:screen()
+        if winScreen and winScreen:id() == screen:id() then return enterFullscreen() end
+        win:moveToScreen(screen, true, true)
+        hs.timer.doAfter(M.UNFULLSCREEN_DELAY, enterFullscreen)
+    end
+
+    local function unfullscreen(i)
+        if i > #current then return refullscreen(first) end
+        current[i].win:setFullScreen(false)
+        hs.timer.doAfter(M.UNFULLSCREEN_DELAY, function() unfullscreen(i + 1) end)
+    end
+
+    unfullscreen(first)
+end
+
+--- Put the fullscreen Spaces of every `fullscreen: true` monitor in
+--- `apps` order, one monitor at a time and one fullscreen transition at a
+--- time. A monitor already in order is left untouched.
+--- @param monitorsConfig table  The monitors config
+--- @param done fun(rebuilt: number)|nil  Called with the number of windows rebuilt
+function M.reorderFullscreen(monitorsConfig, done)
+    local names = {}
+    for name, def in pairs(monitorsConfig.monitors or {}) do
+        if def.fullscreen == true then table.insert(names, name) end
+    end
+    table.sort(names)
+
+    local byId = winutil.windowsById()
+    local rebuilt = 0
+    local function nextMonitor(i)
+        if i > #names then
+            if done then done(rebuilt) end
+            return
+        end
+        local name = names[i]
+        reorderMonitorFullscreen(name, monitorsConfig.monitors[name], monitorsConfig, byId, function(n)
+            rebuilt = rebuilt + n
+            nextMonitor(i + 1)
+        end)
+    end
+    nextMonitor(1)
+end
+
 --- Resort all windows based on config assignments
 --- Uses a serialized async pipeline: every fullscreen transition completes
 --- before the next begins. This avoids saturating the Hammerspoon event loop
 --- (which caused IPC `already recursing` errors when many fullscreen windows
---- needed to move at once).
+--- needed to move at once). Once both move queues drain, `M.reorderFullscreen`
+--- puts each fullscreen monitor's Spaces in `apps` order.
 ---
 --- @param monitorsConfig table  The monitors config
 --- @param workspacesConfig table  The workspaces config
@@ -414,6 +535,7 @@ function M.resortAll(monitorsConfig, workspacesConfig, positionsModule)
     print("[serial sorter] workQueue size=" .. tostring(#workQueue))
 
     local movedToSpace = 0
+    local reordered = 0
 
     local function showSortSummary()
         local total = movedToMonitor + movedToSpace
@@ -421,7 +543,10 @@ function M.resortAll(monitorsConfig, workspacesConfig, positionsModule)
         if fullscreened > 0 then
             msg = msg .. ", " .. fullscreened .. " fullscreened"
         end
-        if total > 0 or fullscreened > 0 then
+        if reordered > 0 then
+            msg = msg .. ", " .. reordered .. " fullscreen reordered"
+        end
+        if total > 0 or fullscreened > 0 or reordered > 0 then
             print(msg)
         else
             print("All windows in correct positions")
@@ -440,10 +565,20 @@ function M.resortAll(monitorsConfig, workspacesConfig, positionsModule)
         showSortSummary()
     end
 
+    -- Runs once both queues have drained, so the fullscreen reorder's
+    -- transitions start only after every queued move has completed or,
+    -- for a space move, hit its timeout.
+    local function finish(reason)
+        M.reorderFullscreen(monitorsConfig, function(rebuilt)
+            reordered = rebuilt
+            showSortSummaryOnce(reason)
+        end)
+    end
+
     local function processNextSpaceMove(index)
         if index > #spaceMoveQueue then
             print("[serial sorter] spaceMoveQueue drained")
-            showSortSummaryOnce("spaceMoveQueue drained")
+            finish("spaceMoveQueue drained")
             return
         end
         local move = spaceMoveQueue[index]
@@ -477,7 +612,7 @@ function M.resortAll(monitorsConfig, workspacesConfig, positionsModule)
             if #spaceMoveQueue > 0 then
                 processNextSpaceMove(1)
             else
-                showSortSummaryOnce("workQueue drained, no space moves")
+                finish("workQueue drained, no space moves")
             end
             return
         end

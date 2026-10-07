@@ -31,6 +31,21 @@ function M.getSpacesForScreen(screen)
     return hs.spaces.spacesForScreen(uuid)
 end
 
+--- Get a screen's fullscreen Spaces, left to right
+--- @param screen hs.screen  The screen to query
+--- @return table  Array of { space = spaceID, window = windowID|nil },
+---                empty when the screen's Spaces cannot be read
+function M.fullscreenSpaceOrder(screen)
+    local order = {}
+    for _, spaceID in ipairs(M.getSpacesForScreen(screen) or {}) do
+        if hs.spaces.spaceType(spaceID) == "fullscreen" then
+            local windowIDs = hs.spaces.windowsForSpace(spaceID) or {}
+            table.insert(order, { space = spaceID, window = windowIDs[1] })
+        end
+    end
+    return order
+end
+
 --- Navigate to a specific space
 --- @param spaceID number  The space ID to navigate to
 function M.gotoSpace(spaceID)
