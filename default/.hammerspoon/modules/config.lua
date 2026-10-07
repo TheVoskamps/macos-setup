@@ -90,6 +90,10 @@ function M.validateMonitors(config)
                     .. " (expected 'left'|'right'|'up'|'down')"
             end
         end
+        if monitor.autostart ~= nil and type(monitor.autostart) ~= "boolean" then
+            return false, "monitor '" .. name .. "' has invalid autostart: "
+                .. tostring(monitor.autostart) .. " (expected true|false)"
+        end
     end
 
     if primaryCount > 1 then

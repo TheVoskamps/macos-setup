@@ -241,4 +241,6 @@ hs.timer.doAfter(2, function()
     end
     message = message .. "\nCtrl+Alt+Cmd+Shift+L = List screens"
     hs.alert.show(message, 3)
+
+    launcher.autostartMonitors(monitorsConfig)
 end)
