@@ -963,12 +963,16 @@ dispatcher globals) if any collision is detected.
   launched and placed, through the same path
   `ws <monitor>` takes, so `fullscreen` applies as it
   does there; an app already running is neither
-  focused, moved, nor resized. A monitor that is not
-  connected is skipped with a line in the Hammerspoon
-  console and is not revisited when it connects later.
-  Monitors are visited one after another in name
-  order. Absent or `false`, the field changes nothing;
-  any other value fails validation on load.
+  focused, moved, nor resized. A `secondary` monitor
+  that is not connected is skipped with a line in the
+  Hammerspoon console and is not revisited when it
+  connects later. The `primary` monitor is never
+  skipped: when its pattern matches no screen it
+  resolves to the largest connected screen, as it does
+  for `ws <monitor>`, and its missing apps launch
+  there. Monitors are visited one after another in
+  name order. Absent or `false`, the field changes
+  nothing; any other value fails validation on load.
 - Each `apps` entry is the app's on-disk name (the
   `.app` name without the suffix, e.g.
   `Visual Studio Code`). Launching resolves that name
