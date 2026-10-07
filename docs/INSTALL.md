@@ -32,8 +32,9 @@
 ```text
 default/
   Brewfile          # the core tier's packages
-  config.toml       # [profile] post_install / uninstall / purge, plus
-                    # the [claude] / [mailer] / [cron] scalar sections
+  config.toml       # [profile] post_install / uninstall / purge, the
+                    # [claude] / [mailer] / [cron] scalar sections, and
+                    # the aggregate [autostart] section
   aliases.zsh
   .hammerspoon/
 
@@ -66,9 +67,11 @@ purge = ["cask:qblocker", "mas:1365531024:1Blocker"]
 
 `[profile]` is the one config.toml section that is **not resolved across
 tiers**. `[claude]`, `[mailer]`, and `[cron]` answer "what is the value
-for this host", so the highest tier with a value wins. `[profile]`
-answers "what does *this* tier contribute", so every tier's section
-applies on its own, in tier order.
+for this host", so the highest tier with a value wins. `[autostart]`
+answers "what does every tier want started at login", so its `apps` and
+`exclude` arrays are unioned across tiers, and an excluded name is dropped
+whichever tier lists it. `[profile]` answers "what does *this* tier
+contribute", so every tier's section applies on its own, in tier order.
 
 ### `post_install`
 
