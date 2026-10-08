@@ -26,6 +26,7 @@
 | `cdk_setup.sh`                  | Symlink the single-winner `.cdk.json`     |
 | `hammerspoon_setup.sh`          | Symlink Hammerspoon config; reload it     |
 | `spaces_shortcuts_setup.sh`     | Configure Ctrl+1-9 desktop shortcuts      |
+| `mru_spaces_setup.sh`           | Turn off mru-spaces for fullscreen Spaces |
 | `msmtp_setup.sh`                | Generate `~/.msmtprc` from `[mailer]`     |
 | `autostart_setup.sh`            | Write the autostart LaunchAgent plist     |
 | `autostart_launch.sh`           | Start the `[autostart]` apps at login     |
