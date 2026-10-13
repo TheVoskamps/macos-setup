@@ -82,14 +82,16 @@ be noticeable.
   - **profile tier** — aliases for the tool that profile adopts. The
     git shortcuts, log variants, `*h` help-greppers, and the
     `gbc`/`gbd`/`gsr` functions live in `profiles/dev-core/aliases.zsh`;
-    the `cr` Claude-CLI wrapper and its `cr-repo` companion live in
+    the `cr` Claude-CLI wrapper lives in
     `profiles/claude-code-aliases/aliases.zsh` (`cr` launches
     `claude --remote-control` from any cwd — inside an existing repo
     it `cd`s to the repo root and derives the session name from
     `origin`, and outside any repo it `git init`s a throwaway repo and
-    tears down only the `.git` it created; `cr-repo` is the strict
-    variant that requires an existing repo with an `origin` remote and
-    errors otherwise). `cr` also passes `--allowedTools Grep Glob`,
+    tears down only the `.git` it created; `--cr-strict` as its first
+    argument instead makes it refuse outside a git repo or in one
+    without an `origin` remote, and is never forwarded to `claude` —
+    in any later position it is an ordinary `claude` argument). `cr`
+    also passes `--allowedTools Grep Glob`,
     because on macOS the main session otherwise starts without the
     `Grep` and `Glob` tools and runs every search through Bash; a
     `settings.json` allow rule does not restore them, the startup flag

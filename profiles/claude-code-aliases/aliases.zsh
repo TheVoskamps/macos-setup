@@ -8,24 +8,8 @@
 # profile will have `cr` defined but it will fail at call time with
 # "command not found: claude" — survivable and self-evident.
 
-# wrapper around claude to get a name and remote control; strict variant
-# that requires an existing repo with an 'origin' remote.
-cr-repo () {
-    local url repo suffix name
-    url="$(git remote get-url origin 2>/dev/null)" || {
-        echo "cr-repo: not in a git repo or no 'origin' remote" >&2
-        return 1
-    }
-    repo="${${url##*/}%.git}"
-    suffix="$*"
-    if [[ -z "$suffix" ]]; then
-        suffix="$(date '+%b%d-%H:%M')"
-    fi
-    name="${suffix} ${repo}"
-    claude --name "$name" --remote-control
-}
-
-# Like cr-repo, but also works OUTSIDE a git repo (issue #15). Claude Code's
+# Wrapper around claude that names the session and turns on remote
+# control, and that also works OUTSIDE a git repo. Claude Code's
 # guardrails hook runs `git` commands that fail when the cwd is not a git
 # repo, so `claude` itself misbehaves when launched there. To give it a
 # repo to anchor on, when the cwd is not already inside a git repo we
@@ -34,8 +18,8 @@ cr-repo () {
 #
 # When the cwd IS already inside an existing repo (at the repo root OR in
 # any subdirectory), there is nothing to create or clean up: we `cd` to
-# the repo root, derive the session name from `origin` like `cr-repo`
-# does, and run claude there. Detection uses `git rev-parse
+# the repo root, derive the session name from `origin` (or `(local)` when
+# the repo has none), and run claude there. Detection uses `git rev-parse
 # --is-inside-work-tree` (true anywhere inside the tree, unlike a
 # root-only `[[ -e .git ]]` check, which would wrongly take the throwaway
 # path from a subdirectory and mislabel the session `(local)`). The shell
@@ -62,17 +46,36 @@ cr-repo () {
 #      `cd` by claude cannot redirect the rm.
 # INT and TERM are trapped alongside EXIT so that a signal which kills the
 # shell outright (rather than just returning from the function) still
-# tears down the throwaway .git.
+# tears down the throwaway .git. LOCAL_TRAPS restores the caller's INT and
+# TERM traps when `cr` returns, so the rm never fires from the calling
+# shell after the throwaway is gone.
 #
 # Arguments are split at the FIRST argument starting with `-`: everything
 # before it forms the session name suffix, and that argument plus all that
 # follow are passed through to `claude` verbatim. So `cr my session
 # --model opus` names the session "my session <repo>" and forwards
 # `--model opus`. With no leading words the suffix falls back to a
-# timestamp, as before.
+# timestamp.
+#
+# `--cr-strict` as the FIRST argument turns on strict mode and is dropped
+# before that split, so it never reaches `claude`. In strict mode cr
+# refuses to run unless the cwd is inside a git repo with an `origin`
+# remote: otherwise it prints an error to stderr and returns 1 without
+# changing directory, creating a throwaway .git, or running claude. In
+# any other position `--cr-strict` is an ordinary claude argument and is
+# forwarded unchanged.
 cr () {
-    local url repo suffix name initdir toplevel cfg
+    local url repo suffix name initdir toplevel cfg strict=0
     local -a claude_args name_words
+    # zsh scopes an EXIT trap to the function on its own, but INT and TERM
+    # traps outlive it unless LOCAL_TRAPS is set; LOCAL_OPTIONS keeps that
+    # option change from leaking into the calling shell too.
+    setopt LOCAL_OPTIONS LOCAL_TRAPS
+
+    if [[ "${1-}" == "--cr-strict" ]]; then
+        strict=1
+        shift
+    fi
 
     # Point git at a Claude-specific global config (bot identity, etc.) for
     # the duration of this call, unless the caller already set one.
@@ -103,18 +106,25 @@ cr () {
     if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         # Inside an existing repo (root or subdir). Move to the repo root
         # and reuse the existing .git -- no throwaway, no cleanup trap.
+        url="$(git remote get-url origin 2>/dev/null)"
+        if [[ -z "$url" ]] && (( strict )); then
+            echo "cr: --cr-strict: this git repo has no 'origin' remote" >&2
+            return 1
+        fi
         toplevel="$(git rev-parse --show-toplevel)"
         echo "cr: detected existing git repo; cd to repo root ${toplevel}" >&2
         cd "$toplevel" || {
             echo "cr: cd to repo root failed" >&2
             return 1
         }
-        url="$(git remote get-url origin 2>/dev/null)"
         if [[ -n "$url" ]]; then
             repo="${${url##*/}%.git}"
         else
             repo="(local)"
         fi
+    elif (( strict )); then
+        echo "cr: --cr-strict: not inside a git repo" >&2
+        return 1
     else
         initdir="$PWD"
         git init >/dev/null || {

@@ -668,9 +668,10 @@ profiles/
 │                               # (single-winner per section), and the
 │                               # [autostart] apps this profile adds
 │                               # (aggregate)
-├── claude-code-aliases/        # Mostly an aliases.zsh: the cr +
-│   ├── aliases.zsh             # cr-repo Claude wrappers and the
-│   └── Brewfile                # save/load_claude_auth account
+├── claude-code-aliases/        # Mostly an aliases.zsh: the cr Claude
+│   ├── aliases.zsh             # wrapper (--cr-strict refuses to run
+│   └── Brewfile                # outside a repo with an origin) and
+│                               # the save/load_claude_auth account
 │                               # switchers, plus the jq those need
 ├── aws/                        # …40 more single-purpose profiles
 └── …                           #   (databases, web, plex, yubikey, …)
