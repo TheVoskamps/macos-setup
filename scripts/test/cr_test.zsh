@@ -149,6 +149,46 @@ else
 fi
 rm -rf "$t5parent"
 
+# --- Test 6: name words plus claude flags -> --allowedTools Grep Glob sits
+#     ahead of the forwarded flags, and the name words form the session
+#     name. Each argument claude receives is written on its own line. -----
+t6="$(mktemp -d)"
+(
+    cd "$t6"
+    git init >/dev/null 2>&1
+    git remote add origin https://example.com/argrepo.git 2>/dev/null
+    claude () { print -rl -- "$@" > "$t6/args"; return 0 }
+    cr my name --model opus "prompt" >/dev/null 2>&1
+)
+t6args=("${(@f)$(cat "$t6/args" 2>/dev/null)}")
+if [[ "${t6args[2]-}" == "my name argrepo" ]]; then
+    pass "args: session name is 'my name argrepo'"
+else
+    die  "args: session name was '${t6args[2]-}'"
+fi
+if [[ "${(j: :)t6args[-6,-1]}" == "--allowedTools Grep Glob --model opus prompt" ]]; then
+    pass "args: --allowedTools Grep Glob passed ahead of --model opus prompt"
+else
+    die  "args: claude got '${(j: :)t6args}'"
+fi
+rm -rf "$t6"
+
+# --- Test 7: no arguments -> --allowedTools Grep Glob still passed. ------
+t7="$(mktemp -d)"
+(
+    cd "$t7"
+    git init >/dev/null 2>&1
+    claude () { print -rl -- "$@" > "$t7/args"; return 0 }
+    cr >/dev/null 2>&1
+)
+t7args=("${(@f)$(cat "$t7/args" 2>/dev/null)}")
+if [[ "${(j: :)t7args[-3,-1]}" == "--allowedTools Grep Glob" ]]; then
+    pass "no args: --allowedTools Grep Glob still passed"
+else
+    die  "no args: claude got '${(j: :)t7args}'"
+fi
+rm -rf "$t7"
+
 print
 print -- "---"
 print -- "pass=$pass fail=$fail"
