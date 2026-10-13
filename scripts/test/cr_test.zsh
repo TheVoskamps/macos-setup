@@ -14,9 +14,9 @@
 #   - Inside an existing repo (at the root OR any subdirectory): detect
 #     the repo with `git rev-parse --is-inside-work-tree`, `cd` to the
 #     repo root, derive the session name from `origin` (or `(local)` when
-#     the repo has none), and run claude with no throwaway and no cleanup. The shell is intentionally left at
-#     the repo root afterward (cr is a function, so the bare `cd`
-#     persists -- accepted behavior).
+#     the repo has none), and run claude with no throwaway and no
+#     cleanup. The shell is intentionally left at the repo root afterward
+#     (cr is a function, so the bare `cd` persists -- accepted behavior).
 #   - With --cr-strict as its first argument: refuse outside a repo or in
 #     a repo without `origin`; otherwise behave as plain cr.
 #
