@@ -25,9 +25,11 @@
 # parameter expansion), so this test is a .zsh script, unlike the bash
 # *_test.sh scripts that cover the POSIX shell layer.
 #
-# Each case runs cr inside a `( ... )` subshell so its function-
-# local EXIT trap fires at the subshell boundary, letting the parent
-# observe the post-cleanup filesystem state.
+# Each case runs cr inside a `( ... )` subshell so the case's `cd`, its
+# `claude` stub, any trap it sets, and the `cd` cr itself leaves behind
+# stay out of the test shell. cr's function-local EXIT trap fires when cr
+# returns, inside the subshell, so the parent observes the post-cleanup
+# filesystem state.
 
 emulate -L zsh
 set -u
