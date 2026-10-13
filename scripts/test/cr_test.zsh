@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 
-# Functional tests for the cr zsh function (issue #15).
+# Functional tests for the cr zsh function.
 #
 # cr lives in profiles/claude-code-aliases/aliases.zsh. It wraps
 # the `claude` CLI so it works both inside and outside a git repo:
@@ -13,8 +13,8 @@
 #     shell).
 #   - Inside an existing repo (at the root OR any subdirectory): detect
 #     the repo with `git rev-parse --is-inside-work-tree`, `cd` to the
-#     repo root, derive the session name from `origin`, and run claude
-#     with no throwaway and no cleanup. The shell is intentionally left at
+#     repo root, derive the session name from `origin` (or `(local)` when
+#     the repo has none), and run claude with no throwaway and no cleanup. The shell is intentionally left at
 #     the repo root afterward (cr is a function, so the bare `cd`
 #     persists -- accepted behavior).
 #   - With --cr-strict as its first argument: refuse outside a repo or in
@@ -264,6 +264,27 @@ else
     die  "strict later position: claude got '${(j: :)t11args}'"
 fi
 rm -rf "$t11"
+
+# --- Test 12: outside any repo -> the caller's INT and TERM traps are
+#     restored when cr returns, so the throwaway rm never fires from the
+#     calling shell afterwards. The `emulate -L zsh` above turns LOCAL_TRAPS
+#     on, so the subshell turns it back off, its zsh default. -------------
+t12="$(mktemp -d)"
+(
+    cd "$t12"
+    unsetopt LOCAL_TRAPS
+    trap 'print caller-int' INT
+    claude () { return 0 }
+    cr >/dev/null 2>&1
+    trap > "$t12/traps"
+)
+if grep -q 'caller-int' "$t12/traps" 2>/dev/null \
+      && ! grep -q 'rm -rf' "$t12/traps" 2>/dev/null; then
+    pass "non-repo: caller's INT and TERM traps restored after cr returns"
+else
+    die  "non-repo: traps after cr were '$(cat "$t12/traps" 2>/dev/null)'"
+fi
+rm -rf "$t12"
 
 print
 print -- "---"

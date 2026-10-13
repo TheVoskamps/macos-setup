@@ -46,7 +46,9 @@
 #      `cd` by claude cannot redirect the rm.
 # INT and TERM are trapped alongside EXIT so that a signal which kills the
 # shell outright (rather than just returning from the function) still
-# tears down the throwaway .git.
+# tears down the throwaway .git. LOCAL_TRAPS restores the caller's INT and
+# TERM traps when `cr` returns, so the rm never fires from the calling
+# shell after the throwaway is gone.
 #
 # Arguments are split at the FIRST argument starting with `-`: everything
 # before it forms the session name suffix, and that argument plus all that
@@ -65,6 +67,10 @@
 cr () {
     local url repo suffix name initdir toplevel cfg strict=0
     local -a claude_args name_words
+    # zsh scopes an EXIT trap to the function on its own, but INT and TERM
+    # traps outlive it unless LOCAL_TRAPS is set; LOCAL_OPTIONS keeps that
+    # option change from leaking into the calling shell too.
+    setopt LOCAL_OPTIONS LOCAL_TRAPS
 
     if [[ "${1-}" == "--cr-strict" ]]; then
         strict=1
