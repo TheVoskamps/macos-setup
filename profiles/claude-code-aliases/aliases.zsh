@@ -131,8 +131,14 @@ cr () {
         suffix="$(date '+%b%d-%H:%M')"
     fi
     name="${suffix} ${repo}"
+    # On macOS the main session starts without the Grep and Glob tools, and
+    # a settings.json allow rule does not bring them back; naming either
+    # one in --allowedTools at startup restores both. The flag is variadic;
+    # claude_args, which follows it, is empty or starts with a flag, so a
+    # trailing prompt is never read as a tool name.
     claude --name "$name" --remote-control \
         --debug-file "$HOME/.claude/logs/$name" \
+        --allowedTools Grep Glob \
         "${claude_args[@]}"
 }
 # Resolve an installed Claude Code plugin's root from the plugin DB.

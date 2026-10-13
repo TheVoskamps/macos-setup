@@ -89,13 +89,18 @@ be noticeable.
     `origin`, and outside any repo it `git init`s a throwaway repo and
     tears down only the `.git` it created; `cr-repo` is the strict
     variant that requires an existing repo with an `origin` remote and
-    errors otherwise). The same profile carries `save_claude_auth` /
-    `load_claude_auth` for switching between Claude Code Max accounts
-    (see "Multiple Claude Code accounts" below). A profile may exist
-    mostly to carry an `aliases.zsh` — `claude-code-aliases` ships
-    only that file plus a `Brewfile` declaring the `jq` its
-    functions parse JSON with; opting into it mainly contributes its
-    aliases to the aggregate.
+    errors otherwise). `cr` also passes `--allowedTools Grep Glob`,
+    because on macOS the main session otherwise starts without the
+    `Grep` and `Glob` tools and runs every search through Bash; a
+    `settings.json` allow rule does not restore them, the startup flag
+    does, and the flag grants nothing new since both tools need no
+    permission inside the working directory. The same profile carries
+    `save_claude_auth` / `load_claude_auth` for switching between Claude
+    Code Max accounts (see "Multiple Claude Code accounts" below). A
+    profile may exist mostly to carry an `aliases.zsh` —
+    `claude-code-aliases` ships only that file plus a `Brewfile`
+    declaring the `jq` its functions parse JSON with; opting into it
+    mainly contributes its aliases to the aggregate.
   - **host tier** — only genuinely host-specific entries (e.g. an
     `icloud` shortcut to a machine's iCloud Drive path).
 - During setup (`make shell_setup`), `scripts/shell_setup.sh` will:
