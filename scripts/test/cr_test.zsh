@@ -17,6 +17,8 @@
 #     with no throwaway and no cleanup. The shell is intentionally left at
 #     the repo root afterward (cr is a function, so the bare `cd`
 #     persists -- accepted behavior).
+#   - With --cr-strict as its first argument: refuse outside a repo or in
+#     a repo without `origin`; otherwise behave as plain cr.
 #
 # These tests use the REAL git binary and a stubbed `claude` function. The
 # function under test is zsh-only (it relies on ${(q)...} quoting and zsh
@@ -188,6 +190,80 @@ else
     die  "no args: claude got '${(j: :)t7args}'"
 fi
 rm -rf "$t7"
+
+# --- Test 8: --cr-strict outside any repo -> non-zero, error on stderr, no
+#     .git created, claude never runs. -----------------------------------
+t8="$(mktemp -d)"
+(
+    cd "$t8"
+    claude () { print "ran" > "$t8/claude-ran"; return 0 }
+    cr --cr-strict x 2> "$t8/stderr" >/dev/null
+    print -- "$?" > "$t8/status"
+)
+if [[ "$(cat "$t8/status" 2>/dev/null)" != "0" && -s "$t8/stderr" \
+      && ! -e "$t8/.git" && ! -e "$t8/claude-ran" ]]; then
+    pass "strict non-repo: refused with an error, no .git, no claude"
+else
+    die  "strict non-repo: status '$(cat "$t8/status" 2>/dev/null)', stderr '$(cat "$t8/stderr" 2>/dev/null)'"
+fi
+rm -rf "$t8"
+
+# --- Test 9: --cr-strict in a repo without origin -> non-zero, claude
+#     never runs. ---------------------------------------------------------
+t9="$(mktemp -d)"
+(
+    cd "$t9"
+    git init >/dev/null 2>&1
+    claude () { print "ran" > "$t9/claude-ran"; return 0 }
+    cr --cr-strict 2> "$t9/stderr" >/dev/null
+    print -- "$?" > "$t9/status"
+)
+if [[ "$(cat "$t9/status" 2>/dev/null)" != "0" && -s "$t9/stderr" \
+      && ! -e "$t9/claude-ran" ]]; then
+    pass "strict no-origin: refused with an error, no claude"
+else
+    die  "strict no-origin: status '$(cat "$t9/status" 2>/dev/null)', stderr '$(cat "$t9/stderr" 2>/dev/null)'"
+fi
+rm -rf "$t9"
+
+# --- Test 10: --cr-strict in a repo with origin -> claude gets exactly the
+#     arguments plain cr passes, without --cr-strict. Both runs share one
+#     fixed name so the timestamp fallback cannot differ between them. ---
+t10="$(mktemp -d)"
+(
+    cd "$t10"
+    git init >/dev/null 2>&1
+    git remote add origin https://example.com/strictrepo.git 2>/dev/null
+    claude () { print -rl -- "$@" > "$t10/args-strict"; return 0 }
+    cr --cr-strict my name --model opus >/dev/null 2>&1
+    claude () { print -rl -- "$@" > "$t10/args-plain"; return 0 }
+    cr my name --model opus >/dev/null 2>&1
+)
+if [[ -s "$t10/args-strict" ]] \
+      && cmp -s "$t10/args-strict" "$t10/args-plain" \
+      && ! grep -qx -- '--cr-strict' "$t10/args-strict"; then
+    pass "strict with origin: claude got the plain-cr arguments, no --cr-strict"
+else
+    die  "strict with origin: claude got '$(cat "$t10/args-strict" 2>/dev/null)'"
+fi
+rm -rf "$t10"
+
+# --- Test 11: --cr-strict in a later position -> forwarded to claude
+#     unchanged, and no strict check (a repo without origin still runs). --
+t11="$(mktemp -d)"
+(
+    cd "$t11"
+    git init >/dev/null 2>&1
+    claude () { print -rl -- "$@" > "$t11/args"; return 0 }
+    cr my name --model opus --cr-strict >/dev/null 2>&1
+)
+t11args=("${(@f)$(cat "$t11/args" 2>/dev/null)}")
+if [[ "${(j: :)t11args[-3,-1]}" == "--model opus --cr-strict" ]]; then
+    pass "strict later position: --cr-strict forwarded to claude"
+else
+    die  "strict later position: claude got '${(j: :)t11args}'"
+fi
+rm -rf "$t11"
 
 print
 print -- "---"
