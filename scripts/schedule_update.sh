@@ -7,9 +7,9 @@
 #
 # Usage:
 #   schedule_update.sh install
-#       Write and load the plist from [cron.update], then remove the
-#       legacy plists. Any error in the table fails before a plist is
-#       written or removed.
+#       Build the plist from [cron.update], remove the legacy plists,
+#       then install and load the new one. Any error in the table fails
+#       before a plist is written or removed.
 #   schedule_update.sh remove-legacy
 #       Boot out and delete the legacy plists that are present.
 #   schedule_update.sh list [<plist-name>...]
@@ -61,6 +61,8 @@ err() {
     echo "Error: $*" >&2
 }
 
+# Print the three-letter name of a launchd weekday. launchd also reads 7
+# as Sunday, and a plist read back from disk may carry it.
 day_abbrev() {
     case "$1" in
         0|7) echo Sun ;; 1) echo Mon ;; 2) echo Tue ;; 3) echo Wed ;;

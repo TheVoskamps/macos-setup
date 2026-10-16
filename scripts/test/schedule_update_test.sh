@@ -11,7 +11,7 @@
 #   - key expansion: daily, weekdays, weekend, single days
 #   - the host tier's table replacing default/'s, never merged with it
 #   - a byte-identical plist on a re-run
-#   - the overlap, unknown-key, malformed-time, empty-table, and profile
+#   - the overlap, unknown-key, malformed-time, missing-table, and profile
 #     errors, each failing without writing a plist
 #   - mailto in ProgramArguments
 #   - legacy plist removal by schedule-update and unschedule-all
