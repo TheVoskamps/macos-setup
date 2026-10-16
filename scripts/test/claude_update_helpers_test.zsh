@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 
 # Functional tests for update-claude-plugins, update-claude-config, and
-# the update_claude_plugins compatibility name (issue #83).
+# the update_claude_plugins compatibility name.
 #
 # The helpers live in profiles/claude-code-aliases/aliases.zsh and run
 # scripts from the ~/.claude checkout: update-claude-plugins runs

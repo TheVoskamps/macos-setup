@@ -1,8 +1,7 @@
 #!/usr/bin/env zsh
 
-# Functional tests for save-claude-auth / load-claude-auth (issue #49),
-# and for the save_claude_auth / load_claude_auth compatibility names
-# (issue #83).
+# Functional tests for save-claude-auth / load-claude-auth, and for the
+# save_claude_auth / load_claude_auth compatibility names.
 #
 # The pair lives in profiles/claude-code-aliases/aliases.zsh. They swap
 # the pieces of Claude Code account identity -- the Keychain item

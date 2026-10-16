@@ -164,9 +164,9 @@ claude-plugin-path() {
   ' "$db" 2>/dev/null
 }
 
-# Run a script from the ~/.claude checkout with the given arguments and
-# return its exit status. $1 is the calling function's name, used in the
-# error printed when the script is missing or not executable.
+# Run the script at $2 with the remaining arguments and return its exit
+# status. $1 is the calling function's name, used in the error printed
+# when the script is missing or not executable, which returns 127.
 _claude-checkout-script() {
   local caller=$1 script=$2
   shift 2
@@ -187,6 +187,7 @@ update-claude-config() {
   _claude-checkout-script update-claude-config "$HOME/.claude/config.sh" "$@"
 }
 
+# Snake_case name for update-claude-plugins, for callers that use it.
 update_claude_plugins() { update-claude-plugins "$@" }
 
 claude-vm() {
@@ -424,5 +425,6 @@ load-claude-auth () {
     echo "load-claude-auth: switched to '${account}'" >&2
 }
 
+# Snake_case names for the pair above, for callers that use them.
 save_claude_auth () { save-claude-auth "$@" }
 load_claude_auth () { load-claude-auth "$@" }
