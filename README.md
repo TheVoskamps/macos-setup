@@ -670,9 +670,15 @@ profiles/
 │                               # (aggregate)
 ├── claude-code-aliases/        # Mostly an aliases.zsh: the cr Claude
 │   ├── aliases.zsh             # wrapper (--cr-strict refuses to run
-│   └── Brewfile                # outside a repo with an origin) and
-│                               # the save/load_claude_auth account
-│                               # switchers, plus the jq those need
+│   └── Brewfile                # outside a repo with an origin), the
+│                               # save-claude-auth / load-claude-auth
+│                               # account switchers, and the
+│                               # update-claude-plugins /
+│                               # update-claude-config runners for the
+│                               # ~/.claude checkout's own scripts
+│                               # (the snake_case names stay as
+│                               # compatibility aliases), plus the jq
+│                               # those need
 ├── aws/                        # …40 more single-purpose profiles
 └── …                           #   (databases, web, plex, yubikey, …)
 

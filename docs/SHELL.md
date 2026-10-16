@@ -97,10 +97,15 @@ be noticeable.
     `settings.json` allow rule does not restore them, the startup flag
     does, and the flag grants nothing new since both tools need no
     permission inside the working directory. The same profile carries
-    `save_claude_auth` / `load_claude_auth` for switching between Claude
-    Code Max accounts (see "Multiple Claude Code accounts" below). A
-    profile may exist mostly to carry an `aliases.zsh` —
-    `claude-code-aliases` ships only that file plus a `Brewfile`
+    `save-claude-auth` / `load-claude-auth` for switching between Claude
+    Code Max accounts (see "Multiple Claude Code accounts" below) and
+    `update-claude-plugins` / `update-claude-config` for running the
+    `~/.claude` checkout's own update scripts (see "Updating the Claude
+    checkout" below). The snake_case names `save_claude_auth`,
+    `load_claude_auth`, and `update_claude_plugins` remain as
+    compatibility aliases that call the kebab-case functions and print
+    no notice of their own. A profile may exist mostly to carry an
+    `aliases.zsh` — `claude-code-aliases` ships only that file plus a `Brewfile`
     declaring the `jq` its functions parse JSON with; opting into it
     mainly contributes its aliases to the aggregate.
   - **host tier** — only genuinely host-specific entries (e.g. an
@@ -121,7 +126,7 @@ default- and profile-tier `aliases.zsh` files remain in the repo and are
 committed normally). Keep system-level helpers (functions used by
 macos-setup itself) in `shared/zsh/` instead.
 
-## Multiple Claude Code accounts (`save_claude_auth` / `load_claude_auth`)
+## Multiple Claude Code accounts (`save-claude-auth` / `load-claude-auth`)
 
 The `claude-code-aliases` profile carries a pair of functions for using
 more than one Claude Code Max account on a single machine, without
@@ -135,11 +140,11 @@ shared; only the pieces that carry account identity get swapped:
 Per-account backups live in the Keychain item
 `Claude Code-credentials-<account>` and the sidecar file
 `~/.claude.json.<account>` (created `0400` — it is only ever read back
-by `load_claude_auth`).
+by `load-claude-auth`).
 
 ```zsh
-save_claude_auth [--account NAME] [--force]   # back up the live login
-load_claude_auth [--account NAME] [--force]   # restore a saved login
+save-claude-auth [--account NAME] [--force]   # back up the live login
+load-claude-auth [--account NAME] [--force]   # restore a saved login
 ```
 
 The kinds of profile:
@@ -165,7 +170,7 @@ Behavior worth knowing:
 - **Load refuses to clobber an unsaved identity.** Loading overwrites
   the live Keychain item and `~/.claude.json`; if the identity that was
   live was never saved, it is gone and that account must be logged into
-  again. Before overwriting, `load_claude_auth` compares the live
+  again. Before overwriting, `load-claude-auth` compares the live
   `oauthAccount` against every `~/.claude.json.*` sidecar (on
   `.emailAddress` and `.accountUuid`) and aborts when none matches,
   unless `--force` is passed.
@@ -185,6 +190,34 @@ profile's own `Brewfile`) and `security` ships with macOS. Covered by
 `scripts/test/save_load_claude_auth_test.zsh`, which stubs `security`
 and points `HOME` at a temp dir so the real Keychain and
 `~/.claude.json` are never touched.
+
+## Updating the Claude checkout (`update-claude-plugins` / `update-claude-config`)
+
+The `claude-code-aliases` profile also carries a pair of functions that
+run the `~/.claude` checkout's own scripts from an interactive shell:
+
+```zsh
+update-claude-plugins [ARG...]   # ~/.claude/plugins.sh --update ARG...
+update-claude-config  [ARG...]   # ~/.claude/config.sh ARG...
+```
+
+Each appends its own arguments to the script's and returns the script's
+exit status, so a marketplace or plugin that fails to update shows in
+the status rather than being swallowed. The profile holds no copy of the
+script's logic: an earlier version re-implemented the plugin update in
+zsh, reading only the global `settings.json` and carrying a
+hand-synchronized copy of the script's quiet-output patterns, so
+marketplaces and plugins declared in managed or local settings were
+never updated and a failed item still returned 0. Delegating to the
+script means the shell update covers whatever settings sources
+`plugins.sh` reads, today and after it changes.
+
+When the script is missing or not executable — no `~/.claude` checkout
+yet, or one predating the script — the function prints
+`<name>: <path> is missing or not executable` and returns 127 without
+running anything. Covered by
+`scripts/test/claude_update_helpers_test.zsh`, which points `HOME` at a
+temp dir holding stub scripts so the real `~/.claude` is never run.
 
 ## mise init lines
 
