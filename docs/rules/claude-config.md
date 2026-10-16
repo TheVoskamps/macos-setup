@@ -7,12 +7,16 @@ settings, and `plugins.sh` live there. This repo only clones, updates,
 and calls into it, so a change to any of those belongs in that repo,
 never here.
 
-## `plugins.sh` is located and invoked in one place
+## `plugins.sh` is located and invoked in two places
 
-Every plugin sync — inline in the install and update flows, or through
-the standalone `plugins-install` / `plugins-update` sub-commands — calls
-`sync_claude_plugins` in `scripts/claude_repo_setup.sh`, the one
-function that locates and runs `plugins.sh`.
+Every plugin sync calls one of the two functions that locate and run
+`plugins.sh`:
+
+- `sync_claude_plugins` in `scripts/claude_repo_setup.sh`, for a sync
+  inline in the install and update flows, or through the standalone
+  `plugins-install` / `plugins-update` sub-commands.
+- `update-claude-plugins` in `profiles/claude-code-aliases/aliases.zsh`,
+  for a sync run from an interactive shell.
 
 ## Scratch work lives under `.claude/tmp/<task-slug>/`
 

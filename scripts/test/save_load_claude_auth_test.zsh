@@ -248,6 +248,9 @@ run_cases () {
 
 # --- Test 9: unknown arguments rejected by name, non-zero, with the
 #     message prefixed by the kebab-case function name. -------------------
+# The only case naming the functions itself: the snake_case names call
+# the kebab-case ones, which print the message, so the expected prefix is
+# kebab-case under both name pairs.
 (
     eval "$(new_case)"; source "$PROFILE"; eval "$SECURITY_STUB"
     seed_login a@x.com uuid-a tok-a
