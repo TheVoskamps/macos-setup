@@ -1,6 +1,7 @@
 #!/usr/bin/env zsh
 
-# Functional tests for save_claude_auth / load_claude_auth (issue #49).
+# Functional tests for save-claude-auth / load-claude-auth, and for the
+# save_claude_auth / load_claude_auth compatibility names.
 #
 # The pair lives in profiles/claude-code-aliases/aliases.zsh. They swap
 # the pieces of Claude Code account identity -- the Keychain item
@@ -15,7 +16,8 @@
 # so ~/.claude.json and its sidecars land there, never in the real home.
 #
 # Each case runs in a `( ... )` subshell so the HOME override and the
-# stub never leak into the next case.
+# stub never leak into the next case. Every case runs once per name pair:
+# run_cases calls the pair through $SAVE and $LOAD.
 
 emulate -L zsh
 set -u
@@ -39,8 +41,8 @@ fi
 # parent-owned dir instead, and the parent counts those at the end.
 COUNT_DIR="$(mktemp -d)"
 trap 'rm -rf "$COUNT_DIR"' EXIT
-pass () { print -- "PASS: $1"; mktemp "$COUNT_DIR/pass.XXXXXX" >/dev/null }
-die  () { print -- "FAIL: $1"; mktemp "$COUNT_DIR/fail.XXXXXX" >/dev/null }
+pass () { print -- "PASS: [$SAVE/$LOAD] $1"; mktemp "$COUNT_DIR/pass.XXXXXX" >/dev/null }
+die  () { print -- "FAIL: [$SAVE/$LOAD] $1"; mktemp "$COUNT_DIR/fail.XXXXXX" >/dev/null }
 
 # --- The security stub. Defined as a string and eval'd inside each
 #     subshell (after sourcing the profile) so every case gets it.
@@ -85,12 +87,14 @@ new_case () {
     print 'export HOME="$(mktemp -d)"; export SEC_DIR="$HOME/sec"; mkdir -p "$SEC_DIR"'
 }
 
+run_cases () {
+
 # --- Test 1: save with no --account saves the built-in default:
 #     Keychain backup + 0400 sidecar. -------------------------------------
 (
     eval "$(new_case)"; source "$PROFILE"; eval "$SECURITY_STUB"
     seed_login a@x.com uuid-a tok-a
-    if ! save_claude_auth 2>/dev/null; then
+    if ! $SAVE 2>/dev/null; then
         die "save default: returned non-zero"
     elif [[ "$(cat "$SEC_DIR/Claude Code-credentials-default" 2>/dev/null)" != "tok-a" ]]; then
         die "save default: Keychain backup missing or wrong"
@@ -107,9 +111,9 @@ new_case () {
 (
     eval "$(new_case)"; source "$PROFILE"; eval "$SECURITY_STUB"
     seed_login a@x.com uuid-a tok-a
-    if save_claude_auth --account default 2>/dev/null; then
+    if $SAVE --account default 2>/dev/null; then
         die "save --account default: was accepted"
-    elif load_claude_auth --account default 2>/dev/null; then
+    elif $LOAD --account default 2>/dev/null; then
         die "load --account default: was accepted"
     else
         pass "--account default rejected on both save and load"
@@ -121,17 +125,17 @@ new_case () {
 (
     eval "$(new_case)"; source "$PROFILE"; eval "$SECURITY_STUB"
     seed_login a@x.com uuid-a tok-a
-    save_claude_auth 2>/dev/null
-    save_claude_auth --account work 2>/dev/null
-    if save_claude_auth 2>/dev/null; then
+    $SAVE 2>/dev/null
+    $SAVE --account work 2>/dev/null
+    if $SAVE 2>/dev/null; then
         die "save default overwrite: no --force but succeeded"
-    elif save_claude_auth --account work 2>/dev/null; then
+    elif $SAVE --account work 2>/dev/null; then
         die "save named overwrite: no --force but succeeded"
     else
         pass "save refuses to overwrite an existing profile without --force"
     fi
     seed_login b@x.com uuid-b tok-b
-    if save_claude_auth --account work --force 2>/dev/null \
+    if $SAVE --account work --force 2>/dev/null \
         && [[ "$(cat "$SEC_DIR/Claude Code-credentials-work")" == "tok-b" ]] \
         && [[ "$(jq -r '.oauthAccount.accountUuid' "$HOME/.claude.json.work")" == "uuid-b" ]]; then
         pass "save --force overwrites an existing profile (both halves)"
@@ -143,7 +147,7 @@ new_case () {
 # --- Test 4: save fails clearly when not logged in. ----------------------
 (
     eval "$(new_case)"; source "$PROFILE"; eval "$SECURITY_STUB"
-    err="$(save_claude_auth 2>&1)"
+    err="$($SAVE 2>&1)"
     if [[ $? -ne 0 && "$err" == *"not currently logged in"* ]]; then
         pass "save fails clearly when not logged in (no Keychain item)"
     else
@@ -156,7 +160,7 @@ new_case () {
 (
     eval "$(new_case)"; source "$PROFILE"; eval "$SECURITY_STUB"
     seed_login a@x.com uuid-a tok-a
-    err="$(load_claude_auth 2>&1)"
+    err="$($LOAD 2>&1)"
     if [[ $? -ne 0 && "$err" == *"no built-in default saved yet"* ]]; then
         pass "load with no --account fails loudly when default never saved"
     else
@@ -169,10 +173,10 @@ new_case () {
 (
     eval "$(new_case)"; source "$PROFILE"; eval "$SECURITY_STUB"
     seed_login a@x.com uuid-a tok-a
-    save_claude_auth 2>/dev/null
+    $SAVE 2>/dev/null
     seed_login b@x.com uuid-b tok-b
-    save_claude_auth --account work 2>/dev/null
-    load_claude_auth 2>/dev/null   # back to the built-in default
+    $SAVE --account work 2>/dev/null
+    $LOAD 2>/dev/null   # back to the built-in default
     if [[ "$(cat "$SEC_DIR/Claude Code-credentials")" == "tok-a" ]] \
         && [[ "$(jq -r '.oauthAccount.emailAddress' "$HOME/.claude.json")" == "a@x.com" ]] \
         && [[ "$(jq -r '.numStartups' "$HOME/.claude.json")" == "7" ]]; then
@@ -180,7 +184,7 @@ new_case () {
     else
         die "load round trip: wrong token, oauthAccount, or clobbered keys"
     fi
-    load_claude_auth --account work 2>/dev/null
+    $LOAD --account work 2>/dev/null
     if [[ "$(cat "$SEC_DIR/Claude Code-credentials")" == "tok-b" ]] \
         && [[ "$(jq -r '.oauthAccount.accountUuid' "$HOME/.claude.json")" == "uuid-b" ]]; then
         pass "load --account <name> restores a named profile"
@@ -194,15 +198,15 @@ new_case () {
 (
     eval "$(new_case)"; source "$PROFILE"; eval "$SECURITY_STUB"
     seed_login a@x.com uuid-a tok-a
-    err="$(load_claude_auth --account nosuch 2>&1)"
+    err="$($LOAD --account nosuch 2>&1)"
     if [[ $? -ne 0 && "$err" == *"no saved account 'nosuch'"* ]]; then
         pass "load names the missing sidecar"
     else
         die "load with missing sidecar: expected clear failure"
     fi
-    save_claude_auth --account work 2>/dev/null
+    $SAVE --account work 2>/dev/null
     command rm -f "$SEC_DIR/Claude Code-credentials-work"
-    err="$(load_claude_auth --account work 2>&1)"
+    err="$($LOAD --account work 2>&1)"
     if [[ $? -ne 0 && "$err" == *"no Keychain entry for 'work'"* ]]; then
         pass "load names the missing Keychain entry"
     else
@@ -215,45 +219,49 @@ new_case () {
 (
     eval "$(new_case)"; source "$PROFILE"; eval "$SECURITY_STUB"
     seed_login a@x.com uuid-a tok-a
-    if save_claude_auth --account 'bad/name' 2>/dev/null; then
+    if $SAVE --account 'bad/name' 2>/dev/null; then
         die "name validation: 'bad/name' accepted on save"
-    elif load_claude_auth --account 'bad name' 2>/dev/null; then
+    elif $LOAD --account 'bad name' 2>/dev/null; then
         die "name validation: 'bad name' accepted on load"
     else
         pass "names outside ^[A-Za-z0-9._@-]+\$ are rejected"
     fi
-    if save_claude_auth --account 'me+work@example.com' 2>/dev/null; then
+    if $SAVE --account 'me+work@example.com' 2>/dev/null; then
         die "name validation: '+' accepted (outside the charset)"
     else
         pass "a name with a character outside the charset (+) is rejected"
     fi
-    if save_claude_auth --account 'me.work@example.com' 2>/dev/null \
+    if $SAVE --account 'me.work@example.com' 2>/dev/null \
         && [[ -f "$HOME/.claude.json.me.work@example.com" ]]; then
         pass "an account email works verbatim as the name"
     else
         die "name validation: plain email rejected"
     fi
-    if save_claude_auth --account 2>/dev/null; then
+    if $SAVE --account 2>/dev/null; then
         die "--account with no value accepted on save"
-    elif load_claude_auth --account 2>/dev/null; then
+    elif $LOAD --account 2>/dev/null; then
         die "--account with no value accepted on load"
     else
         pass "--account with no following value is rejected"
     fi
 )
 
-# --- Test 9: unknown arguments rejected by name, non-zero. ---------------
+# --- Test 9: unknown arguments rejected by name, non-zero, with the
+#     message prefixed by the kebab-case function name. -------------------
+# The only case naming the functions itself: the snake_case names call
+# the kebab-case ones, which print the message, so the expected prefix is
+# kebab-case under both name pairs.
 (
     eval "$(new_case)"; source "$PROFILE"; eval "$SECURITY_STUB"
     seed_login a@x.com uuid-a tok-a
-    err="$(save_claude_auth --acount work 2>&1)"
+    err="$($SAVE --acount work 2>&1)"
     rc=$?
-    err2="$(load_claude_auth extra 2>&1)"
+    err2="$($LOAD extra 2>&1)"
     rc2=$?
     if (( rc != 0 && rc2 != 0 )) \
-        && [[ "$err" == *"unknown argument: --acount"* ]] \
-        && [[ "$err2" == *"unknown argument: extra"* ]]; then
-        pass "unknown arguments are rejected by name with non-zero status"
+        && [[ "$err" == "save-claude-auth: unknown argument: --acount" ]] \
+        && [[ "$err2" == "load-claude-auth: unknown argument: extra" ]]; then
+        pass "unknown arguments are rejected by name with non-zero status, under the kebab-case name"
     else
         die "unknown-argument rejection wrong"
     fi
@@ -264,16 +272,16 @@ new_case () {
 (
     eval "$(new_case)"; source "$PROFILE"; eval "$SECURITY_STUB"
     seed_login a@x.com uuid-a tok-a
-    save_claude_auth --account work 2>/dev/null
+    $SAVE --account work 2>/dev/null
     seed_login c@x.com uuid-c tok-c      # live identity never saved
-    err="$(load_claude_auth --account work 2>&1)"
+    err="$($LOAD --account work 2>&1)"
     if [[ $? -ne 0 && "$err" == *"never saved"* \
         && "$(cat "$SEC_DIR/Claude Code-credentials")" == "tok-c" ]]; then
         pass "load aborts when the live identity matches no sidecar"
     else
         die "load did not protect the unsaved live identity"
     fi
-    if load_claude_auth --account work --force 2>/dev/null \
+    if $LOAD --account work --force 2>/dev/null \
         && [[ "$(cat "$SEC_DIR/Claude Code-credentials")" == "tok-a" ]]; then
         pass "load --force discards the unsaved identity and proceeds"
     else
@@ -291,7 +299,7 @@ new_case () {
         security_orig "$@"
     }
     seed_login a@x.com uuid-a tok-a
-    err="$(save_claude_auth --account work 2>&1)"
+    err="$($SAVE --account work 2>&1)"
     if [[ $? -ne 0 && "$err" == *"FAILED"* && "$err" != *"saved 'work'"* \
         && ! -e "$HOME/.claude.json.work" ]]; then
         pass "save fails loudly on a Keychain write failure, writing no sidecar"
@@ -306,9 +314,9 @@ new_case () {
 (
     eval "$(new_case)"; source "$PROFILE"; eval "$SECURITY_STUB"
     seed_login a@x.com uuid-a tok-a
-    save_claude_auth --account work 2>/dev/null
+    $SAVE --account work 2>/dev/null
     print -- "not json" > "$HOME/.claude.json"
-    err="$(load_claude_auth --account work 2>&1)"
+    err="$($LOAD --account work 2>&1)"
     rc=$?
     leftovers=( "$HOME"/.claude.json-new.*(N) )
     if [[ $rc -ne 0 && "$err" == *"nothing changed"* \
@@ -339,10 +347,10 @@ new_case () {
         security_orig "$@"
     }
     seed_login a@x.com uuid-a tok-a
-    save_claude_auth --account work 2>/dev/null
+    $SAVE --account work 2>/dev/null
     seed_login b@x.com uuid-b tok-b
-    save_claude_auth --account other 2>/dev/null
-    err="$(load_claude_auth --account work 2>&1)"
+    $SAVE --account other 2>/dev/null
+    err="$($LOAD --account work 2>&1)"
     rc=$?
     leftovers=( "$HOME"/.claude.json-new.*(N) )
     if [[ $rc -ne 0 && "$err" == *"both unchanged"* \
@@ -356,14 +364,20 @@ new_case () {
     fi
 )
 
+}
+
+for SAVE LOAD in save-claude-auth load-claude-auth save_claude_auth load_claude_auth; do
+    run_cases
+done
+
 pass=( "$COUNT_DIR"/pass.*(N) )
 fail=( "$COUNT_DIR"/fail.*(N) )
 print
 print -- "---"
 print -- "pass=${#pass} fail=${#fail}"
 if (( ${#fail} == 0 && ${#pass} > 0 )); then
-    print -- "All save/load_claude_auth tests passed."
+    print -- "All save/load-claude-auth tests passed."
     exit 0
 fi
-print -- "Some save/load_claude_auth tests FAILED."
+print -- "Some save/load-claude-auth tests FAILED."
 exit 1

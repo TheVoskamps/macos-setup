@@ -164,43 +164,31 @@ claude-plugin-path() {
   ' "$db" 2>/dev/null
 }
 
-# Update every marketplace and enabled plugin declared in the global
-# Claude settings.json. A plugin entry in .enabledPlugins is either a
-# boolean or an object with an `enabled` key; the type guard on the
-# object index matters because jq's `or` does not short-circuit the
-# right operand's evaluation errors -- indexing a boolean with
-# .enabled aborts the whole filter (claude-config#44).
-#
-# No-op chatter is dropped from each command's stdout with the same
-# grep -Ev filter as ~/.claude/plugins.sh, whose QUIET_PATTERNS is the
-# upstream source of these patterns -- keep the list textually
-# identical to it. grep exits 1 when it emits nothing, which is
-# exactly what an up-to-date item looks like, so the command's own
-# status is read from zsh's pipestatus (1-indexed) before anything
-# else can overwrite it; `| grep ... || true` would clobber it. stderr
-# is not piped, so genuine error text still reaches the terminal.
-update_claude_plugins() {
-  local settings="${1:-$HOME/.claude/settings.json}"
-  local i st
-  local -a marketplaces plugins
-  local quiet_patterns='Refreshing marketplace cache|Successfully updated marketplace|Checking for updates for plugin|is already at the latest version'
-
-  marketplaces=("${(@f)$(jq -r '.extraKnownMarketplaces // {} | keys[]' "$settings")}")
-  for i in "${marketplaces[@]}"; do
-    [[ -n "$i" ]] || continue
-    claude plugin marketplace update "$i" | grep -Ev "$quiet_patterns"
-    st=$pipestatus[1]
-    (( st == 0 )) || echo "update_claude_plugins: marketplace update failed: $i (exit $st)" >&2
-  done
-
-  plugins=("${(@f)$(jq -r '.enabledPlugins // {} | to_entries[] | select(.value == true or ((.value | type) == "object" and .value.enabled == true)) | .key' "$settings")}")
-  for i in "${plugins[@]}"; do
-    [[ -n "$i" ]] || continue
-    claude plugin update "$i" | grep -Ev "$quiet_patterns"
-    st=$pipestatus[1]
-    (( st == 0 )) || echo "update_claude_plugins: plugin update failed: $i (exit $st)" >&2
-  done
+# Run the script at $2 with the remaining arguments and return its exit
+# status. $1 is the calling function's name, used in the error printed
+# when the script is missing or not executable, which returns 127.
+_claude-checkout-script() {
+  local caller=$1 script=$2
+  shift 2
+  [[ -f $script && -x $script ]] || {
+    print -ru2 -- "$caller: $script is missing or not executable"
+    return 127
+  }
+  "$script" "$@"
 }
+
+# Update the marketplaces and plugins ~/.claude declares.
+update-claude-plugins() {
+  _claude-checkout-script update-claude-plugins "$HOME/.claude/plugins.sh" --update "$@"
+}
+
+# Fast-forward the ~/.claude checkout, then update its plugins.
+update-claude-config() {
+  _claude-checkout-script update-claude-config "$HOME/.claude/config.sh" "$@"
+}
+
+# Snake_case name for update-claude-plugins, for callers that use it.
+update_claude_plugins() { update-claude-plugins "$@" }
 
 claude-vm() {
   local root exe
@@ -240,13 +228,13 @@ claude-vm() {
 # locking is implemented -- quit running Claude sessions before
 # switching. See docs/SHELL.md.
 
-save_claude_auth () {
+save-claude-auth () {
     local account="default" pw oauth explicit=0 force=0
 
     while (( $# )); do
         if [[ "$1" == "--account" ]]; then
             if (( $# < 2 )); then
-                echo "save_claude_auth: --account requires a value" >&2
+                echo "save-claude-auth: --account requires a value" >&2
                 return 1
             fi
             account="$2"
@@ -256,39 +244,39 @@ save_claude_auth () {
             force=1
             shift
         else
-            echo "save_claude_auth: unknown argument: $1" >&2
+            echo "save-claude-auth: unknown argument: $1" >&2
             return 1
         fi
     done
 
     if (( explicit )); then
         if [[ "$account" == "default" ]]; then
-            echo "save_claude_auth: 'default' cannot be specified explicitly -- omit --account to use the built-in default" >&2
+            echo "save-claude-auth: 'default' cannot be specified explicitly -- omit --account to use the built-in default" >&2
             return 1
         fi
         if [[ ! "$account" =~ '^[A-Za-z0-9._@-]+$' ]]; then
-            echo "save_claude_auth: invalid account name '${account}' -- allowed characters are A-Z a-z 0-9 . _ @ -" >&2
+            echo "save-claude-auth: invalid account name '${account}' -- allowed characters are A-Z a-z 0-9 . _ @ -" >&2
             return 1
         fi
     fi
 
     if [[ -f ~/.claude.json."${account}" ]] && (( ! force )); then
         if [[ "$account" == "default" ]]; then
-            echo "save_claude_auth: the built-in default already has a saved account -- pass --force to overwrite it" >&2
+            echo "save-claude-auth: the built-in default already has a saved account -- pass --force to overwrite it" >&2
         else
-            echo "save_claude_auth: '${account}' already has a saved account -- pass --force to overwrite it" >&2
+            echo "save-claude-auth: '${account}' already has a saved account -- pass --force to overwrite it" >&2
         fi
         return 1
     fi
 
     pw=$(security find-generic-password -s "Claude Code-credentials" -a "$USER" -w) || {
-        echo "save_claude_auth: not currently logged in" >&2
+        echo "save-claude-auth: not currently logged in" >&2
         return 1
     }
 
     oauth=$(jq '.oauthAccount' ~/.claude.json 2>/dev/null)
     if [[ -z "$oauth" || "$oauth" == "null" ]]; then
-        echo "save_claude_auth: no oauthAccount in ~/.claude.json -- not currently logged in" >&2
+        echo "save-claude-auth: no oauthAccount in ~/.claude.json -- not currently logged in" >&2
         unset pw
         return 1
     fi
@@ -298,31 +286,31 @@ save_claude_auth () {
     # behind and returns non-zero, never the "saved" message.
     if ! security add-generic-password -U -s "Claude Code-credentials-${account}" -a "$USER" -w "$pw" >/dev/null; then
         unset pw
-        echo "save_claude_auth: writing the Keychain backup for '${account}' FAILED -- nothing was saved (no Keychain backup, no sidecar)" >&2
+        echo "save-claude-auth: writing the Keychain backup for '${account}' FAILED -- nothing was saved (no Keychain backup, no sidecar)" >&2
         return 1
     fi
     unset pw
 
     # The sidecar is created 0400 (read-only for the owner: it is only
-    # ever read back by load_claude_auth), so a --force overwrite must
+    # ever read back by load-claude-auth), so a --force overwrite must
     # remove the old one before writing. `command rm` bypasses the
     # `rm -i` safety alias from default/aliases.zsh.
     command rm -f ~/.claude.json."${account}"
     if ! jq -n --argjson oauth "$oauth" '{oauthAccount: $oauth}' > ~/.claude.json."${account}"; then
-        echo "save_claude_auth: writing the sidecar ~/.claude.json.${account} FAILED -- the Keychain backup for '${account}' was written but the sidecar is missing or incomplete, so load_claude_auth will not accept this profile; re-run save_claude_auth with --force" >&2
+        echo "save-claude-auth: writing the sidecar ~/.claude.json.${account} FAILED -- the Keychain backup for '${account}' was written but the sidecar is missing or incomplete, so load-claude-auth will not accept this profile; re-run save-claude-auth with --force" >&2
         return 1
     fi
     chmod 0400 ~/.claude.json."${account}"
-    echo "save_claude_auth: saved '${account}'" >&2
+    echo "save-claude-auth: saved '${account}'" >&2
 }
 
-load_claude_auth () {
+load-claude-auth () {
     local account="default" pw oauth tmp live sidecar explicit=0 force=0 matched=0
 
     while (( $# )); do
         if [[ "$1" == "--account" ]]; then
             if (( $# < 2 )); then
-                echo "load_claude_auth: --account requires a value" >&2
+                echo "load-claude-auth: --account requires a value" >&2
                 return 1
             fi
             account="$2"
@@ -332,27 +320,27 @@ load_claude_auth () {
             force=1
             shift
         else
-            echo "load_claude_auth: unknown argument: $1" >&2
+            echo "load-claude-auth: unknown argument: $1" >&2
             return 1
         fi
     done
 
     if (( explicit )); then
         if [[ "$account" == "default" ]]; then
-            echo "load_claude_auth: 'default' cannot be specified explicitly -- omit --account to use the built-in default" >&2
+            echo "load-claude-auth: 'default' cannot be specified explicitly -- omit --account to use the built-in default" >&2
             return 1
         fi
         if [[ ! "$account" =~ '^[A-Za-z0-9._@-]+$' ]]; then
-            echo "load_claude_auth: invalid account name '${account}' -- allowed characters are A-Z a-z 0-9 . _ @ -" >&2
+            echo "load-claude-auth: invalid account name '${account}' -- allowed characters are A-Z a-z 0-9 . _ @ -" >&2
             return 1
         fi
     fi
 
     [[ -f ~/.claude.json."${account}" ]] || {
         if [[ "$account" == "default" ]]; then
-            echo "load_claude_auth: no built-in default saved yet -- run save_claude_auth (no --account) while logged into it" >&2
+            echo "load-claude-auth: no built-in default saved yet -- run save-claude-auth (no --account) while logged into it" >&2
         else
-            echo "load_claude_auth: no saved account '${account}' -- run save_claude_auth --account ${account} first" >&2
+            echo "load-claude-auth: no saved account '${account}' -- run save-claude-auth --account ${account} first" >&2
         fi
         return 1
     }
@@ -377,7 +365,7 @@ load_claude_auth () {
                 fi
             done
             if (( ! matched )); then
-                echo "load_claude_auth: the current login was never saved and would be lost -- run save_claude_auth first, or pass --force to discard it" >&2
+                echo "load-claude-auth: the current login was never saved and would be lost -- run save-claude-auth first, or pass --force to discard it" >&2
                 return 1
             fi
         fi
@@ -390,13 +378,13 @@ load_claude_auth () {
     # no unwind past the first write: a write that fails anyway
     # reports the state it actually left behind and returns non-zero.
     pw=$(security find-generic-password -s "Claude Code-credentials-${account}" -a "$USER" -w 2>/dev/null) || {
-        echo "load_claude_auth: no Keychain entry for '${account}'" >&2
+        echo "load-claude-auth: no Keychain entry for '${account}'" >&2
         return 1
     }
 
     oauth=$(jq '.oauthAccount' ~/.claude.json."${account}" 2>/dev/null)
     if [[ -z "$oauth" || "$oauth" == "null" ]]; then
-        echo "load_claude_auth: sidecar ~/.claude.json.${account} is unreadable or carries no oauthAccount -- nothing changed" >&2
+        echo "load-claude-auth: sidecar ~/.claude.json.${account} is unreadable or carries no oauthAccount -- nothing changed" >&2
         unset pw
         return 1
     fi
@@ -408,19 +396,19 @@ load_claude_auth () {
     # ~/.claude.json.* sidecar pattern, so a leftover can never be
     # mistaken for a saved profile.
     tmp=$(mktemp ~/.claude.json-new.XXXXXX) || {
-        echo "load_claude_auth: cannot create a temp file under \$HOME -- nothing changed" >&2
+        echo "load-claude-auth: cannot create a temp file under \$HOME -- nothing changed" >&2
         unset pw
         return 1
     }
     if ! jq --argjson oauth "$oauth" '.oauthAccount = $oauth' ~/.claude.json > "$tmp"; then
-        echo "load_claude_auth: cannot rewrite ~/.claude.json (is it valid JSON?) -- nothing changed" >&2
+        echo "load-claude-auth: cannot rewrite ~/.claude.json (is it valid JSON?) -- nothing changed" >&2
         command rm -f "$tmp"
         unset pw
         return 1
     fi
 
     if ! security add-generic-password -U -s "Claude Code-credentials" -a "$USER" -w "$pw" >/dev/null; then
-        echo "load_claude_auth: writing the live Keychain item FAILED -- the Keychain and ~/.claude.json are both unchanged (still the previous account)" >&2
+        echo "load-claude-auth: writing the live Keychain item FAILED -- the Keychain and ~/.claude.json are both unchanged (still the previous account)" >&2
         command rm -f "$tmp"
         unset pw
         return 1
@@ -430,9 +418,13 @@ load_claude_auth () {
     # `command mv -f` bypasses the `mv -i` safety alias that
     # default/aliases.zsh defines for every host, which would prompt.
     if ! command mv -f "$tmp" ~/.claude.json; then
-        echo "load_claude_auth: the Keychain now holds '${account}' but rewriting ~/.claude.json FAILED -- the two halves name different accounts; re-run load_claude_auth for '${account}'" >&2
+        echo "load-claude-auth: the Keychain now holds '${account}' but rewriting ~/.claude.json FAILED -- the two halves name different accounts; re-run load-claude-auth for '${account}'" >&2
         command rm -f "$tmp"
         return 1
     fi
-    echo "load_claude_auth: switched to '${account}'" >&2
+    echo "load-claude-auth: switched to '${account}'" >&2
 }
+
+# Snake_case names for the pair above, for callers that use them.
+save_claude_auth () { save-claude-auth "$@" }
+load_claude_auth () { load-claude-auth "$@" }
