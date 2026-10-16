@@ -46,7 +46,9 @@ AGGREGATE_FILES=(
 # array is an aggregate key read from default and host only (see
 # resolve_config_value and get_profiles below); the `[autostart]`
 # section is aggregate across every tier (see
-# resolve_config_array_aggregate and resolve_autostart_apps); and the
+# resolve_config_array_aggregate and resolve_autostart_apps); the
+# `[cron.update]` table is read whole from the host tier or `default/`,
+# never from a profile (see resolve_host_or_default_table); and the
 # `[profile]` section is PER-TIER — never resolved across tiers at all
 # (see read_post_install / read_removals).
 # Each section carries its own cross-tier rule, so `config.toml` is read
@@ -333,6 +335,67 @@ resolve_config_value() {
     if [[ -n "$v" ]]; then echo "$v"; return 0; fi
 
     echo ""
+}
+
+# Read a TOML table as one `key=value` line per key, in file order, each
+# value dequoted. Args: toml_file, selector (e.g. "cron.update").
+# Returns 0 when the table exists (an empty table prints nothing), 1 when
+# the file or the table is absent, and 2 on any other dasel failure,
+# which it reports on stderr.
+read_toml_table() {
+    local toml_file="$1"
+    local selector="$2"
+    [[ -f "$toml_file" ]] || return 1
+
+    # Any dasel read asserts the v3 contract exactly once per process.
+    require_dasel_v3
+
+    local sel count err rc i key value
+    sel="$(dasel_selector "$selector")"
+    err="$(mktemp)"
+    count="$("$DASEL" -i toml "len(${sel}.keys())" <"$toml_file" 2>"$err")"
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+        if grep -q 'map key not found' "$err"; then
+            rm -f "$err"
+            return 1
+        fi
+        echo "Error: dasel read failed for table '$selector' in $toml_file" >&2
+        cat "$err" >&2
+        rm -f "$err"
+        return 2
+    fi
+    rm -f "$err"
+    if [[ ! "$count" =~ ^[0-9]+$ ]]; then
+        echo "Error: dasel returned a non-numeric key count [$count] for table '$selector' in $toml_file" >&2
+        return 2
+    fi
+
+    for (( i = 0; i < count; i++ )); do
+        key="$("$DASEL" -i toml "${sel}.keys().get($i)" <"$toml_file")" || return 2
+        key="$(dequote_scalar "$key")"
+        value="$(read_toml_value "$toml_file" "$selector.$key")" || return 2
+        printf '%s=%s\n' "$key" "$value"
+    done
+}
+
+# Resolve a config.toml table that only the host tier and `default/` may
+# define, such as `[cron.update]`: the host tier's table when its
+# config.toml defines the selector, `default/`'s otherwise. The two are
+# never merged. Emits one `key=value` line per key, nothing when neither
+# tier defines the table, and returns non-zero on a failed read.
+# Args: repo_root, selector (e.g. "cron.update").
+resolve_host_or_default_table() {
+    local repo_root="$1"
+    local selector="$2"
+    local toml rc
+    for toml in "$(config_toml_path "$(host_tier_dir)")" \
+                "$(config_toml_path "$repo_root/default")"; do
+        read_toml_table "$toml" "$selector" && return 0
+        rc=$?
+        [[ $rc -eq 1 ]] || return "$rc"
+    done
+    return 0
 }
 
 # Resolve an AGGREGATE config.toml array across tiers: the union of the

@@ -94,6 +94,38 @@
 # mailto = "you@example.com"
 
 # ---------------------------------------------------------------------
+# [cron.update] — when `make schedule-update` runs `make update` on this
+# host. Each key names a set of days; its value is the HH:MM (24-hour) run
+# time on those days:
+#
+#   daily      every day
+#   weekdays   Mon-Fri
+#   weekend    Sat, Sun
+#   monday, tuesday, wednesday, thursday, friday, saturday, sunday
+#
+# A day no key covers gets no run; a day two keys cover is an error.
+#
+# Defining the table here replaces default/config.toml's whole table
+# (daily = "04:00"); keys from the two are never merged. Left commented
+# out, this host runs the default schedule. Re-run `make schedule-update`
+# after an edit.
+#
+# Each line below shows one key form; uncomment a set that covers each
+# day at most once, such as weekdays + saturday + sunday.
+# ---------------------------------------------------------------------
+# [cron.update]
+# daily     = "04:00"
+# weekdays  = "07:00"
+# weekend   = "10:00"
+# monday    = "07:00"
+# tuesday   = "07:00"
+# wednesday = "09:00"
+# thursday  = "07:00"
+# friday    = "08:00"
+# saturday  = "10:00"
+# sunday    = "11:00"
+
+# ---------------------------------------------------------------------
 # [autostart] — apps a LaunchAgent starts at every login.
 #
 # Unlike the sections above, both arrays AGGREGATE across every tier
