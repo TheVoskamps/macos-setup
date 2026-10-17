@@ -725,7 +725,9 @@ tier_label() {
 #
 # `[profile]` is the one config.toml section that is NOT resolved across
 # tiers. [claude]/[mailer]/[cron] answer "what is the value for this host",
-# so the highest tier with a value wins (resolve_config_value). [profile]
+# so the highest tier with a value wins (resolve_config_value), except
+# [cron.update], read whole from the host tier or else `default/`
+# (resolve_host_or_default_table), which a profile may not define. [profile]
 # answers "what does THIS tier contribute", so every tier's section applies
 # on its own, in tier order. Reading it is therefore a plain per-file read,
 # never a precedence walk.

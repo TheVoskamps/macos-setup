@@ -11,7 +11,9 @@
 #
 # The [claude], [mailer], and [cron] sections are SINGLE-WINNER: the
 # highest tier with a non-empty value for a given key wins (no per-key
-# merge). The `profiles` array is AGGREGATE — a default-tier `profiles`
+# merge). The exception is the [cron.update] table, read whole from the
+# host tier or else this file (resolve_host_or_default_table); a profile
+# may not define it. The `profiles` array is AGGREGATE — a default-tier `profiles`
 # array is PREPENDED to the host's, and dedup keeps the last occurrence.
 # The [autostart] section is AGGREGATE across every tier. See
 # scripts/config_common.sh.

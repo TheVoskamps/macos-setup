@@ -18,6 +18,8 @@
 # The [claude], [mailer], and [cron] sections are SINGLE-WINNER: the
 # highest tier with a non-empty value wins (no per-key merge), and this
 # host-tier file outranks both the profiles and the default tier. The
+# exception is the [cron.update] table, read whole from this file or else
+# default/config.toml, never merged; a profile may not define it. The
 # `profiles` array is AGGREGATE — see the `profiles` block below — and
 # so is the [autostart] section.
 #
