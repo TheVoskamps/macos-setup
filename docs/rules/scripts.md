@@ -40,6 +40,7 @@
 | `send_mail.sh`                  | Send one email through msmtp              |
 | `resolve_repo_root.sh`          | Resolve the repo root via `~/.zsh-shared` |
 | `launchagent_runner.sh`         | LaunchAgent entry point; per-job log      |
+| `schedule_update.sh`            | Update LaunchAgent from `[cron.update]`   |
 | `self_update.sh`                | Pull latest `main`; auto-stash if dirty   |
 | `mas_export.sh`                 | Emit Brewfile `mas` lines for this Mac    |
 | `diagnose.sh`                   | Run system diagnostics                    |

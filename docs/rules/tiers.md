@@ -20,7 +20,10 @@ special-casing a caller.
 `profiles` array is read only through `get_profiles` and its variants.
 `[autostart]` is an aggregate section: `resolve_config_array_aggregate`
 unions each of its arrays across every tier, and `resolve_autostart_apps`
-removes every excluded name from the union of `apps`. A tier's
+removes every excluded name from the union of `apps`. The
+`[cron.update]` table is read whole through
+`resolve_host_or_default_table`, from the host tier or else `default/`,
+and a profile may not define it. A tier's
 `[profile]` section is read only through `read_post_install` and
 `read_removals`, which never consult another tier.
 

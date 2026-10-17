@@ -11,14 +11,17 @@
 #
 # The [claude], [mailer], and [cron] sections are SINGLE-WINNER: the
 # highest tier with a non-empty value for a given key wins (no per-key
-# merge). The `profiles` array is AGGREGATE — a default-tier `profiles`
+# merge). The exception is the [cron.update] table, read whole from the
+# host tier or else this file (resolve_host_or_default_table); a profile
+# may not define it. The `profiles` array is AGGREGATE — a default-tier `profiles`
 # array is PREPENDED to the host's, and dedup keeps the last occurrence.
 # The [autostart] section is AGGREGATE across every tier. See
 # scripts/config_common.sh.
 #
-# The [mailer] section ships with active shared relay defaults (the
-# default tier resolves at runtime); [claude], [cron], and the profiles
-# array stay commented out as in-place documentation. Override per-host
+# The [mailer] section and the [cron.update] table ship with active
+# defaults (the default tier resolves at runtime); [claude], [cron]
+# mailto, and the profiles array stay commented out as in-place
+# documentation. Override per-host
 # by editing config.toml in your
 # external host tier (${XDG_CONFIG_HOME:-~/.config}/macos-setup/config.toml,
 # seeded from computer-specific/_template/config.toml), or per-profile at
@@ -83,6 +86,15 @@ keychain_service = "msmtp"
 # Email address that scheduled LaunchAgent jobs send their output to.
 # When unset, jobs write to a per-job log file instead.
 # mailto = "you@example.com"
+
+# [cron.update] — when `make schedule-update` runs `make update`. Each key
+# names a set of days (daily, weekdays, weekend, monday ... sunday) and its
+# value is the HH:MM (24-hour) run time on those days. Override it ONLY
+# from the host tier: a host-tier [cron.update] replaces this whole table,
+# keys are never merged, and a profile that defines it makes
+# `make schedule-update` fail.
+[cron.update]
+daily = "04:00"
 
 # [autostart] — apps a LaunchAgent starts at every login.
 # Unlike [claude]/[mailer]/[cron], both arrays AGGREGATE across every tier
