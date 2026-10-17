@@ -74,6 +74,8 @@ day_abbrev() {
     esac
 }
 
+# Print the full name of a launchd weekday, 0 (Sunday) through 6; nothing
+# for any other value.
 day_name() {
     case "$1" in
         0) echo Sunday ;; 1) echo Monday ;; 2) echo Tuesday ;; 3) echo Wednesday ;;
@@ -100,7 +102,8 @@ key_days() {
 
 # Fail, naming the file, when any profile's config.toml defines
 # [cron.update]: the table schedules the whole host, so only the host tier
-# and default/ may carry it.
+# and default/ may carry it. Also fails when reading a profile's table
+# fails, leaving read_toml_table's report on stderr.
 check_profiles() {
     local toml rc
     for toml in "$REPO_ROOT"/profiles/*/config.toml; do
@@ -155,7 +158,8 @@ resolve_schedule() {
     return 0
 }
 
-# Write the update plist to the given path from DAY_TIME.
+# Write the update plist to the given path from DAY_TIME and DAILY_ONLY,
+# which resolve_schedule must already have filled.
 # Args: plist, mailto (empty for log only)
 write_plist() {
     local plist="$1" mailto="$2"
@@ -198,6 +202,8 @@ write_plist() {
     "$PLIST_BUDDY" -c "Add :EnvironmentVariables:PATH string /opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin" "$plist"
 }
 
+# Boot out and delete each legacy plist present under LAUNCH_AGENTS_DIR,
+# printing a line for each one removed.
 remove_legacy() {
     local label plist
     for label in "${LEGACY_LABELS[@]}"; do
@@ -209,6 +215,8 @@ remove_legacy() {
     done
 }
 
+# Run the install subcommand. Exits the script, rather than returning, on
+# any failure.
 install() {
     local mailto plist
     check_profiles || exit 1
