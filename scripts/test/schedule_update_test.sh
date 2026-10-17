@@ -25,6 +25,7 @@ PLIST_BUDDY=/usr/libexec/PlistBuddy
 
 pass=0
 fail=0
+# Pass when got equals want. Args: got, want, case label.
 ok() {
   if [[ "$1" == "$2" ]]; then
     echo "PASS: $3"; ((pass++))

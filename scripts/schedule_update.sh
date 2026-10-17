@@ -52,7 +52,9 @@ LEGACY_LABELS=(com.macos-setup.daily-update com.macos-setup.weekly-update)
 DAY_ORDER=(1 2 3 4 5 6 0)
 TIME_RE='^([01][0-9]|2[0-3]):[0-5][0-9]$'
 
-# Filled by resolve_schedule, indexed by launchd weekday.
+# Filled by resolve_schedule. DAY_TIME holds each day's run time and
+# DAY_KEY the key that set it, both indexed by launchd weekday;
+# DAILY_ONLY is non-empty when the table's one key is `daily`.
 DAY_TIME=()
 DAY_KEY=()
 DAILY_ONLY=""
@@ -316,6 +318,9 @@ describe() {
     echo "  $label: $status | $(schedule_text "$plist") | $email$suffix"
 }
 
+# Run the list subcommand: a line for the update plist, one for each legacy
+# plist present, flagged for replacement, then one for each named plist.
+# Args: plist-name...
 list() {
     local label name
     describe "$LABEL.plist"
