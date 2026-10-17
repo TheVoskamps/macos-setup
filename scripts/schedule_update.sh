@@ -57,6 +57,10 @@ DAY_TIME=()
 DAY_KEY=()
 DAILY_ONLY=""
 
+# The install staging directory, global so the EXIT trap can still read it
+# once install has returned.
+STAGING=""
+
 err() {
     echo "Error: $*" >&2
 }
@@ -206,17 +210,16 @@ remove_legacy() {
 }
 
 install() {
-    local mailto plist staging
+    local mailto plist
     check_profiles || exit 1
     resolve_schedule || exit 1
     mailto="$("$SCRIPT_DIR/resolve_mailto.sh")" || exit 1
 
-    staging="$(mktemp -d)"
-    # shellcheck disable=SC2064 # expand now: the variable is local.
-    trap "rm -rf '$staging'" EXIT
-    write_plist "$staging/$LABEL.plist" "$mailto"
+    STAGING="$(mktemp -d)"
+    trap 'rm -rf "$STAGING"' EXIT
+    write_plist "$STAGING/$LABEL.plist" "$mailto"
 
-    echo "Setting up the update LaunchAgent: $(schedule_text "$staging/$LABEL.plist")"
+    echo "Setting up the update LaunchAgent: $(schedule_text "$STAGING/$LABEL.plist")"
     if [[ -n "$mailto" ]]; then
         echo "Email notifications enabled: $mailto"
     else
@@ -227,7 +230,7 @@ install() {
     remove_legacy
     plist="$LAUNCH_AGENTS_DIR/$LABEL.plist"
     launchctl bootout "gui/$(id -u)" "$plist" 2>/dev/null || true
-    cp "$staging/$LABEL.plist" "$plist"
+    cp "$STAGING/$LABEL.plist" "$plist"
     launchctl bootstrap "gui/$(id -u)" "$plist"
     echo "Update LaunchAgent installed and loaded: $plist"
     echo "Logs: $LAUNCHAGENT_LOG_DIR/$JOB.log"
@@ -297,7 +300,7 @@ describe() {
         fi
     elif [[ "$prog" == *mail_wrapper* ]]; then
         mailto="$("$PLIST_BUDDY" -c "Print :ProgramArguments:1" "$plist" 2>/dev/null || true)"
-        email="email to $mailto (legacy plist; re-run schedule-* to upgrade)"
+        email="email to $mailto (legacy plist; re-run make schedule-update to upgrade)"
     else
         email="no email (log only)"
     fi
