@@ -99,14 +99,20 @@ print_line() {
   fi
 }
 
+# _check_cask_installed and _check_brew_cli do every lookup by the bare
+# token — the name with any `<user>/<tap>/` prefix stripped — because an
+# app bundle and a PATH entry never carry the prefix and
+# `brew list --cask --versions` fails on a tap-qualified name. The printed
+# line keeps the name as the Brewfile writes it.
 _check_cask_installed() {
   local cask="$1"
-  local app="$(_cask_to_app "$cask")"
+  local token="${cask##*/}"
+  local app="$(_cask_to_app "$token")"
   if [[ -d "/Applications/$app.app" || -d "$HOME/Applications/$app.app" ]]; then
     print_line "cask" "$cask" "installed" "$app"
     return 0
   fi
-  if brew list --cask --versions "$cask" >/dev/null 2>&1; then
+  if brew list --cask --versions "$token" >/dev/null 2>&1; then
     print_line "cask" "$cask" "installed" "present in brew list"
     return 0
   fi
@@ -125,8 +131,9 @@ _version_of() {
 
 _check_brew_cli() {
   local name="$1"
-  if command -v "$name" >/dev/null 2>&1; then
-    local v=""; v="$(_version_of "$name")" || true
+  local token="${name##*/}"
+  if command -v "$token" >/dev/null 2>&1; then
+    local v=""; v="$(_version_of "$token")" || true
     if [[ -n "$v" ]]; then
       v="$(echo "$v" | head -n1)"
       print_line "brew" "$name" "installed" "$v"
@@ -135,7 +142,7 @@ _check_brew_cli() {
     fi
     return 0
   fi
-  if brew list --versions "$name" >/dev/null 2>&1; then
+  if brew list --versions "$token" >/dev/null 2>&1; then
     print_line "brew" "$name" "installed" "in brew list (not on PATH?)"
     return 0
   fi

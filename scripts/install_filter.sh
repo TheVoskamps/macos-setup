@@ -35,9 +35,16 @@
 #
 # Lines that don't match are passed through verbatim.
 #
+# A `brew` or `cask` line matches by its bare token: the name with any
+# `<user>/<tap>/` prefix stripped, compared against the removal
+# identifier stripped the same way. So `cask:lstk` and
+# `cask:localstack/tap/lstk` each filter both `cask 'lstk'` and
+# `cask 'localstack/tap/lstk'`, and likewise for `brew:`.
+#
 # SIDE EFFECT (not a pure text transform): for every `tap '<name>'`
-# directive that SURVIVES filtering into the emitted output, this script
-# runs `brew trust --tap "<name>"` before returning. Homebrew 6.0 made
+# directive, and every `brew` or `cask` line tap-qualified as
+# `<user>/<tap>/<name>`, that SURVIVES filtering into the emitted output,
+# this script runs `brew trust --tap` on that tap once before returning. Homebrew 6.0 made
 # `brew trust` required for third-party taps; until a tap is trusted,
 # `brew bundle` silently skips its formulae/casks and still exits 0, so
 # the failure-tolerant install loop reports success while nothing
@@ -47,7 +54,8 @@
 # `brew bundle`. `brew trust` on an already-trusted tap is a no-op, so
 # this is idempotent across re-runs. A tap whose only formula/cask was
 # commented out by the removal filter is trusted ONLY if its own `tap` line
-# still emits — the conservative behavior.
+# still emits, or another tap-qualified entry naming it does — the
+# conservative behavior.
 
 set -uo pipefail
 
@@ -192,8 +200,8 @@ for tier in "${scope[@]}"; do
       }
       IFS=$'\t' read -r e_kind e_id _e_label <<< "$parsed"
       case "$e_kind" in
-        brew) record "$BREW_MAP" "$e_id" "$label ($kind)" ;;
-        cask) record "$CASK_MAP" "$e_id" "$label ($kind)" ;;
+        brew) record "$BREW_MAP" "${e_id##*/}" "$label ($kind)" ;;
+        cask) record "$CASK_MAP" "${e_id##*/}" "$label ($kind)" ;;
         mas)  record "$MAS_MAP"  "$e_id" "$label ($kind)" ;;
       esac
     done < <(read_removals "$tier" "$kind")
@@ -218,17 +226,31 @@ OUT="$(mktemp -t install-filter)"
 # `BREW=`); defaults to whatever `brew` is on PATH.
 BREW="${BREW:-brew}"
 
+# Taps already trusted this run, newline-delimited, so a tap reached from
+# several lines is trusted once.
+trusted_taps=$'\n'
+trust_tap() {
+  local tap="$1"
+  [[ "$trusted_taps" == *$'\n'"$tap"$'\n'* ]] && return 0
+  trusted_taps+="$tap"$'\n'
+  "$BREW" trust --tap "$tap" >&2 \
+    || echo "[install-filter] WARNING: 'brew trust --tap $tap' failed; brew bundle may skip its packages" >&2
+}
+
 while IFS= read -r raw || [[ -n "$raw" ]]; do
   body="${raw%%#*}"
   trimmed="$(echo "$body" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
 
   marker=""
+  pkg=""   # the brew/cask name as the Brewfile writes it
   if [[ -n "$trimmed" ]]; then
     if [[ "$trimmed" =~ ^brew[[:space:]]+[\"\']([^\"\']+)[\"\'] ]]; then
-      src="$(lookup "$BREW_MAP" "${BASH_REMATCH[1]}")"
+      pkg="${BASH_REMATCH[1]}"
+      src="$(lookup "$BREW_MAP" "${pkg##*/}")"
       [[ -n "$src" ]] && marker="$src"
     elif [[ "$trimmed" =~ ^cask[[:space:]]+[\"\']([^\"\']+)[\"\'] ]]; then
-      src="$(lookup "$CASK_MAP" "${BASH_REMATCH[1]}")"
+      pkg="${BASH_REMATCH[1]}"
+      src="$(lookup "$CASK_MAP" "${pkg##*/}")"
       [[ -n "$src" ]] && marker="$src"
     elif [[ "$trimmed" =~ ^mas[[:space:]]+[\"\'][^\"\']+[\"\'][[:space:]]*,[[:space:]]*id[:=][[:space:]]*([0-9]+) ]]; then
       src="$(lookup "$MAS_MAP" "${BASH_REMATCH[1]}")"
@@ -243,12 +265,14 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
     } >> "$OUT"
   else
     # This line is being EMITTED verbatim. If it is a `tap '<name>'`
-    # directive, trust the tap now so the caller's `brew bundle` does
-    # not silently skip its formulae/casks (issue #172; see the header
-    # comment for the full rationale). `brew trust` is idempotent.
+    # directive, or a brew/cask entry tap-qualified as
+    # `<user>/<tap>/<name>`, trust the tap now so the caller's
+    # `brew bundle` does not silently skip its formulae/casks (issue #172;
+    # see the header comment for the full rationale).
     if [[ "$trimmed" =~ ^tap[[:space:]]+[\"\']([^\"\']+)[\"\'] ]]; then
-      "$BREW" trust --tap "${BASH_REMATCH[1]}" >&2 \
-        || echo "[install-filter] WARNING: 'brew trust --tap ${BASH_REMATCH[1]}' failed; brew bundle may skip its packages" >&2
+      trust_tap "${BASH_REMATCH[1]}"
+    elif [[ "$pkg" == */*/* ]]; then
+      trust_tap "${pkg%/*}"
     fi
     printf '%s\n' "$raw" >> "$OUT"
   fi
