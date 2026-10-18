@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Tests for install_filter.sh on tap-qualified (`<user>/<tap>/<name>`)
-# Brewfile entries (issue #89).
+# Brewfile entries.
 #
 # The removal filter compares bare tokens — the name with any
 # `<user>/<tap>/` prefix stripped — on both the Brewfile and the removal
@@ -27,6 +27,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 pass=0
 fail=0
 ok() {
+  # ok <actual> <want> <label>
   if [[ "$1" == "$2" ]]; then echo "PASS: $3"; ((pass++)); else echo "FAIL: $3 -- got [$1] want [$2]"; ((fail++)); fi
 }
 ok_contains() {

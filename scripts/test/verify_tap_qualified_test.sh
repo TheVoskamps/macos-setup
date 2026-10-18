@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Tests for verify.sh on tap-qualified (`<user>/<tap>/<name>`) Brewfile
-# entries (issue #89).
+# entries.
 #
 # `brew list --cask --versions` fails on a tap-qualified cask name, and
 # `command -v` never finds a name containing `/`, so verify.sh looks a

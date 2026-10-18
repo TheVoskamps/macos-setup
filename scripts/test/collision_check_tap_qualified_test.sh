@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Tests for collision_check.sh on tap-qualified (`<user>/<tap>/<name>`)
-# Brewfile entries and removal identifiers (issue #89).
+# Brewfile entries and removal identifiers.
 #
 # A same-tier collision compares bare tokens — the name with any
 # `<user>/<tap>/` prefix stripped — on both the Brewfile and the removal

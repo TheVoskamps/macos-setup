@@ -44,11 +44,11 @@
 # SIDE EFFECT (not a pure text transform): for every `tap '<name>'`
 # directive, and every `brew` or `cask` line tap-qualified as
 # `<user>/<tap>/<name>`, that SURVIVES filtering into the emitted output,
-# this script runs `brew trust --tap` on that tap once before returning. Homebrew 6.0 made
-# `brew trust` required for third-party taps; until a tap is trusted,
-# `brew bundle` silently skips its formulae/casks and still exits 0, so
-# the failure-tolerant install loop reports success while nothing
-# installs (issue #172). Because `install_filter.sh` is the single
+# this script runs `brew trust --tap` on that tap once before returning.
+# Homebrew 6.0 made `brew trust` required for third-party taps; until a
+# tap is trusted, `brew bundle` silently skips its formulae/casks and
+# still exits 0, so the failure-tolerant install loop reports success
+# while nothing installs (issue #172). Because `install_filter.sh` is the single
 # chokepoint every `brew bundle` invocation routes through, trusting the
 # emitted taps here guarantees they are trusted before the caller runs
 # `brew bundle`. `brew trust` on an already-trusted tap is a no-op, so
@@ -229,6 +229,10 @@ BREW="${BREW:-brew}"
 # Taps already trusted this run, newline-delimited, so a tap reached from
 # several lines is trusted once.
 trusted_taps=$'\n'
+
+# trust_tap <tap> — runs `brew trust --tap <tap>` the first time this run
+# sees <tap>, and does nothing on a repeat. A failed trust prints a warning
+# to stderr and still returns 0, so the filter goes on to emit its output.
 trust_tap() {
   local tap="$1"
   [[ "$trusted_taps" == *$'\n'"$tap"$'\n'* ]] && return 0
@@ -267,8 +271,8 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
     # This line is being EMITTED verbatim. If it is a `tap '<name>'`
     # directive, or a brew/cask entry tap-qualified as
     # `<user>/<tap>/<name>`, trust the tap now so the caller's
-    # `brew bundle` does not silently skip its formulae/casks (issue #172;
-    # see the header comment for the full rationale).
+    # `brew bundle` does not silently skip its formulae/casks (see the
+    # header comment for the full rationale).
     if [[ "$trimmed" =~ ^tap[[:space:]]+[\"\']([^\"\']+)[\"\'] ]]; then
       trust_tap "${BASH_REMATCH[1]}"
     elif [[ "$pkg" == */*/* ]]; then
