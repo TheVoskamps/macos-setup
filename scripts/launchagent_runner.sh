@@ -4,8 +4,8 @@
 # LaunchAgents. Resolves the repo root at run time (via
 # `scripts/resolve_repo_root.sh`), `cd`s into it, redirects stdout
 # and stderr to `~/Library/Logs/macos-setup/<job>.log`, then `exec`s
-# the requested command. Used by `make schedule-daily`,
-# `make schedule-weekly`, `make schedule-now`,
+# the requested command. Used by `make schedule-update` (through
+# `scripts/schedule_update.sh`), `make schedule-now`,
 # `make schedule-email-test`, and the autostart LaunchAgent that
 # `scripts/autostart_setup.sh` writes.
 #
@@ -67,8 +67,7 @@
 #       the log.
 #
 # <job> is a short identifier used as the log filename (e.g.
-# `daily-update`, `weekly-update`, `now-update`, `email-test`,
-# `autostart`).
+# `macos-setup-update`, `now-update`, `email-test`, `autostart`).
 
 set -euo pipefail
 

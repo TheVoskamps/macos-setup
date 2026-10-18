@@ -419,20 +419,59 @@ remove the `.bak` files when satisfied.
 Set up automatic system updates using LaunchAgents:
 
 ```bash
-# Daily updates at 4am
-make schedule-daily
-
-# Weekly updates on Sundays at 11am
-make schedule-weekly
+# Run make update on the days and times [cron.update] sets
+make schedule-update
 
 # Remove every macos-setup LaunchAgent, the login
 # autostart agent included
 make unschedule-all
 ```
 
+`make schedule-update` writes one LaunchAgent,
+`com.macos-setup.update`, from the `[cron.update]` table
+in `config.toml`. Each key names a set of days and its
+value is the `HH:MM` (24-hour) run time on those days:
+
+| Key                 | Days      |
+| ------------------- | --------- |
+| `daily`             | every day |
+| `weekdays`          | Mon–Fri   |
+| `weekend`           | Sat, Sun  |
+| `monday` … `sunday` | that day  |
+
+A day no key covers gets no run. A day two keys cover, an
+unknown key, and a malformed time each fail the target,
+naming the offender, before any plist is written or
+removed.
+
+```toml
+[cron.update]
+weekdays = "07:00"
+saturday = "10:00"
+sunday   = "11:00"
+```
+
+The table schedules the whole host, so it resolves
+differently from the other `config.toml` sections: the
+host tier's `[cron.update]`, when present, replaces
+`default/`'s **whole** table (`daily = "04:00"`), keys
+from the two are never merged, and a profile may not
+define it — `make schedule-update` fails, naming the
+profile's `config.toml`, if one does. Re-run
+`make schedule-update` after editing the table.
+
+`make schedule-update` and `make unschedule-all` also boot
+out and delete the `com.macos-setup.daily-update` and
+`com.macos-setup.weekly-update` plists that earlier
+versions of this repo wrote, so a machine never runs the
+update twice.
+
 `make schedule-list` shows every macos-setup LaunchAgent
-with its schedule; the autostart agent shows as
-`At login`.
+with its expanded schedule (e.g.
+`Mon 07:00, Wed 09:00, Fri 08:00`, or `Daily at 04:00`);
+the autostart agent shows as `At login`, and a legacy
+daily or weekly plist is flagged with a pointer to
+`make schedule-update`.
 
 LaunchAgents run in the user's login session, providing
 access to the macOS Keychain for email credentials.
@@ -478,8 +517,8 @@ tier wins), scheduled jobs pipe through `mail_wrapper.sh` to email
 output (with success/failure in the subject line).
 Without it, output goes to
 `~/Library/Logs/macos-setup/<job>.log` (e.g.
-`daily-update.log`, `weekly-update.log`,
-`now-update.log`, `email-test.log`); Console.app
+`macos-setup-update.log`, `now-update.log`,
+`email-test.log`); Console.app
 surfaces these.
 
 Generated plists embed no repo-specific absolute paths.
@@ -522,8 +561,8 @@ make core
 # 5. Test the configuration
 make email-test
 
-# 6. Install scheduled jobs to pick up email config
-make schedule-daily    # or make schedule-weekly
+# 6. Install the scheduled update to pick up email config
+make schedule-update
 ```
 
 The core tier's `msmtp_setup.sh` post-install action
@@ -633,7 +672,10 @@ config knobs (`[claude]`, `[mailer]`, `[cron]`) live in a
 single per-tier `config.toml`, queried with `dasel` (a hard
 runtime dependency that must be **exactly major version 3**;
 the read layer asserts this and hard-aborts loudly on a
-non-v3 dasel), and resolve **single-winner** per section. Two parts of
+non-v3 dasel), and resolve **single-winner** per section. The
+`[cron.update]` table is the exception: it is read
+**whole** from the host tier, or else from `default/`,
+never merged and never from a profile. Two parts of
 `config.toml` are **aggregate** instead: the `profiles`
 array (a default-tier array is prepended to the host's)
 and the `[autostart]` section (its `apps` and `exclude`
@@ -665,9 +707,11 @@ profiles/
 │   └── config.toml             # Optional. [profile] post_install /
 │                               # uninstall / purge (per-tier), any
 │                               # [claude]/[mailer]/[cron] overrides
-│                               # (single-winner per section), and the
-│                               # [autostart] apps this profile adds
-│                               # (aggregate)
+│                               # (single-winner per section; never
+│                               # [cron.update], which only the host
+│                               # tier and default/ may define), and
+│                               # the [autostart] apps this profile
+│                               # adds (aggregate)
 ├── claude-code-aliases/        # Mostly an aliases.zsh: the cr Claude
 │   ├── aliases.zsh             # wrapper (--cr-strict refuses to run
 │   └── Brewfile                # outside a repo with an origin), the
@@ -688,11 +732,13 @@ default/                            # The CORE tier (lowest), in repo root
 ├── aliases.zsh
 ├── config.toml                 # Core config: [claude]
 │                               # (branch/hostname), [mailer], [cron],
-│                               # [autostart], and the profiles array.
-│                               # [mailer] ships with active shared relay
-│                               # defaults (the default tier resolves at
-│                               # runtime); [claude], [cron], [autostart],
-│                               # and profiles stay
+│                               # [cron.update], [autostart], and the
+│                               # profiles array. [mailer] ships with
+│                               # active shared relay defaults and
+│                               # [cron.update] with daily = "04:00"
+│                               # (the default tier resolves at
+│                               # runtime); [claude], [cron] mailto,
+│                               # [autostart], and profiles stay
 │                               # commented out as in-place docs. Also
 │                               # carries the core tier's [profile]
 │                               # section (post_install / uninstall /
@@ -721,7 +767,8 @@ computer-specific/                  # IN REPO: only _template/
 └── _template/                  # Seed for the EXTERNAL host tier
     ├── README.md               # Documents the host tier
     ├── config.toml             # profiles array + [claude]/[mailer]/
-    │                           # [cron]/[autostart] (all commented out)
+    │                           # [cron]/[cron.update]/[autostart]
+    │                           # (all commented out)
     ├── aliases.zsh
     ├── .vscode/settings.json
     └── .cdk.json
@@ -731,9 +778,11 @@ computer-specific/                  # IN REPO: only _template/
 ${XDG_CONFIG_HOME:-~/.config}/macos-setup/   # override: MACOS_SETUP_HOST_DIR
 ├── config.toml                 # Consolidated config: the profiles
 │                               # array (lowest first), the [claude],
-│                               # [mailer], [cron] sections, and the
-│                               # [autostart] apps this host adds or
-│                               # excludes
+│                               # [mailer], [cron] sections, the
+│                               # [cron.update] table that replaces
+│                               # default/'s whole table when set, and
+│                               # the [autostart] apps this host adds
+│                               # or excludes
 ├── .vscode/settings.json
 ├── .hammerspoon/
 │   ├── init.lua

@@ -33,8 +33,9 @@
 default/
   Brewfile          # the core tier's packages
   config.toml       # [profile] post_install / uninstall / purge, the
-                    # [claude] / [mailer] / [cron] scalar sections, and
-                    # the aggregate [autostart] section
+                    # [claude] / [mailer] / [cron] scalar sections, the
+                    # [cron.update] table (daily = "04:00"), and the
+                    # aggregate [autostart] section
   aliases.zsh
   .hammerspoon/
 
@@ -67,7 +68,10 @@ purge = ["cask:qblocker", "mas:1365531024:1Blocker"]
 
 `[profile]` is the one config.toml section that is **not resolved across
 tiers**. `[claude]`, `[mailer]`, and `[cron]` answer "what is the value
-for this host", so the highest tier with a value wins. `[autostart]`
+for this host", so the highest tier with a value wins — except the
+`[cron.update]` table, which schedules the whole host's update and is
+read whole from the host tier or else `default/`, never merged across
+the two and never from a profile. `[autostart]`
 answers "what does every tier want started at login", so its `apps` and
 `exclude` arrays are unioned across tiers, and an excluded name is dropped
 whichever tier lists it. `[profile]` answers "what does *this* tier

@@ -695,8 +695,7 @@ outdated: require-dasel ## Check for outdated formulae, casks, MAS apps, and man
 
 # --- Schedule automation targets (LaunchAgent) ---
 LAUNCH_AGENTS_DIR := $(HOME)/Library/LaunchAgents
-DAILY_PLIST := com.macos-setup.daily-update.plist
-WEEKLY_PLIST := com.macos-setup.weekly-update.plist
+UPDATE_PLIST := com.macos-setup.update.plist
 EMAIL_TEST_PLIST := com.macos-setup.email-test.plist
 # LaunchAgent runner location. The plist embeds this absolute path
 # as ProgramArguments[0].
@@ -722,123 +721,24 @@ EMAIL_TEST_PLIST := com.macos-setup.email-test.plist
 LAUNCHAGENT_RUNNER := $(HOME)/.zsh-shared/launchagent_runner
 LAUNCHAGENT_LOG_DIR := $(HOME)/Library/Logs/macos-setup
 
-.PHONY: schedule-daily schedule-weekly schedule-now unschedule-all schedule-list email-test schedule-email-test
+# scripts/schedule_update.sh owns the update LaunchAgent and the legacy
+# daily/weekly plists; it gets the same agent, log, and runner paths the
+# other schedule targets use.
+SCHEDULE_UPDATE := LAUNCH_AGENTS_DIR="$(LAUNCH_AGENTS_DIR)" \
+	LAUNCHAGENT_LOG_DIR="$(LAUNCHAGENT_LOG_DIR)" \
+	LAUNCHAGENT_RUNNER="$(LAUNCHAGENT_RUNNER)" \
+	$(BASH_BIN) scripts/schedule_update.sh
+
+.PHONY: schedule-update schedule-now unschedule-all schedule-list email-test schedule-email-test
 
 schedule-list: ## Show currently installed macos-setup LaunchAgents and their status
-	@for PLIST_NAME in "$(DAILY_PLIST)" "$(WEEKLY_PLIST)" "com.macos-setup.now-update.plist" "$(EMAIL_TEST_PLIST)" "com.macos-setup.autostart.plist"; do \
-		LABEL="$${PLIST_NAME%.plist}"; \
-		PLIST_PATH="$(LAUNCH_AGENTS_DIR)/$$PLIST_NAME"; \
-		if [ -f "$$PLIST_PATH" ]; then \
-			if launchctl list "$$LABEL" >/dev/null 2>&1; then \
-				STATUS="loaded"; \
-			else \
-				STATUS="installed but not loaded"; \
-			fi; \
-			HOUR=$$(/usr/libexec/PlistBuddy -c "Print :StartCalendarInterval:Hour" "$$PLIST_PATH" 2>/dev/null); \
-			MINUTE=$$(/usr/libexec/PlistBuddy -c "Print :StartCalendarInterval:Minute" "$$PLIST_PATH" 2>/dev/null); \
-			WEEKDAY=$$(/usr/libexec/PlistBuddy -c "Print :StartCalendarInterval:Weekday" "$$PLIST_PATH" 2>/dev/null); \
-			if [ -z "$$HOUR" ]; then \
-				SCHEDULE="At login"; \
-			elif [ -n "$$WEEKDAY" ]; then \
-				SCHEDULE="Sundays at $$(printf '%02d:%02d' "$$HOUR" "$$MINUTE")"; \
-			else \
-				SCHEDULE="Daily at $$(printf '%02d:%02d' "$$HOUR" "$$MINUTE")"; \
-			fi; \
-			PROG=$$(/usr/libexec/PlistBuddy -c "Print :ProgramArguments:0" "$$PLIST_PATH" 2>/dev/null); \
-			if echo "$$PROG" | grep -q launchagent_runner; then \
-				MODE_ARG=$$(/usr/libexec/PlistBuddy -c "Print :ProgramArguments:2" "$$PLIST_PATH" 2>/dev/null); \
-				if [ "$$MODE_ARG" = "--mail" ]; then \
-					MAILTO=$$(/usr/libexec/PlistBuddy -c "Print :ProgramArguments:3" "$$PLIST_PATH" 2>/dev/null); \
-					EMAIL="email to $$MAILTO"; \
-				else \
-					EMAIL="no email (log only)"; \
-				fi; \
-			elif echo "$$PROG" | grep -q mail_wrapper; then \
-				MAILTO=$$(/usr/libexec/PlistBuddy -c "Print :ProgramArguments:1" "$$PLIST_PATH" 2>/dev/null); \
-				EMAIL="email to $$MAILTO (legacy plist; re-run schedule-* to upgrade)"; \
-			else \
-				EMAIL="no email (log only)"; \
-			fi; \
-			echo "  $$LABEL: $$STATUS | $$SCHEDULE | $$EMAIL"; \
-		else \
-			echo "  $${PLIST_NAME%.plist}: not installed"; \
-		fi; \
-	done
-schedule-daily: ## Schedule daily automatic update at 4am via LaunchAgent (email if [cron] mailto configured)
-	@echo "Setting up daily LaunchAgent for make update at 4am..."
-	@MAILTO=$$(scripts/resolve_mailto.sh) || exit 1; \
-	PLIST="$(LAUNCH_AGENTS_DIR)/$(DAILY_PLIST)"; \
-	mkdir -p "$(LAUNCH_AGENTS_DIR)"; \
-	mkdir -p "$(LAUNCHAGENT_LOG_DIR)"; \
-	launchctl bootout gui/$$(id -u) "$$PLIST" 2>/dev/null || true; \
-	rm -f "$$PLIST"; \
-	/usr/libexec/PlistBuddy -c "Clear dict" "$$PLIST"; \
-	/usr/libexec/PlistBuddy -c "Add :Label string com.macos-setup.daily-update" "$$PLIST"; \
-	/usr/libexec/PlistBuddy -c "Add :ProgramArguments array" "$$PLIST"; \
-	/usr/libexec/PlistBuddy -c "Add :ProgramArguments:0 string $(LAUNCHAGENT_RUNNER)" "$$PLIST"; \
-	/usr/libexec/PlistBuddy -c "Add :ProgramArguments:1 string daily-update" "$$PLIST"; \
-	if [ -n "$$MAILTO" ]; then \
-		echo "Email notifications enabled: $$MAILTO"; \
-		/usr/libexec/PlistBuddy -c "Add :ProgramArguments:2 string --mail" "$$PLIST"; \
-		/usr/libexec/PlistBuddy -c "Add :ProgramArguments:3 string $$MAILTO" "$$PLIST"; \
-		/usr/libexec/PlistBuddy -c "Add :ProgramArguments:4 string macos-setup daily update" "$$PLIST"; \
-		/usr/libexec/PlistBuddy -c "Add :ProgramArguments:5 string --" "$$PLIST"; \
-		/usr/libexec/PlistBuddy -c "Add :ProgramArguments:6 string make" "$$PLIST"; \
-		/usr/libexec/PlistBuddy -c "Add :ProgramArguments:7 string update" "$$PLIST"; \
-	else \
-		echo "No mailto configured — output to log only"; \
-		/usr/libexec/PlistBuddy -c "Add :ProgramArguments:2 string --" "$$PLIST"; \
-		/usr/libexec/PlistBuddy -c "Add :ProgramArguments:3 string make" "$$PLIST"; \
-		/usr/libexec/PlistBuddy -c "Add :ProgramArguments:4 string update" "$$PLIST"; \
-	fi; \
-	/usr/libexec/PlistBuddy -c "Add :StartCalendarInterval dict" "$$PLIST"; \
-	/usr/libexec/PlistBuddy -c "Add :StartCalendarInterval:Hour integer 4" "$$PLIST"; \
-	/usr/libexec/PlistBuddy -c "Add :StartCalendarInterval:Minute integer 0" "$$PLIST"; \
-	/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables dict" "$$PLIST"; \
-	/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:PATH string /opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin" "$$PLIST"; \
-	launchctl bootstrap gui/$$(id -u) "$$PLIST"; \
-	echo "Daily LaunchAgent installed and loaded: $$PLIST"; \
-	echo "Logs: $(LAUNCHAGENT_LOG_DIR)/daily-update.log"
+	@$(SCHEDULE_UPDATE) list "com.macos-setup.now-update.plist" "$(EMAIL_TEST_PLIST)" "com.macos-setup.autostart.plist"
 
-schedule-weekly: ## Schedule weekly automatic update on Sundays at 11am via LaunchAgent (email if [cron] mailto configured)
-	@echo "Setting up weekly LaunchAgent for make update on Sundays at 11am..."
-	@MAILTO=$$(scripts/resolve_mailto.sh) || exit 1; \
-	PLIST="$(LAUNCH_AGENTS_DIR)/$(WEEKLY_PLIST)"; \
-	mkdir -p "$(LAUNCH_AGENTS_DIR)"; \
-	mkdir -p "$(LAUNCHAGENT_LOG_DIR)"; \
-	launchctl bootout gui/$$(id -u) "$$PLIST" 2>/dev/null || true; \
-	rm -f "$$PLIST"; \
-	/usr/libexec/PlistBuddy -c "Clear dict" "$$PLIST"; \
-	/usr/libexec/PlistBuddy -c "Add :Label string com.macos-setup.weekly-update" "$$PLIST"; \
-	/usr/libexec/PlistBuddy -c "Add :ProgramArguments array" "$$PLIST"; \
-	/usr/libexec/PlistBuddy -c "Add :ProgramArguments:0 string $(LAUNCHAGENT_RUNNER)" "$$PLIST"; \
-	/usr/libexec/PlistBuddy -c "Add :ProgramArguments:1 string weekly-update" "$$PLIST"; \
-	if [ -n "$$MAILTO" ]; then \
-		echo "Email notifications enabled: $$MAILTO"; \
-		/usr/libexec/PlistBuddy -c "Add :ProgramArguments:2 string --mail" "$$PLIST"; \
-		/usr/libexec/PlistBuddy -c "Add :ProgramArguments:3 string $$MAILTO" "$$PLIST"; \
-		/usr/libexec/PlistBuddy -c "Add :ProgramArguments:4 string macos-setup weekly update" "$$PLIST"; \
-		/usr/libexec/PlistBuddy -c "Add :ProgramArguments:5 string --" "$$PLIST"; \
-		/usr/libexec/PlistBuddy -c "Add :ProgramArguments:6 string make" "$$PLIST"; \
-		/usr/libexec/PlistBuddy -c "Add :ProgramArguments:7 string update" "$$PLIST"; \
-	else \
-		echo "No mailto configured — output to log only"; \
-		/usr/libexec/PlistBuddy -c "Add :ProgramArguments:2 string --" "$$PLIST"; \
-		/usr/libexec/PlistBuddy -c "Add :ProgramArguments:3 string make" "$$PLIST"; \
-		/usr/libexec/PlistBuddy -c "Add :ProgramArguments:4 string update" "$$PLIST"; \
-	fi; \
-	/usr/libexec/PlistBuddy -c "Add :StartCalendarInterval dict" "$$PLIST"; \
-	/usr/libexec/PlistBuddy -c "Add :StartCalendarInterval:Weekday integer 0" "$$PLIST"; \
-	/usr/libexec/PlistBuddy -c "Add :StartCalendarInterval:Hour integer 11" "$$PLIST"; \
-	/usr/libexec/PlistBuddy -c "Add :StartCalendarInterval:Minute integer 0" "$$PLIST"; \
-	/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables dict" "$$PLIST"; \
-	/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:PATH string /opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin" "$$PLIST"; \
-	launchctl bootstrap gui/$$(id -u) "$$PLIST"; \
-	echo "Weekly LaunchAgent installed and loaded: $$PLIST"; \
-	echo "Logs: $(LAUNCHAGENT_LOG_DIR)/weekly-update.log"
+schedule-update: ## Schedule automatic update on the days and times [cron.update] sets (email if [cron] mailto configured)
+	@$(SCHEDULE_UPDATE) install
 
-unschedule-all: ## Remove all macos-setup LaunchAgents (daily, weekly, one-time, email-test, autostart)
-	@for PLIST_NAME in "$(DAILY_PLIST)" "$(WEEKLY_PLIST)" "com.macos-setup.now-update.plist" "$(EMAIL_TEST_PLIST)" "com.macos-setup.autostart.plist"; do \
+unschedule-all: ## Remove all macos-setup LaunchAgents (update, legacy daily/weekly, one-time, email-test, autostart)
+	@for PLIST_NAME in "$(UPDATE_PLIST)" "com.macos-setup.now-update.plist" "$(EMAIL_TEST_PLIST)" "com.macos-setup.autostart.plist"; do \
 		PLIST_PATH="$(LAUNCH_AGENTS_DIR)/$$PLIST_NAME"; \
 		LABEL="$${PLIST_NAME%.plist}"; \
 		if [ -f "$$PLIST_PATH" ]; then \
@@ -847,6 +747,7 @@ unschedule-all: ## Remove all macos-setup LaunchAgents (daily, weekly, one-time,
 			echo "Removed $$LABEL"; \
 		fi; \
 	done; \
+	$(SCHEDULE_UPDATE) remove-legacy; \
 	echo "All macos-setup LaunchAgents removed"
 
 schedule-now: ## Schedule a one-time update to run in 2 minutes (for debugging)
