@@ -91,14 +91,18 @@ run_script() {
     >"$SANDBOX/out" 2>"$SANDBOX/err"
 }
 
+# Run make targets in the throwaway repo; output goes where run_script's does.
 run_make() {
   PATH="$BINDIR:$PATH" make -C "$FAKE_REPO" -s "$@" >"$SANDBOX/out" 2>"$SANDBOX/err"
 }
 
+# Print a key path of the update plist; prints nothing and fails when the
+# key is absent.
 print_key() {
   "$PLIST_BUDDY" -c "Print :$1" "$PLIST" 2>/dev/null
 }
 
+# Print how many StartCalendarInterval entries the update plist holds.
 entry_count() {
   local i=0
   while "$PLIST_BUDDY" -c "Print :StartCalendarInterval:$i" "$PLIST" >/dev/null 2>&1; do
