@@ -798,6 +798,16 @@ parse_removal_entry() {
     esac
 }
 
+# Print a brew formula or cask name as its bare token: the name with any
+# `<user>/<tap>/` prefix stripped, so `localstack/tap/lstk` prints `lstk`
+# and `lstk` prints itself. Homebrew's `list` and `uninstall`, an app
+# bundle, and a PATH entry all know a package by this token, and a
+# Brewfile line matches a removal entry when their tokens are equal.
+# Args: name
+bare_token() {
+    printf '%s\n' "${1##*/}"
+}
+
 # Read newline-separated names on stdin and emit them deduplicated,
 # keeping the LAST occurrence of each name (so a later tier re-listing a
 # name moves it later in the order). Blank lines are dropped. Order of

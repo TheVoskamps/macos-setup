@@ -200,8 +200,8 @@ for tier in "${scope[@]}"; do
       }
       IFS=$'\t' read -r e_kind e_id _e_label <<< "$parsed"
       case "$e_kind" in
-        brew) record "$BREW_MAP" "${e_id##*/}" "$label ($kind)" ;;
-        cask) record "$CASK_MAP" "${e_id##*/}" "$label ($kind)" ;;
+        brew) record "$BREW_MAP" "$(bare_token "$e_id")" "$label ($kind)" ;;
+        cask) record "$CASK_MAP" "$(bare_token "$e_id")" "$label ($kind)" ;;
         mas)  record "$MAS_MAP"  "$e_id" "$label ($kind)" ;;
       esac
     done < <(read_removals "$tier" "$kind")
@@ -250,11 +250,11 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
   if [[ -n "$trimmed" ]]; then
     if [[ "$trimmed" =~ ^brew[[:space:]]+[\"\']([^\"\']+)[\"\'] ]]; then
       pkg="${BASH_REMATCH[1]}"
-      src="$(lookup "$BREW_MAP" "${pkg##*/}")"
+      src="$(lookup "$BREW_MAP" "$(bare_token "$pkg")")"
       [[ -n "$src" ]] && marker="$src"
     elif [[ "$trimmed" =~ ^cask[[:space:]]+[\"\']([^\"\']+)[\"\'] ]]; then
       pkg="${BASH_REMATCH[1]}"
-      src="$(lookup "$CASK_MAP" "${pkg##*/}")"
+      src="$(lookup "$CASK_MAP" "$(bare_token "$pkg")")"
       [[ -n "$src" ]] && marker="$src"
     elif [[ "$trimmed" =~ ^mas[[:space:]]+[\"\'][^\"\']+[\"\'][[:space:]]*,[[:space:]]*id[:=][[:space:]]*([0-9]+) ]]; then
       src="$(lookup "$MAS_MAP" "${BASH_REMATCH[1]}")"

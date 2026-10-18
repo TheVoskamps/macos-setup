@@ -106,7 +106,7 @@ print_line() {
 # line keeps the name as the Brewfile writes it.
 _check_cask_installed() {
   local cask="$1"
-  local token="${cask##*/}"
+  local token; token="$(bare_token "$cask")"
   local app="$(_cask_to_app "$token")"
   if [[ -d "/Applications/$app.app" || -d "$HOME/Applications/$app.app" ]]; then
     print_line "cask" "$cask" "installed" "$app"
@@ -131,7 +131,7 @@ _version_of() {
 
 _check_brew_cli() {
   local name="$1"
-  local token="${name##*/}"
+  local token; token="$(bare_token "$name")"
   if command -v "$token" >/dev/null 2>&1; then
     local v=""; v="$(_version_of "$token")" || true
     if [[ -n "$v" ]]; then

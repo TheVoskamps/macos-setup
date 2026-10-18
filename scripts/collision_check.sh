@@ -120,7 +120,7 @@ scan_tier() {
         exit 2
       }
       IFS=$'\t' read -r e_kind e_id _ <<< "$parsed"
-      printf '%s\t%s\t%s\t%s\n' "$e_kind" "${e_id##*/}" "$kind_name" "$entry" >> "$peer_tmp"
+      printf '%s\t%s\t%s\t%s\n' "$e_kind" "$(bare_token "$e_id")" "$kind_name" "$entry" >> "$peer_tmp"
     done < <(read_removals "$tier_root" "$kind_name")
   done
 
@@ -131,7 +131,7 @@ scan_tier() {
 
   while IFS=$'\t' read -r i_line i_kind i_key i_raw; do
     local matches
-    matches="$(awk -F'\t' -v k="$i_kind" -v v="${i_key##*/}" \
+    matches="$(awk -F'\t' -v k="$i_kind" -v v="$(bare_token "$i_key")" \
       '$1 == k && $2 == v { print $3 "\t" $4 }' "$peer_tmp")"
     [[ -z "$matches" ]] && continue
     while IFS=$'\t' read -r arr_name arr_entry; do
