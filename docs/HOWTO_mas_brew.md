@@ -28,10 +28,12 @@ make install            # every tier for this host
 ```
 
 Those go through the smart filter, so any in-scope `uninstall` / `purge`
-entry gets commented out first. To bypass the filter for a quick one-off:
+entry gets commented out first, and they install absent entries without
+upgrading installed ones. To bypass the filter for a quick one-off while
+keeping that no-upgrade behaviour:
 
 ```bash
-brew bundle --file=./profiles/web/Brewfile
+brew bundle --no-upgrade --file=./profiles/web/Brewfile
 ```
 
 ## Remove an App

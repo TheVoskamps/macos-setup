@@ -61,6 +61,17 @@ interpreter its own later steps need; see
   through `scripts/apply_tier.sh`, so "what applying a tier means" lives
   in exactly one place and they cannot drift.
 
+  Applying a tier installs the Brewfile entries that are absent and
+  upgrades none of the installed ones: the `brew bundle` call runs with
+  `--no-upgrade`. Several upgrades inside one bundle run collide on
+  Cellar locks and Caskroom renames, so letting `brew bundle` upgrade
+  failed the tier and blocked every step after it. Upgrading is
+  `make update`'s job. The flag sits on the `brew bundle` command line
+  rather than in `HOMEBREW_BUNDLE_NO_UPGRADE`, so it binds that one call
+  and never reaches the brew calls a tier's `post_install` commands
+  make. `brew install` may still upgrade an entry a dependency requires;
+  such upgrades are rare and never run in bulk.
+
   `install` does **not** run the removal loops in general — the smart
   filter is what keeps a removal-listed package from being installed.
   The one exception is the `version-managers` tier's `purge` array,
@@ -123,10 +134,12 @@ interpreter its own later steps need; see
   Applies just the core tier: `default/Brewfile` through the filter, then
   the `post_install` commands in `default/config.toml` (computer names,
   shell setup, the `~/.msmtprc` generator, the autostart LaunchAgent).
+  Installs absent entries, upgrades none; upgrading is `make update`'s.
 
 - `make profile <name> [<name>...]`
   Applies just the named profiles, in the order given — not sorted, not
-  in the host's configured order.
+  in the host's configured order. Installs absent entries, upgrades
+  none; upgrading is `make update`'s.
 
   ```bash
   make profile web
@@ -211,7 +224,10 @@ interpreter its own later steps need; see
   Runs `brew update`, upgrades all formulae and casks, upgrades MAS
   apps, applies the `version-managers` tier, updates and prunes
   mise-managed tool versions, then applies `make uninstall` and
-  `make remove-and-purge`. Uninstall and purge run *after* the
+  `make remove-and-purge`. The bulk `brew upgrade` and `mas upgrade`
+  steps are where upgrading happens; the tier apply, like every tier
+  apply, installs absent entries and upgrades none, and it runs after
+  those steps so it has nothing left to upgrade. Uninstall and purge run *after* the
   upgrade chain so "uninstall wins over install" is the end state:
   even if `brew upgrade` resurrects something via dependency
   resolution, the uninstall step removes it before the user sees the
