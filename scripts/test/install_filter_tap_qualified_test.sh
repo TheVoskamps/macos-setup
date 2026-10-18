@@ -74,7 +74,7 @@ run_filter() {
   out_file="$(cd "$root" && \
     MACOS_SETUP_HOST_DIR="$host_dir" \
     BREW="$root/scripts/stub_brew.sh" BREW_TRUST_LOG="$TRUST_LOG" \
-    bash scripts/install_filter.sh "default/Brewfile" 2>/dev/null)"; RUN_RC=$?
+    /bin/bash scripts/install_filter.sh "default/Brewfile" 2>/dev/null)"; RUN_RC=$?
 
   RUN_EMITTED=""
   [[ -f "$out_file" ]] && RUN_EMITTED="$(cat "$out_file")"

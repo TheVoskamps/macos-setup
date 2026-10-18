@@ -47,7 +47,7 @@ run_check() {
   printf '%s\n' "$1" > "$ROOT/default/Brewfile"
   printf '[profile]\nuninstall = ["%s"]\n' "$2" > "$ROOT/default/config.toml"
   RC=0
-  OUT="$(cd "$ROOT" && PATH="$BINDIR:$PATH" bash scripts/collision_check.sh 2>&1)" || RC=$?
+  OUT="$(cd "$ROOT" && PATH="$BINDIR:$PATH" /bin/bash scripts/collision_check.sh 2>&1)" || RC=$?
 }
 
 run_check "cask 'localstack/tap/lstk'" "cask:lstk"

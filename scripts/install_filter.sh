@@ -48,7 +48,7 @@
 # Homebrew 6.0 made `brew trust` required for third-party taps; until a
 # tap is trusted, `brew bundle` silently skips its formulae/casks and
 # still exits 0, so the failure-tolerant install loop reports success
-# while nothing installs (issue #172). Because `install_filter.sh` is the single
+# while nothing installs. Because `install_filter.sh` is the single
 # chokepoint every `brew bundle` invocation routes through, trusting the
 # emitted taps here guarantees they are trusted before the caller runs
 # `brew bundle`. `brew trust` on an already-trusted tap is a no-op, so

@@ -74,7 +74,7 @@ run_verify() {
   # run_verify <brewfile-line> -> stdout+stderr in OUT; rc in RC
   echo "$1" > "$ROOT/default/Brewfile"
   RC=0
-  OUT="$(cd "$ROOT" && PATH="$BINDIR:$PATH" bash scripts/verify.sh 2>&1)" || RC=$?
+  OUT="$(cd "$ROOT" && PATH="$BINDIR:$PATH" /bin/bash scripts/verify.sh 2>&1)" || RC=$?
 }
 
 run_verify "cask 'localstack/tap/lstk'"
