@@ -308,7 +308,9 @@ read_toml_value() {
 # Walks the precedence stack (host > reverse(profiles) > default) and
 # returns the first tier whose config.toml defines a non-empty value for
 # the selector. This is the config.toml analogue of resolve_file for the
-# `[mailer]`, `[claude]`, and `[cron]` sections.
+# `[mailer]`, `[claude]`, and `[cron]` sections, except the `[cron.update]`
+# table, which resolve_host_or_default_table reads whole from the host tier
+# or else `default/`, never through this function.
 # Args: repo_root, selector (e.g. "claude.branch", "mailer.smtp_host").
 resolve_config_value() {
     local repo_root="$1"
