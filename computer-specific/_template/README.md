@@ -61,3 +61,10 @@ default/   (in repo, lowest priority)
 The `[cron]` section ships commented out, so a fresh seed sends **no**
 scheduled-job email. To enable email, uncomment the `[cron]` section in
 `config.toml` and set `mailto` to a single recipient address.
+
+## `[cron.update]`
+
+The `[cron.update]` table ships commented out, so a fresh seed runs
+`make update` on `default/`'s schedule. Defining the table here replaces
+`default/`'s **whole** table — keys from the two are never merged — and
+takes effect on the next `make schedule-update`.
