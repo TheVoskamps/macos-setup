@@ -18,6 +18,7 @@
 #   - an emitted tap-qualified line trusts its tap, once
 #   - a filtered-out tap-qualified line trusts nothing when no `tap` line
 #     for its tap emits
+#   - an emitted bare line trusts nothing
 
 set -uo pipefail
 
