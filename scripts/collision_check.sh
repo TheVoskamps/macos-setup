@@ -104,7 +104,7 @@ scan_tier() {
   local label
   label="$(tier_label "$REPO_ROOT" "$tier_root")"
 
-  # Collect this tier's removal entries as "<kind>\t<id>\t<array>\t<entry>".
+  # Collect this tier's removal entries as "<kind>\t<token>\t<array>\t<entry>".
   # Both sides compare by bare token — the name with any `<user>/<tap>/`
   # prefix stripped — so `cask:lstk` collides with
   # `cask 'localstack/tap/lstk'`, and the reverse.
