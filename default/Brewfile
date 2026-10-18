@@ -20,7 +20,7 @@
 # dasel queries every config.toml in the repo (scripts/config_common.sh).
 # It must be EXACTLY major version 3; bootstrap.sh installs and verifies it
 # before `make` can run at all, and it is re-asserted here so `brew bundle`
-# keeps it present and upgraded on every run.
+# keeps it present on every run.
 brew 'dasel'
 # mas drives Mac App Store installs and removals (scripts/remove_runner.sh,
 # and `mas '...'` directives in any tier's Brewfile).
