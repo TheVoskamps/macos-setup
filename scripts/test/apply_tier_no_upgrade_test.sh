@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Tests that applying a tier never upgrades installed packages (issue #90).
+# Tests that applying a tier never upgrades installed packages.
 #
 # scripts/apply_tier.sh runs `brew bundle` on the tier's filtered Brewfile,
 # and `brew bundle` upgrades outdated entries unless told not to. Several
@@ -8,9 +8,9 @@
 # renames, so the bundle call carries `--no-upgrade` and upgrading is left
 # to `make update`.
 #
-# These tests stand up a synthetic repo whose core tier has a Brewfile, stub
+# The test stands up a synthetic repo whose core tier has a Brewfile, stubs
 # `brew` through the BREW env var with a script that logs each invocation's
-# arguments, run scripts/apply_tier.sh on that tier, and assert on the
+# arguments, runs scripts/apply_tier.sh on that tier, and asserts on the
 # logged `bundle` invocation.
 
 set -uo pipefail
@@ -54,6 +54,8 @@ STUB
   chmod +x "$path"
 }
 
+# Applying the core tier exits 0, and its logged `brew bundle` call carries
+# `--no-upgrade`.
 bundle_passes_no_upgrade_test() {
   local root host_dir brew_stub log rc bundle_line
   root="$(make_repo)"
