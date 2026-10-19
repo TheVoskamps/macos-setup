@@ -65,6 +65,7 @@ ensure_brew_in_path() {
       {
         echo ''
         echo '# Homebrew'
+        # shellcheck disable=SC2016  # the profile expands it at shell startup
         echo 'eval "$(/opt/homebrew/bin/brew shellenv)"'
       } >> "$PROFILE_FILE"
       log "Added Homebrew shellenv to $PROFILE_FILE"
@@ -75,6 +76,7 @@ ensure_brew_in_path() {
       {
         echo ''
         echo '# Homebrew (Intel)'
+        # shellcheck disable=SC2016  # the profile expands it at shell startup
         echo 'export PATH="/usr/local/bin:$PATH"'
       } >> "$PROFILE_FILE"
       log "Added /usr/local/bin to PATH in $PROFILE_FILE"
@@ -149,6 +151,7 @@ ensure_zsh_aliases() {
   fi
 
   if [[ -n "$BREW_BIN" && -x "$BREW_BIN" ]]; then
+    # shellcheck disable=SC2155  # the `|| echo ""` already discards the status
     local PREFIX="$("$BREW_BIN" --prefix 2>/dev/null || echo "")"
     if [[ -n "$PREFIX" && -x "$PREFIX/bin/mas" ]]; then
       MAS_BIN="$PREFIX/bin/mas"
