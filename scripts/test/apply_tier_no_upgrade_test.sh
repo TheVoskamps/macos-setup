@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-# Tests that scripts/apply_tier.sh never upgrades installed packages
-# (issue #90): its `brew bundle` call carries `--no-upgrade`, so applying a
-# tier installs absent entries only and upgrading stays with `make update`.
+# Tests that scripts/apply_tier.sh never upgrades installed packages: its
+# `brew bundle` call carries `--no-upgrade`, so applying a tier installs
+# absent entries only and upgrading stays with `make update`.
 #
 # The test stands up a synthetic repo whose core tier has a Brewfile, stubs
 # `brew` through the BREW env var with a script that logs each invocation's
