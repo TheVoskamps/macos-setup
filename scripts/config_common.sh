@@ -763,8 +763,9 @@ read_removals() {
 # so a consumer addresses the package by `bare_token` of it, and the install
 # filter matches a Brewfile line against that token rather than the name as
 # written. A mas `identifier` is the numeric id, used as written. `label` is
-# only ever used in log lines. Returns 2 and prints a diagnostic on a malformed entry — a silently
-# ignored removal is exactly the failure this parse exists to prevent.
+# only ever used in log lines. Returns 2 and prints a diagnostic on a
+# malformed entry — a silently ignored removal is exactly the failure this
+# parse exists to prevent.
 # Args: entry
 parse_removal_entry() {
     local entry="$1"
