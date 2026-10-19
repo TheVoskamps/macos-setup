@@ -15,6 +15,14 @@
 # version-managers install step. Keeping the body here rather than inlined
 # in each Makefile recipe is what stops those paths from drifting.
 #
+# INSTALL, NEVER UPGRADE. Applying a tier installs absent entries and never
+# upgrades installed ones: `brew bundle` runs with `--no-upgrade`, because
+# several upgrades inside one bundle run collide on Cellar locks and
+# Caskroom renames and fail the tier. Upgrading belongs to `make update`.
+# The flag sits on the command line rather than in
+# HOMEBREW_BUNDLE_NO_UPGRADE so it does not reach the brew calls a
+# post_install command makes.
+#
 # FAILURE TOLERANCE. A failing `brew bundle`, and a failing post-install
 # command, are each reported and TRACKED, never fatal: the run continues to
 # the next step and the script exits non-zero at the end. That matters
@@ -69,7 +77,7 @@ BREWFILE="$TIER/Brewfile"
 if [[ -f "$BREWFILE" ]]; then
   echo "==> Applying $LABEL Brewfile (filtered): $BREWFILE"
   if tmp="$("$INSTALL_FILTER" "$BREWFILE")"; then
-    if ! "$BREW" bundle --file="$tmp"; then
+    if ! "$BREW" bundle --no-upgrade --file="$tmp"; then
       echo "==> FAILED: brew bundle for $LABEL ($BREWFILE)" >&2
       FAIL=1
     fi
