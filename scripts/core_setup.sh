@@ -89,7 +89,7 @@ if [[ -f "$ZSHRC" ]]; then
 
     # Disable Homebrew 6.0+ interactive ask-mode prompt. Homebrew 6.0
     # made ask mode the default for install/upgrade/reinstall (and, via
-    # `brew bundle`'s default upgrade, for bundle too), so every such
+    # the installs `brew bundle` runs, for bundle too), so every such
     # call blocks on a "Do you want to proceed? [y/n]" prompt. Setting
     # HOMEBREW_NO_ASK covers all of them (and any future brew call) with
     # one lever, so `make update` / `make install` no longer hang.

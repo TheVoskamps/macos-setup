@@ -61,6 +61,20 @@ interpreter its own later steps need; see
   through `scripts/apply_tier.sh`, so "what applying a tier means" lives
   in exactly one place and they cannot drift.
 
+  Install, never upgrade: applying a tier installs the packages its
+  `Brewfile` lists that are absent and upgrades none of the installed
+  ones. `brew bundle` upgrades every outdated entry by default, and
+  several upgrades inside one bundle run collide on Cellar locks and
+  Caskroom renames, failing the tier and with it the follow-on steps
+  such as the asdf/direnv cutover. So `scripts/apply_tier.sh` runs
+  `brew bundle --no-upgrade`, and upgrading is left to `make update`.
+  The flag sits on the `brew bundle` command line rather than in
+  `HOMEBREW_BUNDLE_NO_UPGRADE`, so it binds that one call and does not
+  reach the brew calls a tier's `post_install` commands make. The one
+  upgrade `--no-upgrade` still allows is the one `brew install` performs
+  when a dependency of an absent package requires a newer version of an
+  installed one; such upgrades are rare and never run in bulk.
+
   `install` does **not** run the removal loops in general — the smart
   filter is what keeps a removal-listed package from being installed.
   The one exception is the `version-managers` tier's `purge` array,
@@ -123,10 +137,13 @@ interpreter its own later steps need; see
   Applies just the core tier: `default/Brewfile` through the filter, then
   the `post_install` commands in `default/config.toml` (computer names,
   shell setup, the `~/.msmtprc` generator, the autostart LaunchAgent).
+  Like every apply path, it installs absent packages and upgrades none;
+  upgrading is `make update`'s job.
 
 - `make profile <name> [<name>...]`
   Applies just the named profiles, in the order given — not sorted, not
-  in the host's configured order.
+  in the host's configured order. Like every apply path, it installs
+  absent packages and upgrades none; upgrading is `make update`'s job.
 
   ```bash
   make profile web
@@ -216,7 +233,10 @@ interpreter its own later steps need; see
   even if `brew upgrade` resurrects something via dependency
   resolution, the uninstall step removes it before the user sees the
   result. `version-managers` is the ONE tier `update` applies; no
-  other tier's `Brewfile` is re-applied.
+  other tier's `Brewfile` is re-applied. That apply goes through
+  `scripts/apply_tier.sh` and so installs absent entries only, which
+  costs nothing here: it runs after the bulk `brew upgrade` steps, so
+  there is nothing left for it to upgrade.
 
   That tier step is gated on the host opting into the profile, via the
   `VM_OPTED_IN` Makefile variable (`version-managers` present in the
