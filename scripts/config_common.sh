@@ -759,9 +759,11 @@ read_removals() {
 #   mas:<id>          -> mas   <id>       <id>
 #   mas:<id>:<Name>   -> mas   <id>       <Name>
 #
-# `identifier` is what the package is addressed by (and what the install
-# filter matches a Brewfile line against); `label` is only ever used in log
-# lines. Returns 2 and prints a diagnostic on a malformed entry — a silently
+# A brew or cask `identifier` is the name as written, tap prefix included,
+# so a consumer addresses the package by `bare_token` of it, and the install
+# filter matches a Brewfile line against that token rather than the name as
+# written. A mas `identifier` is the numeric id, used as written. `label` is
+# only ever used in log lines. Returns 2 and prints a diagnostic on a malformed entry — a silently
 # ignored removal is exactly the failure this parse exists to prevent.
 # Args: entry
 parse_removal_entry() {
