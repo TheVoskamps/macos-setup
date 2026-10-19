@@ -759,10 +759,13 @@ read_removals() {
 #   mas:<id>          -> mas   <id>       <id>
 #   mas:<id>:<Name>   -> mas   <id>       <Name>
 #
-# `identifier` is what the package is addressed by (and what the install
-# filter matches a Brewfile line against); `label` is only ever used in log
-# lines. Returns 2 and prints a diagnostic on a malformed entry — a silently
-# ignored removal is exactly the failure this parse exists to prevent.
+# A brew or cask `identifier` is the name as written, tap prefix included,
+# so a consumer addresses the package by `bare_token` of it, and the install
+# filter matches a Brewfile line against that token rather than the name as
+# written. A mas `identifier` is the numeric id, used as written. `label` is
+# only ever used in log lines. Returns 2 and prints a diagnostic on a
+# malformed entry — a silently ignored removal is exactly the failure this
+# parse exists to prevent.
 # Args: entry
 parse_removal_entry() {
     local entry="$1"
@@ -796,6 +799,16 @@ parse_removal_entry() {
             return 2
             ;;
     esac
+}
+
+# Print a brew formula or cask name as its bare token: the name with any
+# `<user>/<tap>/` prefix stripped, so `localstack/tap/lstk` prints `lstk`
+# and `lstk` prints itself. Homebrew's `list` and `uninstall`, an app
+# bundle, and a PATH entry all know a package by this token, and a
+# Brewfile line matches a removal entry when their tokens are equal.
+# Args: name
+bare_token() {
+    printf '%s\n' "${1##*/}"
 }
 
 # Read newline-separated names on stdin and emit them deduplicated,

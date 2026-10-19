@@ -313,14 +313,14 @@ purge = ["cask:qblocker", "mas:1365531024:1Blocker"]
   ```
 
   The filter also auto-trusts third-party taps: for each
-  `tap '<name>'` directive that survives filtering into
-  the file it feeds `brew bundle`, it runs
-  `brew trust --tap '<name>'` first. Homebrew 6.0 made
-  this required for non-official taps — without it,
+  tap the file it feeds `brew bundle` reaches — through a
+  `tap '<name>'` directive or a `brew` / `cask` entry
+  tap-qualified as `<user>/<tap>/<name>` — it runs
+  `brew trust --tap` first, once per tap. Homebrew 6.0
+  made this required for non-official taps — without it,
   `brew bundle` silently skips a tap's packages and still
   exits 0. The trust is idempotent and only applies to
-  taps whose `tap` line is actually installed (not
-  filtered out).
+  taps a surviving (not filtered-out) line reaches.
 
 The "in-scope" set of removal arrays used by the filter
 depends on which tier's Brewfile is being applied: a

@@ -231,8 +231,11 @@ is_mas_installed() {
   command -v "$MAS" >/dev/null 2>&1 && "$MAS" list 2>/dev/null | awk '{print $1}' | grep -qx "$1"
 }
 
+# uninstall_brew and uninstall_cask probe and uninstall by the bare token,
+# as install_filter.sh matches by it, so a tap-qualified entry such as
+# `cask:localstack/tap/lstk` removes the installed `lstk`.
 uninstall_brew() {
-  local name="$1"
+  local name; name="$(bare_token "$1")"
   if is_brew_installed "$name"; then
     if ! run "$BREW" uninstall --formula "$name"; then
       log "WARNING: $BREW uninstall --formula $name failed — continuing"
@@ -244,7 +247,7 @@ uninstall_brew() {
 }
 
 uninstall_cask() {
-  local name="$1"
+  local name; name="$(bare_token "$1")"
   if is_cask_installed "$name"; then
     if [[ "$MODE" == "purge" ]]; then
       if ! run "$BREW" uninstall --cask --zap "$name"; then
