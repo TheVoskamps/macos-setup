@@ -9,7 +9,7 @@
 #
 # bootstrap.sh runs main when sourced, so the function body is extracted
 # and evaluated alone. pgrep, open and mas are stubs on PATH that record
-# their argv; the pgrep stub's exit status is set per case.
+# their argv; the pgrep and open stubs' exit statuses are set per case.
 
 set -uo pipefail
 
