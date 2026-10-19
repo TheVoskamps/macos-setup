@@ -5,9 +5,11 @@
 ```bash
 # Install Homebrew (if needed) then:
 brew install mas
-mas account
-mas signin "you@example.com"   # interactive prompt
 ```
+
+Sign into the Mac App Store through the App Store app before applying a
+tier that has `mas` entries. No mas subcommand signs you in or reports
+whether you are, so the App Store app is the only place to check.
 
 ## Add an App to a tier's Brewfile
 
