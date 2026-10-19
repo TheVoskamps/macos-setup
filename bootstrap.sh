@@ -7,13 +7,13 @@
 #   3) Install dasel (via Homebrew) — the TOML query primitive config.toml relies on
 #   4) Add zsh aliases for brew/mas (before any checks that might use them)
 #   5) Ensure Apple Command Line Tools (git)
-#   6) Check MAS login (non-fatal if not signed in)
+#   6) Check MAS login (non-fatal reminder to sign into the App Store app)
 #   7) Clone this (public) repository over HTTPS
 #
 # Notes:
 # - Idempotent: Safe to re-run.
 # - Aliases are written to ~/.zprofile and ~/.zshrc (and $ZDOTDIR equivalents) only if missing.
-# - MAS login check will open App Store if GUI is available; over pure SSH it will just warn.
+# - MAS login check opens the App Store app when it is not already running.
 # - This repo is public, so the clone is a plain HTTPS clone — no SSH key,
 #   no 1Password SSH agent, no GitHub SSH auth needed. The 1Password
 #   SSH-agent setup that this script used to walk you through is preserved
@@ -65,6 +65,7 @@ ensure_brew_in_path() {
       {
         echo ''
         echo '# Homebrew'
+        # shellcheck disable=SC2016  # the profile expands it at shell startup
         echo 'eval "$(/opt/homebrew/bin/brew shellenv)"'
       } >> "$PROFILE_FILE"
       log "Added Homebrew shellenv to $PROFILE_FILE"
@@ -75,6 +76,7 @@ ensure_brew_in_path() {
       {
         echo ''
         echo '# Homebrew (Intel)'
+        # shellcheck disable=SC2016  # the profile expands it at shell startup
         echo 'export PATH="/usr/local/bin:$PATH"'
       } >> "$PROFILE_FILE"
       log "Added /usr/local/bin to PATH in $PROFILE_FILE"
@@ -149,6 +151,7 @@ ensure_zsh_aliases() {
   fi
 
   if [[ -n "$BREW_BIN" && -x "$BREW_BIN" ]]; then
+    # shellcheck disable=SC2155  # the `|| echo ""` already discards the status
     local PREFIX="$("$BREW_BIN" --prefix 2>/dev/null || echo "")"
     if [[ -n "$PREFIX" && -x "$PREFIX/bin/mas" ]]; then
       MAS_BIN="$PREFIX/bin/mas"
@@ -212,16 +215,14 @@ ensure_xcode_clt() {
   return 0
 }
 
+# No mas subcommand reports App Store sign-in state, so this step only
+# reminds the user to sign in and never claims they are or are not.
 check_mas_login() {
-  if mas account >/dev/null 2>&1; then
-    log "MAS signed in: $(mas account || true)"
-    return 0
-  else
-    warn "Not signed into the Mac App Store."
-    warn "Open the App Store app, sign in, then re-run this step or continue with Homebrew-only steps."
+  log "Sign into the Mac App Store through the App Store app before running 'make install'; mas Brewfile entries need a signed-in account."
+  if ! pgrep -x "App Store" >/dev/null 2>&1; then
     open -a "App Store" >/dev/null 2>&1 || true
-    return 0  # non-fatal
   fi
+  return 0  # non-fatal
 }
 
 clone_repository() {
