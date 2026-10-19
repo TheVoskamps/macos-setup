@@ -103,6 +103,19 @@ Entries are `"<kind>:<identifier>"` strings:
 A malformed entry is a hard error everywhere it is read — a silently
 ignored removal is exactly what that check exists to prevent.
 
+A formula or cask name, in a removal entry and in a Brewfile line alike,
+may be tap-qualified as `<user>/<tap>/<name>`. Every comparison and every
+lookup uses its **bare token** — the name with that prefix stripped, so
+`localstack/tap/lstk` and `lstk` are the same package — because Homebrew's
+`list` and `uninstall`, an app bundle, and a `PATH` entry all know the
+package by the bare token alone, and `brew list --cask --versions` fails
+outright on a tap-qualified name. So `cask:lstk` and
+`cask:localstack/tap/lstk` each match both `cask 'lstk'` and
+`cask 'localstack/tap/lstk'`, and the removal runner probes and removes
+either by `lstk`. The tap prefix still matters to `brew bundle`, which
+resolves the package through it; a Brewfile keeps whichever spelling the
+tap requires.
+
 The arrays differ only for casks:
 
 - `"cask:foo"` in `uninstall` → `brew uninstall --cask foo`
@@ -122,8 +135,8 @@ Both modes share `scripts/remove_runner.sh`, selected via
 Whenever a tier's `Brewfile` is about to be fed to `brew bundle`, it is
 pre-processed through `scripts/install_filter.sh`. The filter reads every
 in-scope tier's `uninstall` *and* `purge` array and comments out any line
-in the Brewfile whose package identifier (formula name, cask token, or
-MAS id) appears in either. Each commented-out line is preceded by a marker
+in the Brewfile whose package — a formula or cask by bare token, a MAS app
+by id — appears in either. Each commented-out line is preceded by a marker
 naming the tier and the array the removal came from:
 
 ```text
@@ -140,23 +153,29 @@ line to be filtered; only the marker text differs.
 
 #### Third-party taps are auto-trusted
 
-The filter has one side effect beyond the text transform: for every
-`tap '<name>'` directive that survives filtering into the emitted file, it
-runs `brew trust --tap '<name>'` before the caller runs `brew bundle`.
-Homebrew 6.0 made `brew trust` required for third-party (non-official)
-taps; until a tap is trusted, `brew bundle` silently skips its
-formulae/casks and still exits 0, so the failure-tolerant install loop
+The filter has one side effect beyond the text transform: for every tap
+the emitted file reaches, it runs `brew trust --tap '<user>/<tap>'`
+before the caller runs `brew bundle`. A tap is reached by a `tap '<name>'`
+directive, and equally by a `brew` or `cask` line tap-qualified as
+`<user>/<tap>/<name>`, so a Brewfile whose only entry is
+`cask 'localstack/tap/lstk'` gets `localstack/tap` trusted with no `tap`
+line of its own. Homebrew 6.0 made `brew trust` required for third-party
+(non-official) taps; until a tap is trusted, `brew bundle` silently skips
+its formulae/casks and still exits 0, so the failure-tolerant install loop
 would report success while nothing installs (issue #172). Because
 `install_filter.sh` is the single chokepoint every `brew bundle`
 invocation routes through, trusting taps here guarantees they are trusted
 first.
 
-`brew trust` on an already-trusted tap is a no-op, so this is idempotent
-across re-runs. The trust is conservative: a tap whose only formula/cask
-was commented out by a removal array is trusted **only if its own `tap`
-line still emits**. The brew binary used is overridable via the `BREW`
-env var (see "Overriding the package-manager binaries" below); a failed
-`brew trust` prints a warning but does not abort the filter.
+Only a line that survives filtering reaches a tap, so the trust is
+conservative: a tap-qualified entry a removal array commented out trusts
+nothing, and its tap is trusted only if a `tap` line or another
+tap-qualified entry naming it still emits. A tap reached by several lines
+is trusted once per run, and `brew trust` on an already-trusted tap is a
+no-op, so this is idempotent across re-runs. The brew binary used is
+overridable via the `BREW` env var (see "Overriding the package-manager
+binaries" below); a failed `brew trust` prints a warning but does not
+abort the filter.
 
 #### Tier scope: which removals apply to which Brewfile
 
@@ -298,7 +317,11 @@ See [Makefile Usage](MAKEFILE.md#common-targets) for the full
 collision check: any package listed in BOTH `<tier>/Brewfile` AND that
 same tier's `[profile] uninstall` or `[profile] purge` array is reported,
 and `make verify` exits non-zero. Cross-tier collisions are intentional
-("opt out at a more-specific tier") and are not flagged.
+("opt out at a more-specific tier") and are not flagged. Both checks
+work by bare token: the Brewfile verification looks a tap-qualified
+formula or cask up by its bare token and prints the name as the Brewfile
+writes it, and the collision check matches a tap-qualified spelling on
+either side against the bare spelling on the other.
 
 The collision check scans **every** profile directory on disk, not just
 the ones this host opts into: a same-tier collision inside a profile
