@@ -38,13 +38,11 @@ if [[ -z "$func_src" ]]; then
 fi
 
 mkdir -p "$TMP/bin"
-# shellcheck disable=SC2016  # the stub bodies expand at stub run time
 for cmd in open mas; do
-  printf '#!/usr/bin/env bash\necho "%s $*" >> "$CALLS"\nexit "${%s_RC:-0}"\n' \
+  printf "#!/usr/bin/env bash\necho \"%s \$*\" >> \"\$CALLS\"\nexit \"\${%s_RC:-0}\"\n" \
     "$cmd" "$(tr '[:lower:]' '[:upper:]' <<<"$cmd")" > "$TMP/bin/$cmd"
 done
-# shellcheck disable=SC2016  # the stub body expands at stub run time
-printf '#!/usr/bin/env bash\necho "pgrep $*" >> "$CALLS"\nexit "${PGREP_RC:-1}"\n' > "$TMP/bin/pgrep"
+printf "#!/usr/bin/env bash\necho \"pgrep \$*\" >> \"\$CALLS\"\nexit \"\${PGREP_RC:-1}\"\n" > "$TMP/bin/pgrep"
 chmod +x "$TMP/bin/"*
 
 # run_case <pgrep-rc> <open-rc>: runs check_mas_login under set -e with the
@@ -54,7 +52,7 @@ run_case() {
   : > "$calls"
   local out rc
   out="$(
-    PATH="$TMP/bin:$PATH" CALLS="$calls" PGREP_RC="$1" OPEN_RC="$2" bash -c '
+    PATH="$TMP/bin:$PATH" CALLS="$calls" PGREP_RC="$1" OPEN_RC="$2" /bin/bash -c '
       set -euo pipefail
       log() { printf "[BOOTSTRAP] %s\n" "$*"; }
       warn() { printf "[WARN] %s\n" "$*"; }
