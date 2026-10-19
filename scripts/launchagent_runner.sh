@@ -73,7 +73,7 @@ set -euo pipefail
 
 # Disable Homebrew 6.0+ interactive ask-mode prompt for every scheduled
 # job (issue #20). Homebrew 6.0 made ask mode the default for
-# install/upgrade/reinstall (and, via `brew bundle`'s default upgrade,
+# install/upgrade/reinstall (and, via the installs `brew bundle` runs,
 # for bundle too), so a `make update` running here would block on a
 # "Do you want to proceed? [y/n]" prompt with no controlling TTY and
 # hang indefinitely. launchd does NOT source ~/.zshrc, so the
