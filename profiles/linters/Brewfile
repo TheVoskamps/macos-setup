@@ -8,3 +8,5 @@ brew 'jsonlint'            # JSON (validator)
 brew 'biome'               # JSON/JSONC lint+format
 brew 'tombi'               # TOML
 brew 'cfn-lint'            # CloudFormation correctness
+brew 'oxlint'              # JS, TS, JSX, TSX
+brew 'oxfmt'               # JS, TS, JSX, TSX, JSON, JSONC, YAML, TOML, HTML and more
