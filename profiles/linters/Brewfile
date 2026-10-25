@@ -12,4 +12,4 @@ brew 'cfn-lint'            # CloudFormation correctness
 brew 'oxlint'              # JS, TS, JSX, TSX
 brew 'oxfmt'               # JS, TS, JSX, TSX, JSON, JSONC, YAML, TOML, HTML and more
 brew 'actionlint'          # GitHub Actions
-brew 'staticcheck'         # Go
+brew 'golangci-lint'       # Go
