@@ -2,6 +2,7 @@
 
 # Homebrew formulae
 brew 'shellcheck'          # shell script
+brew 'shfmt'               # shell script formatting
 brew 'markdownlint-cli2'   # Markdown
 brew 'yamllint'            # YAML
 brew 'jsonlint'            # JSON (validator)
@@ -10,3 +11,5 @@ brew 'tombi'               # TOML
 brew 'cfn-lint'            # CloudFormation correctness
 brew 'oxlint'              # JS, TS, JSX, TSX
 brew 'oxfmt'               # JS, TS, JSX, TSX, JSON, JSONC, YAML, TOML, HTML and more
+brew 'actionlint'          # GitHub Actions
+brew 'staticcheck'         # Go
