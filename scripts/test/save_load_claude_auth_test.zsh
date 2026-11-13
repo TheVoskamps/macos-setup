@@ -9,8 +9,7 @@
 # -- to and from per-account backups ("Claude Code-credentials-<account>"
 # and ~/.claude.json.<account>).
 #
-# In the style of cr_test.zsh (real git, stubbed claude), these tests use
-# the REAL jq binary and a stubbed `security` function backed by a plain
+# These tests use the REAL jq binary and a stubbed `security` function backed by a plain
 # directory of files (one file per Keychain service name), so the real
 # login Keychain is never touched. HOME is pointed at a per-case temp dir
 # so ~/.claude.json and its sidecars land there, never in the real home.
@@ -35,7 +34,7 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 1
 fi
 
-# Unlike cr_test.zsh, the assertions here run INSIDE the per-case
+# The assertions here run INSIDE the per-case
 # subshells (they need the case's HOME/SEC_DIR), so plain counter
 # variables would not propagate back. pass/die record marker files in a
 # parent-owned dir instead, and the parent counts those at the end.

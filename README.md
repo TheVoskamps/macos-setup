@@ -712,10 +712,9 @@ profiles/
 │                               # tier and default/ may define), and
 │                               # the [autostart] apps this profile
 │                               # adds (aggregate)
-├── claude-code-aliases/        # Mostly an aliases.zsh: the cr Claude
-│   ├── aliases.zsh             # wrapper (--cr-strict refuses to run
-│   └── Brewfile                # outside a repo with an origin), the
-│                               # save-claude-auth / load-claude-auth
+├── claude-code-aliases/        # Mostly an aliases.zsh: the
+│   ├── aliases.zsh             # save-claude-auth / load-claude-auth
+│   └── Brewfile
 │                               # account switchers, and the
 │                               # update-claude-plugins /
 │                               # update-claude-config runners for the

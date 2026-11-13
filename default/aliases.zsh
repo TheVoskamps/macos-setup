@@ -4,7 +4,7 @@
 # tools the default tier itself installs belong here. Tool-specific
 # aliases live with the profile that adopts the tool:
 #   - git shortcuts / functions -> profiles/dev-core/aliases.zsh
-#   - claude CLI wrappers (cr)   -> profiles/claude-code-aliases/aliases.zsh
+#   - claude CLI helpers         -> profiles/claude-code-aliases/aliases.zsh
 # A machine that does no development never inherits the git alias soup.
 
 # Bootstrap helpers (bat/fzf are installed by the core tier's Brewfile)

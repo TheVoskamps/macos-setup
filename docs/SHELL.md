@@ -81,22 +81,8 @@ be noticeable.
     aliases.
   - **profile tier** — aliases for the tool that profile adopts. The
     git shortcuts, log variants, `*h` help-greppers, and the
-    `gbc`/`gbd`/`gsr` functions live in `profiles/dev-core/aliases.zsh`;
-    the `cr` Claude-CLI wrapper lives in
-    `profiles/claude-code-aliases/aliases.zsh` (`cr` launches
-    `claude --remote-control` from any cwd — inside an existing repo
-    it `cd`s to the repo root and derives the session name from
-    `origin`, and outside any repo it `git init`s a throwaway repo and
-    tears down only the `.git` it created; `--cr-strict` as its first
-    argument instead makes it refuse outside a git repo or in one
-    without an `origin` remote, and is never forwarded to `claude` —
-    in any later position it is an ordinary `claude` argument). `cr`
-    also passes `--allowedTools Grep Glob`,
-    because on macOS the main session otherwise starts without the
-    `Grep` and `Glob` tools and runs every search through Bash; a
-    `settings.json` allow rule does not restore them, the startup flag
-    does, and the flag grants nothing new since both tools need no
-    permission inside the working directory. The same profile carries
+    `gbc`/`gbd`/`gsr` functions live in `profiles/dev-core/aliases.zsh`.
+    `profiles/claude-code-aliases/aliases.zsh` carries
     `save-claude-auth` / `load-claude-auth` for switching between Claude
     Code Max accounts (see "Multiple Claude Code accounts" below) and
     `update-claude-plugins` / `update-claude-config` for running the
@@ -184,7 +170,7 @@ Behavior worth knowing:
   sessions before switching.
 
 Switching accounts is an explicit step before launching Claude — it is
-not a flag on `cr` or the other launchers. The pair adds no new
+not a flag on any launcher. The pair adds no new
 dependency: `jq` is already declared (by the core tier and by this
 profile's own `Brewfile`) and `security` ships with macOS. Covered by
 `scripts/test/save_load_claude_auth_test.zsh`, which stubs `security`
